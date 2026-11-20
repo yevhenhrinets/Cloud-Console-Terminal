@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Cloud Terminal — Dashboard</title>
+    
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="dashboard.css">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="api.js"></script>
+    <script src="helpers.js"></script>
+    <script src="localization.js"></script>
+</head>
+<body>
+
+    <div class="header">
+        <h2>🎛️ Dashboard v1.01h</h2>
+        <a id="header-action-btn" href="index.html" class="btn-console">💻 В консоль</a>
+    </div>
+
+    <div id="error-banner" style="display: none; background: #7f1d1d; border: 1px solid #ef4444; color: #fca5a5; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 14px;"></div>
+
+    <!-- Раздел управления постройками (динамические кнопки) -->
+    <div class="section-title">⚡ Управление постройками</div>
+    <div id="buildings-controls" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
+        <div style="color: #94a3b8; font-size: 13px;">Загрузка динамических построек...</div>
+    </div>
+    
+    <div style="margin-top: 4px; margin-bottom: 20px;">
+        <button class="btn-action" onclick="forceSyncWithDB()" style="background:#ef4444; color:#fff; font-size: 11px; padding: 6px 12px;">🔄 Синхронизировать с БД</button>
+    </div>
+
+    <!-- Раздел активных таймеров в постройках -->
+    <div class="section-title">⏱️ Активные постройки</div>
+    <div id="queues-container" class="grid-queues">
+        <div class="card">Загрузка построек...</div>
+    </div>
+
+    <!-- Склад готовых предметов -->
+    <div class="section-title">📦 Склад готовой продукции</div>
+    <div id="inventory-container" class="inventory-list">
+        <div class="badge">Загрузка склада...</div>
+    </div>
+
+    <script src="dashboard-logic.js"></script>
+    <script src="dashboard-ui.js"></script>
+</body>
+</html>

@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Cloud Terminal — Кухня (Дом 1)</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/api.js?v=5.0"></script>
+    <script src="/helpers.js?v=5.0"></script>
+    
+    <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent !important;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            height: 100dvh;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            transition: background-color 0.2s ease;
+            overscroll-behavior: none;
+        }
+
+        [data-theme="light"] html, [data-theme="light"] body, body.theme-light {
+            background-color: #f8fafc;
+        }
+        [data-theme="light"] .top-nav, body.theme-light .top-nav {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(203, 213, 225, 0.8);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+        [data-theme="light"] .top-nav a, body.theme-light .top-nav a {
+            color: #334155;
+        }
+
+        /* Навигационная панель сверху */
+        .top-nav {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 6px;
+            background: rgba(15, 23, 42, 0.88);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(51, 65, 85, 0.8);
+            border-radius: 9999px;
+            padding: 5px 10px;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            max-width: calc(100vw - 16px);
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .top-nav::-webkit-scrollbar { display: none; }
+
+        .top-nav a {
+            color: #cbd5e1;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            padding: 5px 10px;
+            border-radius: 9999px;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+
+        .top-nav a:hover {
+            color: #ffffff;
+            background: rgba(56, 189, 248, 0.2);
+        }
+
+        .top-nav a.active {
+            background: #0284c7;
+            color: #ffffff;
+        }
+
+        /* Центрированная область для квадратного поля 7x7 белых плиток */
+        .room-viewport {
+            width: 100vw;
+            height: 100dvh;
+            padding: 58px 8px 10px 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        .room-board {
+            position: relative;
+            box-sizing: content-box;
+            background-image: url('/floor.svg?v=2');
+            background-repeat: repeat;
+            background-position: 0 0;
+            border: 2px solid rgba(148, 163, 184, 0.5);
+            border-radius: 6px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+            overflow: hidden;
+            flex-shrink: 0;
+            touch-action: none;
+        }
+
+        /* Сетка и подсветка целевых плиток во время перетаскивания */
+        .drag-grid-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 2;
+            opacity: 0;
+            transition: opacity 0.12s ease;
+        }
+        .drag-grid-overlay.visible {
+            opacity: 1;
+        }
+
+        .drag-target-box {
+            position: absolute;
+            pointer-events: none;
+            z-index: 3;
+            border-radius: 6px;
+            background: rgba(56, 189, 248, 0.26);
+            border: 2px dashed #38bdf8;
+            display: none;
+        }
+        .drag-target-box.visible {
+            display: block;
+        }
+        .drag-target-box.blocked {
+            background: rgba(239, 68, 68, 0.3);
+            border-color: #ef4444;
+        }
+
+        /* Элемент комнаты (привязан к плиткам) */
+        .room-item {
+            position: absolute;
+            display: block;
+            pointer-events: none;
+            touch-action: none;
+            -webkit-user-drag: none;
+            user-drag: none;
+            text-decoration: none;
+            z-index: 10;
+            -webkit-tap-highlight-color: transparent !important;
+            -webkit-touch-callout: none !important;
+            user-select: none !important;
+            -webkit-user-select: none !important;
+            outline: none !important;
+        }
+        .room-item[data-id="table"] {
+            z-index: 8;
+        }
+        .room-item[data-id="multicooker"] {
+            z-index: 12;
+        }
+        .room-item.is-holding,
+        .room-item.is-dragging {
+            z-index: 40;
+        }
+
+        .appliance-object {
+            display: block;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            touch-action: none;
+            filter: drop-shadow(0px 6px 10px rgba(0, 0, 0, 0.35));
+            transition: transform 0.14s ease, filter 0.14s ease;
+            transform-origin: center center;
+            -webkit-tap-highlight-color: transparent !important;
+            -webkit-touch-callout: none !important;
+            user-select: none !important;
+            -webkit-user-select: none !important;
+        }
+
+        /* Кликабельность, наведение и захват перетаскивания ТОЛЬКО по видимым частям SVG-фигуры */
+        .appliance-object path,
+        .appliance-object rect,
+        .appliance-object circle,
+        .appliance-object ellipse,
+        .appliance-object polygon,
+        .appliance-object polyline,
+        .appliance-object line,
+        .appliance-object text {
+            pointer-events: visiblePainted;
+            touch-action: none;
+            cursor: grab;
+            -webkit-tap-highlight-color: transparent !important;
+            -webkit-touch-callout: none !important;
+            user-select: none !important;
+            -webkit-user-select: none !important;
+        }
+
+        .appliance-object .non-hit-shadow {
+            pointer-events: none !important;
+        }
+
+        @media (hover: hover) {
+            .room-item:hover .appliance-object {
+                transform: scale(1.035);
+                filter:
+                    drop-shadow(0 0 2px rgba(56, 189, 248, 0.85))
+                    drop-shadow(0 8px 14px rgba(0, 0, 0, 0.42));
+            }
+        }
+
+        /* Подсветка всей фигуры по внешнему контуру при удержании/перетаскивании */
+        .room-item.is-holding .appliance-object,
+        .room-item.is-dragging .appliance-object {
+            cursor: grabbing;
+            transform: scale(1.045);
+            filter:
+                drop-shadow(0 0 2px #38bdf8)
+                drop-shadow(0 0 7px rgba(56, 189, 248, 0.9))
+                drop-shadow(0 10px 18px rgba(0, 0, 0, 0.45));
+            transition: none;
+        }
+
+        .room-item.is-dragging .appliance-object * {
+            cursor: grabbing;
+        }
+
+        .room-item.is-blocked .appliance-object {
+            filter:
+                drop-shadow(0 0 2px #ef4444)
+                drop-shadow(0 0 8px rgba(239, 68, 68, 0.95))
+                drop-shadow(0 10px 18px rgba(0, 0, 0, 0.45));
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="top-nav">
+        <a href="/terminal.html" onclick="recordNav('/terminal.html', 'go to terminal', 'Переход в консоль')">💻 Консоль</a>
+        <a href="/dashboard.html" onclick="recordNav('/dashboard.html', 'go to dashboard', 'Переход в дашборд')">🎛️ Дашборд</a>
+        <a href="/missions.html" onclick="recordNav('/missions.html', 'go to missions', 'Переход в поручения')">📋 Задания</a>
+        <a href="/house/kitchen.html" class="active">🏠1 Кухня</a>
+        <a href="/house/hall.html" onclick="recordNav('/house/hall.html', 'go to hall', 'Переход в зал')">🏠1 Зал</a>
+        <a href="/house2/kitchen.html" onclick="recordNav('/house2/kitchen.html', 'go to kitchen 2', 'Переход на кухню Дома 2')">🏡2 Кухня</a>
+        <a href="/house2/hall.html" onclick="recordNav('/house2/hall.html', 'go to hall 2', 'Переход в зал Дома 2')">🏡2 Зал</a>
+    </nav>
+
+    <div class="room-viewport" id="room-viewport">
+        <div class="room-board" id="room-board">
+            <div class="drag-grid-overlay" id="drag-grid-overlay"></div>
+            <div class="drag-target-box" id="drag-target-box"></div>
+
+            <!-- Стиральная машина: 2×2 (4 плитки) -->
+            <a href="/dashboard.html?queue=3" draggable="false" class="room-item" data-id="washer" data-w="2" data-h="2" data-col="0" data-row="0" title="Стиральная машина (2×2 — 4 плитки)" onclick="return onApplianceClick(event, '/dashboard.html?queue=3', 'select Стиральная машина 3', 'Выбрана постройка Стиральная машина (ID: 3)')">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="48 48 416 448" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Стиральная машина" class="appliance-object">
+                    <rect x="64" y="64" width="384" height="416" rx="24" fill="#F8F9FA" stroke="#D1D5DB" stroke-width="6"/>
+                    <rect x="64" y="64" width="384" height="72" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="4"/>
+                    <rect x="96" y="80" width="80" height="40" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="3"/>
+                    <line x1="106" y1="100" x2="126" y2="100" stroke="#CBD5E1" stroke-width="4" stroke-linecap="round"/>
+                    <circle cx="256" cy="100" r="18" fill="#FFFFFF" stroke="#4B5563" stroke-width="4"/>
+                    <circle cx="256" cy="100" r="12" fill="#374151"/>
+                    <line x1="256" y1="100" x2="256" y2="88" stroke="#38BDF8" stroke-width="3" stroke-linecap="round"/>
+                    <rect x="336" y="84" width="80" height="32" rx="6" fill="#1E293B"/>
+                    <text x="356" y="105" font-family="monospace" font-size="14" fill="#38BDF8" font-weight="bold">00:40</text>
+                    <circle cx="256" cy="304" r="128" fill="#E5E7EB" stroke="#9CA3AF" stroke-width="6"/>
+                    <circle cx="256" cy="304" r="112" fill="#374151" stroke="#4B5563" stroke-width="4"/>
+                    <circle cx="256" cy="304" r="96" fill="#1E293B"/>
+                    <path d="M 167 340 Q 211 355 256 345 T 345 340 A 96 96 0 0 1 167 340 Z" fill="#0284C7" opacity="0.65"/>
+                    <circle cx="220" cy="365" r="6" fill="#BAE6FD" opacity="0.8"/>
+                    <circle cx="290" cy="360" r="8" fill="#BAE6FD" opacity="0.8"/>
+                    <circle cx="256" cy="375" r="5" fill="#BAE6FD" opacity="0.8"/>
+                    <path d="M 184 232 A 96 96 0 0 1 328 232" fill="none" stroke="#FFFFFF" stroke-width="8" opacity="0.3" stroke-linecap="round"/>
+                </svg>
+            </a>
+
+            <!-- Печь: 2×2 (4 плитки) -->
+            <a href="/dashboard.html?queue=1" draggable="false" class="room-item" data-id="stove" data-w="2" data-h="2" data-col="5" data-row="0" title="Печь (2×2 — 4 плитки)" onclick="return onApplianceClick(event, '/dashboard.html?queue=1', 'select Печь 1', 'Выбрана постройка Печь (ID: 1)')">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="48 48 416 448" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Печь" class="appliance-object">
+                    <rect x="64" y="64" width="384" height="416" rx="24" fill="#F8F9FA" stroke="#D1D5DB" stroke-width="6"/>
+                    <rect x="64" y="64" width="384" height="64" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="4"/>
+                    <circle cx="128" cy="96" r="12" fill="#4B5563"/>
+                    <circle cx="208" cy="96" r="12" fill="#4B5563"/>
+                    <circle cx="304" cy="96" r="12" fill="#4B5563"/>
+                    <circle cx="384" cy="96" r="12" fill="#4B5563"/>
+                    <path d="M 96 160 H 416 M 96 208 H 416 M 160 160 V 208 M 352 160 V 208" fill="none" stroke="#374151" stroke-width="6" stroke-linecap="round"/>
+                    <circle cx="160" cy="184" r="16" fill="#1F2937"/>
+                    <circle cx="160" cy="184" r="8" fill="#9CA3AF"/>
+                    <circle cx="352" cy="184" r="16" fill="#1F2937"/>
+                    <circle cx="352" cy="184" r="8" fill="#9CA3AF"/>
+                    <rect x="96" y="256" width="320" height="192" rx="12" fill="#1F2937" stroke="#D1D5DB" stroke-width="4"/>
+                    <rect x="128" y="288" width="256" height="128" rx="8" fill="#111827" stroke="#374151" stroke-width="4"/>
+                    <rect x="160" y="272" width="192" height="8" rx="4" fill="#9CA3AF"/>
+                </svg>
+            </a>
+
+            <!-- Зеленый стол: 2×2 (4 плитки) -->
+            <div class="room-item" data-id="table" data-w="2" data-h="2" data-col="0" data-row="5" title="Стол (2×2 — 4 плитки)">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="20 165 472 340" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Стол" class="appliance-object">
+                    <ellipse cx="256" cy="450" rx="200" ry="30" fill="#000000" opacity="0.25" class="non-hit-shadow"/>
+                    <rect x="110" y="220" width="28" height="200" rx="6" fill="#15803D"/>
+                    <rect x="374" y="220" width="28" height="200" rx="6" fill="#15803D"/>
+                    <rect x="70" y="240" width="36" height="200" rx="8" fill="#16A34A" stroke="#15803D" stroke-width="4"/>
+                    <rect x="406" y="240" width="36" height="200" rx="8" fill="#16A34A" stroke="#15803D" stroke-width="4"/>
+                    <rect x="80" y="230" width="352" height="40" fill="#16A34A"/>
+                    <rect x="40" y="190" width="432" height="45" rx="12" fill="#22C55E" stroke="#15803D" stroke-width="6"/>
+                    <rect x="52" y="200" width="408" height="8" rx="4" fill="#4ADE80" opacity="0.6"/>
+                </svg>
+            </div>
+
+            <!-- Мультиварка: 1×1 (1 плитка) -->
+            <a href="/dashboard.html?queue=8" draggable="false" class="room-item" data-id="multicooker" data-w="1" data-h="1" data-col="3" data-row="5" title="Мультиварка (1×1 — 1 плитка)" onclick="return onApplianceClick(event, '/dashboard.html?queue=8', 'select Мультиварка 8', 'Выбрана постройка Мультиварка (ID: 8)')">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="72 64 368 388" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Мультиварка" class="appliance-object">
+                    <rect x="140" y="420" width="40" height="16" rx="6" fill="#111827"/>
+                    <rect x="332" y="420" width="40" height="16" rx="6" fill="#111827"/>
+                    <rect x="96" y="160" width="320" height="260" rx="60" fill="#1F2937" stroke="#111827" stroke-width="6"/>
+                    <path d="M 100 230 C 100 200, 412 200, 412 230 L 412 370 C 412 400, 100 400, 100 370 Z" fill="#9CA3AF" stroke="#6B7280" stroke-width="4"/>
+                    <rect x="176" y="240" width="160" height="110" rx="16" fill="#111827" stroke="#374151" stroke-width="4"/>
+                    <rect x="206" y="255" width="100" height="36" rx="6" fill="#065F46"/>
+                    <text x="220" y="280" font-family="monospace" font-size="20" fill="#34D399" font-weight="bold">00:45</text>
+                    <circle cx="216" cy="320" r="12" fill="#374151" stroke="#6B7280" stroke-width="2"/>
+                    <circle cx="256" cy="320" r="14" fill="#EF4444" stroke="#991B1B" stroke-width="2"/>
+                    <circle cx="296" cy="320" r="12" fill="#374151" stroke="#6B7280" stroke-width="2"/>
+                    <path d="M 110 170 C 110 90, 402 90, 402 170 Z" fill="#111827"/>
+                    <path d="M 126 165 C 126 105, 386 105, 386 165 Z" fill="#4B5563"/>
+                    <rect x="206" y="80" width="100" height="24" rx="10" fill="#9CA3AF" stroke="#4B5563" stroke-width="4"/>
+                    <ellipse cx="340" cy="125" rx="18" ry="10" fill="#374151" stroke="#111827" stroke-width="3"/>
+                    <circle cx="340" cy="125" r="5" fill="#111827"/>
+                </svg>
+            </a>
+        </div>
+    </div>
+
+<script>
+    const GRID_SIZE = 7;
+    const ROOM_ID = 'kitchen';
+    const LAYOUT_STORAGE_KEY = 'room_layout_kitchen_v3';
+    const LAYOUT_TS_KEY = 'room_layout_kitchen_v3_ts';
+    const DEFAULT_POSITIONS = {
+        washer: { col: 0, row: 0 },
+        stove: { col: 5, row: 0 },
+        table: { col: 0, row: 5 },
+        multicooker: { col: 3, row: 5 }
+    };
+
+    let tilePx = 24;
+    let justDraggedUntil = 0;
+    let itemsState = [];
+
+    function logActionDirect(cmd, desc) {
+        if (typeof window.recordCommandAction === 'function') {
+            window.recordCommandAction(cmd, desc);
+            return;
+        }
+        try {
+            const list = JSON.parse(localStorage.getItem('terminal_actions_history') || '[]');
+            const cmdName = String(cmd).trim().split(/\s+/)[0] || '';
+            list.unshift({
+                id: 'act_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                raw_text: String(cmd).trim(),
+                command: cmdName,
+                parameters: { raw_args: String(cmd).trim().slice(cmdName.length).trim() },
+                output: desc || '',
+                status: 'success',
+                created_at: new Date().toISOString(),
+                created_by: 'local'
+            });
+            if (list.length > 200) list.length = 200;
+            localStorage.setItem('terminal_actions_history', JSON.stringify(list));
+        } catch (e) {
+            console.warn('logActionDirect error:', e);
+        }
+    }
+
+    function recordNav(url, cmd, desc) {
+        logActionDirect(cmd, desc);
+    }
+
+    function onApplianceClick(e, url, cmd, desc) {
+        if (Date.now() < justDraggedUntil) {
+            if (e && e.preventDefault) e.preventDefault();
+            return false;
+        }
+        if (e && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+            logActionDirect(cmd, desc);
+            return true;
+        }
+        if (e && e.preventDefault) e.preventDefault();
+        logActionDirect(cmd, desc);
+        setTimeout(() => {
+            window.location.href = url;
+        }, 120);
+        return false;
+    }
+
+    function rectanglesOverlap(a, b) {
+        return a.col < b.col + b.w &&
+               a.col + a.w > b.col &&
+               a.row < b.row + b.h &&
+               a.row + a.h > b.row;
+    }
+
+    function canPlaceItem(id, col, row, w, h, list = itemsState) {
+        if (col < 0 || row < 0 || col + w > GRID_SIZE || row + h > GRID_SIZE) return false;
+        const candidate = { col, row, w, h };
+        for (const other of list) {
+            if (other.id === id) continue;
+            if (rectanglesOverlap(candidate, other)) return false;
+        }
+        return true;
+    }
+
+    function applyLayoutMap(savedMap) {
+        if (!savedMap || typeof savedMap !== 'object') return false;
+        const accepted = [];
+        let changed = false;
+
+        for (const item of itemsState) {
+            const candidate = savedMap[item.id];
+            if (candidate && Number.isInteger(candidate.col) && Number.isInteger(candidate.row)) {
+                if (canPlaceItem(item.id, candidate.col, candidate.row, item.w, item.h, accepted)) {
+                    if (item.col !== candidate.col || item.row !== candidate.row) changed = true;
+                    accepted.push({ id: item.id, col: candidate.col, row: candidate.row, w: item.w, h: item.h });
+                    continue;
+                }
+            }
+            accepted.push({ id: item.id, col: item.col, row: item.row, w: item.w, h: item.h });
+        }
+
+        const finalPositions = [];
+        for (const entry of accepted) {
+            if (canPlaceItem(entry.id, entry.col, entry.row, entry.w, entry.h, finalPositions)) {
+                finalPositions.push(entry);
+            } else {
+                const orig = itemsState.find(i => i.id === entry.id);
+                if (orig && canPlaceItem(orig.id, orig.col, orig.row, orig.w, orig.h, finalPositions)) {
+                    finalPositions.push({ id: orig.id, col: orig.col, row: orig.row, w: orig.w, h: orig.h });
+                }
+            }
+        }
+
+        if (finalPositions.length === itemsState.length) {
+            finalPositions.forEach(pos => {
+                const target = itemsState.find(i => i.id === pos.id);
+                if (target) {
+                    target.col = pos.col;
+                    target.row = pos.row;
+                }
+            });
+        }
+        return changed;
+    }
+
+    function getCurrentLayoutPayload() {
+        const payload = {};
+        itemsState.forEach(item => {
+            payload[item.id] = { col: item.col, row: item.row };
+        });
+        return payload;
+    }
+
+    function loadLayoutState() {
+        const board = document.getElementById('room-board');
+        const domItems = Array.from(board.querySelectorAll('.room-item'));
+        let saved = {};
+        try {
+            saved = JSON.parse(localStorage.getItem(LAYOUT_STORAGE_KEY) || '{}') || {};
+        } catch (e) {
+            saved = {};
+        }
+
+        itemsState = domItems.map(el => {
+            const id = el.dataset.id;
+            const w = Number(el.dataset.w) || 2;
+            const h = Number(el.dataset.h) || 2;
+            const def = DEFAULT_POSITIONS[id] || { col: Number(el.dataset.col) || 0, row: Number(el.dataset.row) || 0 };
+            return { id, el, w, h, col: def.col, row: def.row };
+        });
+
+        applyLayoutMap(saved);
+    }
+
+    function saveLayoutLocalOnly(customTs = null) {
+        try {
+            const payload = getCurrentLayoutPayload();
+            localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(payload));
+            localStorage.setItem(LAYOUT_TS_KEY, String(customTs !== null ? customTs : Date.now()));
+            return payload;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function saveLayoutState() {
+        const payload = saveLayoutLocalOnly(Date.now());
+        if (payload && window.HouseLayoutSync && typeof window.HouseLayoutSync.saveAndSyncHouseLayout === 'function') {
+            window.HouseLayoutSync.saveAndSyncHouseLayout(ROOM_ID, payload);
+        }
+    }
+
+    async function syncRoomWithDatabase() {
+        if (!window.HouseLayoutSync) return;
+        try {
+            if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+                await window.HouseLayoutSync.flushPendingHouseLayouts();
+                const pending = window.HouseLayoutSync.getPendingHouseLayouts();
+                if (pending && pending[ROOM_ID]) return;
+
+                const remote = await window.HouseLayoutSync.fetchRoomLayoutFromDb(ROOM_ID);
+                if (remote && remote.layout) {
+                    const localTs = Number(localStorage.getItem(LAYOUT_TS_KEY) || 0);
+                    const remoteTs = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
+                    if (!localTs || !remoteTs || remoteTs >= localTs) {
+                        const changed = applyLayoutMap(remote.layout);
+                        saveLayoutLocalOnly(remoteTs || Date.now());
+                        if (changed) {
+                            itemsState.forEach(item => applyItemGeometry(item));
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('syncRoomWithDatabase error:', e);
+        }
+    }
+
+    function applyItemGeometry(item, pxLeft, pxTop) {
+        item.el.style.left = (pxLeft !== undefined ? pxLeft : item.col * tilePx) + 'px';
+        item.el.style.top = (pxTop !== undefined ? pxTop : item.row * tilePx) + 'px';
+        item.el.style.width = (item.w * tilePx) + 'px';
+        item.el.style.height = (item.h * tilePx) + 'px';
+    }
+
+    function layoutBoard() {
+        const viewport = document.getElementById('room-viewport');
+        const board = document.getElementById('room-board');
+        const gridOverlay = document.getElementById('drag-grid-overlay');
+        if (!viewport || !board) return;
+
+        const style = getComputedStyle(viewport);
+        const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+        const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+        const availW = Math.max(140, viewport.clientWidth - padX);
+        const availH = Math.max(140, viewport.clientHeight - padY);
+
+        tilePx = Math.max(16, Math.floor(Math.min(availW, availH) / GRID_SIZE));
+        const boardPx = tilePx * GRID_SIZE;
+
+        board.style.width = boardPx + 'px';
+        board.style.height = boardPx + 'px';
+        board.style.backgroundSize = `${tilePx}px ${tilePx}px`;
+
+        if (gridOverlay) {
+            gridOverlay.style.backgroundImage =
+                'linear-gradient(to right, rgba(56, 189, 248, 0.25) 1px, transparent 1px), ' +
+                'linear-gradient(to bottom, rgba(56, 189, 248, 0.25) 1px, transparent 1px)';
+            gridOverlay.style.backgroundSize = `${tilePx}px ${tilePx}px`;
+        }
+
+        itemsState.forEach(item => applyItemGeometry(item));
+    }
+
+    function initTileDragging() {
+        const board = document.getElementById('room-board');
+        const gridOverlay = document.getElementById('drag-grid-overlay');
+        const targetBox = document.getElementById('drag-target-box');
+
+        board.addEventListener('dragstart', e => e.preventDefault());
+        board.addEventListener('contextmenu', e => {
+            if (e.target.closest('.room-item')) e.preventDefault();
+        });
+
+        let activeSession = null;
+
+        function removeAllListeners() {
+            window.removeEventListener('pointermove', onPointerMove);
+            window.removeEventListener('pointerup', onPointerUp);
+            window.removeEventListener('pointercancel', onPointerCancel);
+            window.removeEventListener('touchmove', onTouchMove, { passive: false });
+            window.removeEventListener('touchend', onTouchEnd);
+            window.removeEventListener('touchcancel', onTouchCancel);
+        }
+
+        function triggerLinkTap(item) {
+            const href = item.el.getAttribute('href');
+            if (!href) return;
+            justDraggedUntil = 0;
+            if (typeof item.el.onclick === 'function') {
+                item.el.onclick({ preventDefault: () => {} });
+            } else {
+                window.location.href = href;
+            }
+        }
+
+        function finishSession(commit, allowTouchTap = false) {
+            if (!activeSession) return;
+            const s = activeSession;
+            activeSession = null;
+
+            clearTimeout(s.holdTimer);
+            removeAllListeners();
+
+            s.item.el.classList.remove('is-holding', 'is-dragging', 'is-blocked');
+            gridOverlay.classList.remove('visible');
+            targetBox.classList.remove('visible', 'blocked');
+
+            if (s.isDragging) {
+                justDraggedUntil = Date.now() + 350;
+                if (commit && s.canDrop) {
+                    s.item.col = s.targetCol;
+                    s.item.row = s.targetRow;
+                    saveLayoutState();
+                }
+                applyItemGeometry(s.item);
+            } else {
+                applyItemGeometry(s.item);
+                if (allowTouchTap && s.mode === 'touch' && !s.movedPastTap) {
+                    triggerLinkTap(s.item);
+                }
+            }
+        }
+
+        function updateDragVisuals(clientX, clientY) {
+            const s = activeSession;
+            if (!s) return;
+
+            const dx = clientX - s.startX;
+            const dy = clientY - s.startY;
+            const maxLeft = (GRID_SIZE - s.item.w) * tilePx;
+            const maxTop = (GRID_SIZE - s.item.h) * tilePx;
+            const rawLeft = Math.max(0, Math.min(maxLeft, s.origCol * tilePx + dx));
+            const rawTop = Math.max(0, Math.min(maxTop, s.origRow * tilePx + dy));
+
+            applyItemGeometry(s.item, rawLeft, rawTop);
+
+            s.targetCol = Math.max(0, Math.min(GRID_SIZE - s.item.w, Math.round(rawLeft / tilePx)));
+            s.targetRow = Math.max(0, Math.min(GRID_SIZE - s.item.h, Math.round(rawTop / tilePx)));
+            s.canDrop = canPlaceItem(s.item.id, s.targetCol, s.targetRow, s.item.w, s.item.h);
+
+            targetBox.style.left = (s.targetCol * tilePx) + 'px';
+            targetBox.style.top = (s.targetRow * tilePx) + 'px';
+            targetBox.style.width = (s.item.w * tilePx) + 'px';
+            targetBox.style.height = (s.item.h * tilePx) + 'px';
+            targetBox.classList.add('visible');
+            targetBox.classList.toggle('blocked', !s.canDrop);
+            s.item.el.classList.toggle('is-blocked', !s.canDrop);
+        }
+
+        function enterDragMode(clientX, clientY) {
+            if (!activeSession || activeSession.isDragging) return;
+            activeSession.isDragging = true;
+            activeSession.item.el.classList.add('is-dragging');
+            gridOverlay.classList.add('visible');
+            updateDragVisuals(clientX, clientY);
+        }
+
+        function handleMove(clientX, clientY) {
+            if (!activeSession) return;
+            activeSession.lastX = clientX;
+            activeSession.lastY = clientY;
+            const dx = clientX - activeSession.startX;
+            const dy = clientY - activeSession.startY;
+            if (Math.hypot(dx, dy) >= 7) {
+                activeSession.movedPastTap = true;
+            }
+            if (!activeSession.isDragging && Math.hypot(dx, dy) >= 6) {
+                clearTimeout(activeSession.holdTimer);
+                enterDragMode(clientX, clientY);
+            } else if (activeSession.isDragging) {
+                updateDragVisuals(clientX, clientY);
+            }
+        }
+
+        // --- Touch-сессия для смартфонов (гарантированная блокировка нативного скролла и перетаскивания ссылок) ---
+        function findTrackedTouch(touchList, id) {
+            if (!touchList) return null;
+            for (let i = 0; i < touchList.length; i++) {
+                if (touchList[i].identifier === id) return touchList[i];
+            }
+            return null;
+        }
+
+        function onTouchMove(e) {
+            if (!activeSession || activeSession.mode !== 'touch') return;
+            if (e.cancelable) e.preventDefault();
+            const t = findTrackedTouch(e.touches, activeSession.touchId) || findTrackedTouch(e.changedTouches, activeSession.touchId);
+            if (t) handleMove(t.clientX, t.clientY);
+        }
+
+        function onTouchEnd(e) {
+            if (!activeSession || activeSession.mode !== 'touch') return;
+            const t = findTrackedTouch(e.changedTouches, activeSession.touchId);
+            if (!t) return;
+            if (e.cancelable) e.preventDefault();
+            finishSession(true, true);
+        }
+
+        function onTouchCancel(e) {
+            if (!activeSession || activeSession.mode !== 'touch') return;
+            const t = findTrackedTouch(e.changedTouches, activeSession.touchId);
+            if (!t) return;
+            finishSession(Boolean(activeSession.isDragging && activeSession.canDrop), false);
+        }
+
+        // --- Pointer-сессия для мыши / пера ---
+        function onPointerMove(e) {
+            if (!activeSession || activeSession.mode !== 'pointer' || e.pointerId !== activeSession.pointerId) return;
+            handleMove(e.clientX, e.clientY);
+        }
+
+        function onPointerUp(e) {
+            if (!activeSession || activeSession.mode !== 'pointer' || e.pointerId !== activeSession.pointerId) return;
+            finishSession(true, false);
+        }
+
+        function onPointerCancel(e) {
+            if (!activeSession || activeSession.mode !== 'pointer' || e.pointerId !== activeSession.pointerId) return;
+            finishSession(Boolean(activeSession.isDragging && activeSession.canDrop), false);
+        }
+
+        itemsState.forEach(item => {
+            item.el.addEventListener('touchstart', (e) => {
+                if (!e.touches || e.touches.length !== 1) return;
+                if (!e.target.closest('.appliance-object')) return;
+                if (e.cancelable) e.preventDefault();
+
+                if (activeSession) finishSession(false, false);
+
+                const t = e.touches[0];
+                item.el.classList.add('is-holding');
+                activeSession = {
+                    mode: 'touch',
+                    item,
+                    touchId: t.identifier,
+                    startX: t.clientX,
+                    startY: t.clientY,
+                    lastX: t.clientX,
+                    lastY: t.clientY,
+                    origCol: item.col,
+                    origRow: item.row,
+                    targetCol: item.col,
+                    targetRow: item.row,
+                    canDrop: true,
+                    isDragging: false,
+                    movedPastTap: false,
+                    holdTimer: setTimeout(() => {
+                        if (activeSession && activeSession.mode === 'touch') {
+                            enterDragMode(activeSession.lastX, activeSession.lastY);
+                        }
+                    }, 150)
+                };
+
+                window.addEventListener('touchmove', onTouchMove, { passive: false });
+                window.addEventListener('touchend', onTouchEnd);
+                window.addEventListener('touchcancel', onTouchCancel);
+            }, { passive: false });
+
+            item.el.addEventListener('pointerdown', (e) => {
+                if (e.pointerType === 'touch') return;
+                if (e.button !== undefined && e.button !== 0) return;
+                if (!e.target.closest('.appliance-object')) return;
+
+                if (activeSession) finishSession(false, false);
+
+                item.el.classList.add('is-holding');
+                activeSession = {
+                    mode: 'pointer',
+                    item,
+                    pointerId: e.pointerId,
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    lastX: e.clientX,
+                    lastY: e.clientY,
+                    origCol: item.col,
+                    origRow: item.row,
+                    targetCol: item.col,
+                    targetRow: item.row,
+                    canDrop: true,
+                    isDragging: false,
+                    movedPastTap: false,
+                    holdTimer: setTimeout(() => {
+                        if (activeSession && activeSession.mode === 'pointer') {
+                            enterDragMode(activeSession.lastX, activeSession.lastY);
+                        }
+                    }, 150)
+                };
+
+                window.addEventListener('pointermove', onPointerMove);
+                window.addEventListener('pointerup', onPointerUp);
+                window.addEventListener('pointercancel', onPointerCancel);
+            });
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        logActionDirect('go to kitchen', 'Переход в помещение: Кухня (Дом 1)');
+        loadLayoutState();
+        layoutBoard();
+        initTileDragging();
+        syncRoomWithDatabase();
+    });
+
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then((reg) => {
+                    if (reg && typeof reg.update === 'function') reg.update().catch(() => {});
+                })
+                .catch(() => {});
+        });
+    }
+
+    window.addEventListener('online', () => {
+        syncRoomWithDatabase();
+    });
+    window.addEventListener('focus', () => {
+        if (navigator.onLine !== false) syncRoomWithDatabase();
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && navigator.onLine !== false) {
+            syncRoomWithDatabase();
+        }
+    });
+    window.addEventListener('resize', layoutBoard);
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', layoutBoard);
+    }
+</script>
+
+</body>
+</html>

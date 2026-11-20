@@ -1,0 +1,1879 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Поручения и Задания — Cloud Terminal</title>
+    
+    <link rel="stylesheet" href="style.css?v=4.2">
+    <link rel="stylesheet" href="dashboard.css?v=4.2">
+    
+    <style>
+        :root {
+            --bg-page: #0b1120;
+            --bg-card: #0f172a;
+            --bg-card-hover: #1e293b;
+            --border-color: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-blue: #38bdf8;
+            --accent-green: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-red: #ef4444;
+            --input-bg: #0b1120;
+            --btn-bg: #1e293b;
+            --btn-hover: #334155;
+            --table-header-bg: #0b1120;
+            --table-hover: rgba(30, 41, 59, 0.5);
+            --code-chip-bg: #020617;
+            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+        }
+
+        [data-theme="light"], .theme-light {
+            --bg-page: #f8fafc;
+            --bg-card: #ffffff;
+            --bg-card-hover: #f1f5f9;
+            --border-color: #cbd5e1;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --accent-blue: #0284c7;
+            --accent-green: #059669;
+            --accent-amber: #d97706;
+            --accent-red: #dc2626;
+            --input-bg: #ffffff;
+            --btn-bg: #ffffff;
+            --btn-hover: #f1f5f9;
+            --table-header-bg: #f8fafc;
+            --table-hover: rgba(2, 132, 199, 0.05);
+            --code-chip-bg: #f1f5f9;
+            --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        }
+
+        body {
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 16px;
+            padding-bottom: 80px;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            transition: background-color 0.2s ease, color 0.2s ease;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+        }
+
+        .header-nav {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 20px;
+        }
+
+        .header-title-box {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-title-box h1 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin: 0;
+            letter-spacing: -0.02em;
+        }
+
+        .header-badge {
+            font-size: 11px;
+            padding: 3px 8px;
+            background: rgba(56, 189, 248, 0.15);
+            color: var(--accent-blue);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .nav-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .nav-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 12px;
+            background: var(--btn-bg);
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .nav-btn:hover {
+            background: var(--btn-hover);
+            color: var(--text-main);
+            border-color: var(--accent-blue);
+        }
+
+        .nav-btn-primary {
+            background: #0284c7;
+            border-color: #0369a1;
+            color: #ffffff;
+        }
+
+        .nav-btn-primary:hover {
+            background: #0369a1;
+            color: #ffffff;
+        }
+
+        /* Быстрое добавление */
+        .add-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 24px;
+            box-shadow: var(--card-shadow);
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        .add-form {
+            display: flex;
+            gap: 10px;
+        }
+
+        .add-input {
+            flex: 1;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-size: 15px;
+            color: var(--text-main);
+            outline: none;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .add-input:focus {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+        }
+
+        .add-buttons-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-submit-add {
+            background: var(--accent-green);
+            color: #ffffff;
+            border: 1px solid transparent;
+            padding: 10px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            white-space: nowrap;
+            transition: all 0.15s ease;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn-submit-add:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+        }
+
+        .btn-add-start {
+            background: #0284c7;
+            border-color: #0369a1;
+        }
+
+        .btn-add-start:hover {
+            background: #0369a1;
+        }
+
+        .btn-add-end {
+            background: #059669;
+            border-color: #047857;
+        }
+
+        .btn-add-end:hover {
+            background: #047857;
+        }
+
+        .cli-hint {
+            margin-top: 10px;
+            font-size: 12px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .code-chip {
+            background: var(--code-chip-bg);
+            padding: 2px 7px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            font-family: monospace;
+            color: var(--accent-blue);
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        /* Секция активных дел */
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0;
+        }
+
+        .section-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        /* Список карточек поручений (Drag and Drop) */
+        .missions-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 32px;
+            min-height: 50px;
+        }
+
+        .mission-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background-color 0.16s ease;
+            user-select: none;
+            position: relative;
+            cursor: grab;
+        }
+
+        .mission-item:hover {
+            border-color: rgba(56, 189, 248, 0.45);
+        }
+
+        .mission-item.drag-floating {
+            position: fixed;
+            z-index: 9999;
+            margin: 0;
+            pointer-events: none;
+            cursor: grabbing;
+            background: var(--bg-card-hover);
+            border-color: var(--accent-blue);
+            box-shadow: 0 16px 32px rgba(0, 0, 0, 0.35), 0 0 0 2px rgba(56, 189, 248, 0.35);
+            transform: scale(1.015);
+            transition: box-shadow 0.15s ease, transform 0.15s ease;
+        }
+
+        .mission-item.drag-placeholder {
+            background: rgba(56, 189, 248, 0.08);
+            border: 2px dashed var(--accent-blue);
+            box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.15);
+            pointer-events: none;
+            cursor: grabbing;
+        }
+
+        body.is-dragging-mission {
+            overscroll-behavior-y: contain;
+            touch-action: none;
+        }
+
+        body.is-dragging-mission,
+        body.is-dragging-mission * {
+            cursor: grabbing !important;
+            user-select: none !important;
+            -webkit-user-select: none !important;
+        }
+
+        .drag-handle {
+            cursor: grab;
+            color: var(--text-muted);
+            padding: 8px 10px;
+            min-width: 34px;
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 19px;
+            line-height: 1;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            border-radius: 6px;
+            flex-shrink: 0;
+            transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+        }
+
+        .mission-item:hover .drag-handle,
+        .mission-item.drag-floating .drag-handle {
+            color: var(--accent-blue);
+            background: rgba(56, 189, 248, 0.12);
+        }
+
+        .drag-handle:active,
+        .drag-handle.is-touch-pressed {
+            cursor: grabbing;
+            color: var(--accent-blue);
+            background: rgba(56, 189, 248, 0.2);
+        }
+
+        .mission-pos {
+            font-family: monospace;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--accent-blue);
+            background: rgba(56, 189, 248, 0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            min-width: 24px;
+            text-align: center;
+        }
+
+        .mission-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .mission-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 4px;
+            word-break: break-word;
+        }
+
+        .mission-meta {
+            font-size: 12px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .mission-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Кнопка отметки выполнения */
+        .btn-complete {
+            background: #059669;
+            color: #ffffff;
+            border: 1px solid #047857;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+
+        .btn-complete:hover {
+            background: #047857;
+            color: #ffffff;
+            border-color: #065f46;
+        }
+
+        /* Кнопки перемещения для сенсорных экранов */
+        .mobile-order-btn {
+            background: var(--btn-bg);
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s ease;
+        }
+
+        .mobile-order-btn:hover {
+            color: var(--text-main);
+            background: var(--btn-hover);
+            border-color: var(--accent-blue);
+        }
+
+        .empty-state {
+            background: var(--bg-card);
+            border: 1px dashed var(--border-color);
+            border-radius: 8px;
+            padding: 32px 16px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* Таблица всех записей (Архив и База Данных) */
+        .table-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 16px;
+            margin-top: 16px;
+        }
+
+        .table-controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .filter-tabs {
+            display: flex;
+            gap: 6px;
+        }
+
+        .filter-tab {
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            padding: 5px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .filter-tab.active {
+            background: var(--btn-bg);
+            color: var(--accent-blue);
+            border-color: var(--accent-blue);
+        }
+
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+
+        table.missions-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            text-align: left;
+        }
+
+        table.missions-table th {
+            background: var(--table-header-bg);
+            color: var(--text-muted);
+            font-weight: 600;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border-color);
+            white-space: nowrap;
+        }
+
+        table.missions-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-main);
+            vertical-align: middle;
+        }
+
+        table.missions-table tr:hover {
+            background: var(--table-hover);
+        }
+
+        .badge-pending {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 600;
+            color: #fbbf24;
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+            padding: 2px 7px;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+
+        .badge-completed {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 600;
+            color: #34d399;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            padding: 2px 7px;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+
+        .time-completed-val {
+            font-family: monospace;
+            font-size: 12px;
+            color: #34d399;
+            font-weight: 600;
+            background: rgba(6, 95, 70, 0.25);
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+
+        .time-pending-val {
+            font-size: 12px;
+            color: #64748b;
+            font-style: italic;
+        }
+
+        .btn-table-action {
+            background: var(--btn-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .btn-table-action:hover {
+            background: var(--btn-hover);
+            color: var(--text-main);
+            border-color: var(--accent-blue);
+        }
+
+        .btn-table-delete:hover {
+            border-color: var(--accent-red);
+            color: var(--accent-red);
+        }
+
+        /* Toast уведомление */
+        #toast-banner {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 12px 18px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.25);
+            display: none;
+            z-index: 9999;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Collapsible SQL */
+        .sql-box {
+            margin-top: 14px;
+            background: var(--code-chip-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 12px;
+            font-family: monospace;
+            font-size: 12px;
+            color: var(--text-main);
+            overflow-x: auto;
+            white-space: pre;
+            display: none;
+        }
+
+        /* Банеры статуса и ошибок Supabase */
+        .db-status-bar {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+            box-shadow: var(--card-shadow);
+        }
+        .db-status-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .db-status-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .db-status-sub {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .db-error-banner {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            border-radius: 8px;
+            padding: 14px 16px;
+            margin-bottom: 18px;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.15);
+        }
+        .err-badge {
+            background: rgba(239, 68, 68, 0.25);
+            color: #ef4444;
+            font-family: monospace;
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            font-weight: 700;
+        }
+        .error-msg-box {
+            background: var(--code-chip-bg);
+            border: 1px solid rgba(239, 68, 68, 0.25);
+            border-radius: 6px;
+            padding: 10px 12px;
+            color: #ef4444;
+            font-family: monospace;
+            font-size: 12px;
+            margin: 10px 0;
+            word-break: break-word;
+        }
+        .error-details-box {
+            background: var(--code-chip-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            font-family: monospace;
+        }
+        .error-actions-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .btn-err-action {
+            background: var(--btn-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .btn-err-action:hover {
+            background: var(--btn-hover);
+            border-color: var(--accent-blue);
+        }
+        .diag-result-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 18px;
+            font-family: monospace;
+            font-size: 12px;
+            color: var(--text-main);
+            display: none;
+            box-shadow: var(--card-shadow);
+        }
+
+        @media (max-width: 640px) {
+            body {
+                padding: 12px;
+                padding-bottom: 90px;
+            }
+            .add-form {
+                flex-direction: column;
+            }
+            .add-buttons-group {
+                width: 100%;
+                display: flex;
+                gap: 8px;
+            }
+            .btn-submit-add {
+                flex: 1;
+                justify-content: center;
+            }
+            .mission-item {
+                flex-wrap: wrap;
+                gap: 8px;
+                cursor: default;
+            }
+            .drag-handle {
+                min-width: 42px;
+                min-height: 44px;
+                padding: 10px 12px;
+                font-size: 20px;
+                background: rgba(56, 189, 248, 0.08);
+                border: 1px solid rgba(56, 189, 248, 0.22);
+                color: var(--accent-blue);
+            }
+            .mission-actions {
+                width: 100%;
+                justify-content: flex-end;
+                border-top: 1px solid var(--border-color);
+                padding-top: 8px;
+                margin-top: 4px;
+            }
+        }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/api.js?v=4.6"></script>
+    <script src="/helpers.js?v=4.6"></script>
+    <script src="/localization.js?v=4.2"></script>
+    <script src="/missions-store.js?v=4.6"></script>
+</head>
+<body>
+
+<div class="container">
+    <!-- Верхняя навигационная панель -->
+    <header class="header-nav">
+        <div class="header-title-box">
+            <span style="font-size: 24px;">📋</span>
+            <div>
+                <h1>Поручения и Задания</h1>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                    Очередь задач с Drag & Drop и фиксацией времени выполнения
+                </div>
+            </div>
+            <span id="sync-badge" class="header-badge">💾 LocalStorage</span>
+        </div>
+
+        <nav class="nav-links">
+            <button type="button" class="nav-btn" onclick="toggleThemeGlobal()">🎨 Тема</button>
+            <a href="/terminal.html" class="nav-btn nav-btn-primary">💻 В консоль</a>
+            <a href="/dashboard.html" class="nav-btn">🎛️ Дашборд</a>
+            <a href="/house/kitchen.html" class="nav-btn">🍳 Кухня</a>
+            <a href="/house/hall.html" class="nav-btn">🛋️ Зал</a>
+        </nav>
+    </header>
+
+    <!-- Информационная плашка статуса Supabase -->
+    <div id="db-status-bar" class="db-status-bar">
+        <div class="db-status-info">
+            <div id="db-status-icon" style="font-size: 16px;">🟢</div>
+            <div>
+                <div id="db-status-title" class="db-status-title">Supabase Live: Двусторонняя синхронизация</div>
+                <div id="db-status-sub" class="db-status-sub">
+                    Хост: <span style="font-family: monospace; color: var(--accent-blue);">qecyotztitajldibychu.supabase.co</span> • 
+                    💾 Локально: <strong id="db-stat-local" style="color: var(--text-main);">0</strong> • 
+                    ☁️ В Supabase: <strong id="db-stat-remote" style="color: var(--accent-blue);">—</strong> • 
+                    Время: <span id="db-stat-time" style="color: var(--text-muted);">—</span>
+                </div>
+            </div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button type="button" id="btn-ping-top" class="btn-table-action" onclick="runSupabasePing(this)">📡 Проверить Ping</button>
+            <button type="button" id="btn-sync-top" class="btn-table-action" onclick="forceSyncSupabase(this)">🔄 Синхронизировать</button>
+            <button type="button" class="btn-table-action" onclick="toggleRawDataModal()">📋 Инспектор JSON</button>
+        </div>
+    </div>
+
+    <!-- Интерактивный банер ошибок Supabase (выводится при любой ошибке БД, RLS или прав) -->
+    <div id="db-error-banner" class="db-error-banner" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <span style="font-size: 20px;">🚨</span>
+                <strong style="color: #f87171; font-size: 14px;">Ошибка базы данных Supabase</strong>
+                <span id="err-code-badge" class="err-badge">ERROR</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span id="err-time" style="font-size: 11px; color: #94a3b8; font-family: monospace;"></span>
+                <button type="button" onclick="dismissDbError()" style="background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 16px;">✕</button>
+            </div>
+        </div>
+
+        <div id="err-message" class="error-msg-box">Текст ошибки загружается...</div>
+
+        <div id="err-details-box" class="error-details-box" style="display: none;">
+            <div id="err-details" style="margin-bottom: 4px;"></div>
+            <div id="err-hint" style="color: #fbbf24;"></div>
+        </div>
+
+        <div class="error-actions-row">
+            <button type="button" class="btn-err-action" onclick="forceSyncSupabase()">🔄 Повторить синхронизацию</button>
+            <button type="button" class="btn-err-action" onclick="runSupabasePing()">🔍 Запустить Ping-тест</button>
+            <button type="button" class="btn-err-action" onclick="toggleSqlHelp()">📋 Скрипт RLS & Grant для Supabase SQL</button>
+        </div>
+    </div>
+
+    <!-- Результаты Ping-диагностики -->
+    <div id="diag-result-card" class="diag-result-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <strong style="color: #38bdf8;">📡 Диагностика подключения к Supabase</strong>
+            <button type="button" onclick="closeDiagCard()" style="background: transparent; border: none; color: #94a3b8; cursor: pointer;">✕</button>
+        </div>
+        <div id="diag-output-text">Выполняется диагностика...</div>
+    </div>
+    <section class="add-card">
+        <form class="add-form" onsubmit="handleFormAdd(event, 'end')">
+            <input type="text" id="new-mission-title" class="add-input" placeholder="Введите новое поручение, например: Развесить стирку..." autocomplete="off">
+            <div class="add-buttons-group">
+                <button type="button" class="btn-submit-add btn-add-start" onclick="submitMission('start')" title="Добавить на первое место (сдвинуть остальные вниз)">⬆️ В начало</button>
+                <button type="button" class="btn-submit-add btn-add-end" onclick="submitMission('end')" title="Добавить в конец списка активных поручений">⬇️ В конец</button>
+            </div>
+        </form>
+        <div class="cli-hint">
+            <span>💡 Добавить через консоль терминала:</span>
+            <span class="code-chip" onclick="copyOrRunCommand('Add mission Развесить стирку')">Add mission Развесить стирку</span>
+            <span class="code-chip" onclick="copyOrRunCommand('Add mission Купить хлеб')">Add mission Купить хлеб</span>
+            <span class="code-chip" onclick="copyOrRunCommand('show missions')">show missions</span>
+        </div>
+    </section>
+
+    <!-- СЕКЦИЯ 1: Активные поручения (Список дел без даты выполнения) -->
+    <section>
+        <div class="section-header">
+            <h2 class="section-title">
+                <span>📌 Список активных дел</span>
+                <span id="active-count-badge" class="header-badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.3);">0 активных</span>
+            </h2>
+            <div style="font-size: 12px; color: var(--text-muted);">
+                Перетаскивайте за ползунок ⠿ (на ПК — за карточку или ⠿)
+            </div>
+        </div>
+        <div class="section-desc">
+            Задания без отметки времени выполнения. При нажатии на «✓ Выполнить» фиксируется дата и время с вашей таймзоной, и поручение скрывается из этого списка.
+        </div>
+
+        <div id="missions-list" class="missions-list">
+            <div class="empty-state">Загрузка поручений...</div>
+        </div>
+    </section>
+
+    <!-- СЕКЦИЯ 2: Таблица базы данных (Все записи с фиксацией времени выполнения) -->
+    <section class="table-section">
+        <div class="table-controls">
+            <div>
+                <h3 style="margin: 0; font-size: 15px; font-weight: 700; color: var(--text-main);">
+                    🗄️ Таблица базы данных (Все поручения)
+                </h3>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                    Остаются в таблице с датой и точной таймзоной выполнения
+                </div>
+            </div>
+
+            <div class="filter-tabs">
+                <button type="button" class="filter-tab active" onclick="setTableFilter('all', this)" id="tab-all">Все (0)</button>
+                <button type="button" class="filter-tab" onclick="setTableFilter('pending', this)" id="tab-pending">В процессе (0)</button>
+                <button type="button" class="filter-tab" onclick="setTableFilter('completed', this)" id="tab-completed">Выполненные (0)</button>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="missions-table">
+                <thead>
+                    <tr>
+                        <th style="width: 45px;">№</th>
+                        <th>Поручение</th>
+                        <th style="width: 140px;">Создано</th>
+                        <th style="width: 250px;">Время выполнения (с таймзоной)</th>
+                        <th style="width: 100px;">Статус</th>
+                        <th style="width: 130px; text-align: right;">Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="missions-table-body">
+                    <tr><td colspan="6" style="text-align: center; color: #64748b; padding: 20px;">Загрузка данных...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div style="margin-top: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div style="font-size: 12px; color: #64748b; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <span>📍 Таймзона браузера: <span id="current-timezone" style="color: #38bdf8; font-family: monospace;"></span></span>
+                <span id="db-status-detail" style="color: #34d399; font-size: 11px; font-weight: 500;"></span>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button type="button" id="btn-sync-bottom" class="btn-table-action" onclick="forceSyncSupabase(this)">🔄 Синхронизировать с Supabase</button>
+                <button type="button" id="btn-seed-bottom" class="btn-table-action" onclick="seedSampleMissions(this)">📦 Загрузить примеры в базу</button>
+                <button type="button" class="btn-table-action" onclick="toggleSqlHelp()">Схема таблицы Supabase SQL ▼</button>
+            </div>
+        </div>
+
+        <div id="sql-help" class="sql-box">-- =========================================================
+-- Полный скрипт для Supabase SQL Editor (Таблица, Grant и RLS)
+-- =========================================================
+
+-- 1. Создание таблицы (если еще не создана)
+create table if not exists public.missions (
+  id text primary key,
+  title text not null,
+  position integer default 1,
+  status text default 'pending',
+  created_at timestamptz default now(),
+  created_display text,
+  completed_at timestamptz,
+  completed_display text,
+  created_by text
+);
+
+-- 2. Выдача прав (Grants) для веб-клиента и авторизованных пользователей
+grant usage on schema public to anon, authenticated, service_role;
+grant all on table public.missions to anon, authenticated, service_role;
+
+-- 3. Включение Row Level Security (RLS)
+alter table public.missions enable row level security;
+
+-- 4. Удаление старых политик при повторном запуске
+drop policy if exists "Enable all for anon and authenticated" on public.missions;
+
+-- 5. Политика полного доступа (SELECT, INSERT, UPDATE, DELETE)
+create policy "Enable all for anon and authenticated"
+on public.missions
+for all
+to anon, authenticated, service_role
+using (true)
+with check (true);
+
+-- (Опционально) 6. Вставка тестовых поручений прямо из SQL Editor:
+insert into public.missions (id, title, position, status, created_at, created_display, created_by)
+values
+  ('m_1', 'Развесить стирку', 1, 'pending', now(), to_char(now(), 'DD.MM.YYYY HH24:MI:SS'), 'user'),
+  ('m_2', 'Купить кофе и зерна', 2, 'pending', now(), to_char(now(), 'DD.MM.YYYY HH24:MI:SS'), 'user'),
+  ('m_3', 'Проверить показания счетчиков', 3, 'pending', now(), to_char(now(), 'DD.MM.YYYY HH24:MI:SS'), 'user')
+on conflict (id) do nothing;</div>
+        <!-- Инспектор данных (LocalStorage vs Supabase) -->
+        <div id="raw-data-modal" style="display: none; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 16px; margin-top: 16px; box-shadow: var(--card-shadow);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+                <h4 style="margin: 0; color: var(--accent-blue); font-size: 14px;">📋 Инспектор данных: LocalStorage ↔ Supabase</h4>
+                <button type="button" onclick="toggleRawDataModal()" style="background: transparent; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer;">✕ Закрыть</button>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+                <div>
+                    <div style="font-weight: 600; color: var(--accent-green); font-size: 12px; margin-bottom: 6px;">💾 LocalStorage (клиентский кэш):</div>
+                    <pre id="raw-local-json" style="background: var(--code-chip-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; color: var(--text-main); font-size: 11px; max-height: 250px; overflow-y: auto; white-space: pre-wrap; font-family: monospace;"></pre>
+                </div>
+                <div>
+                    <div style="font-weight: 600; color: var(--accent-blue); font-size: 12px; margin-bottom: 6px;">☁️ Supabase Cloud (удаленная таблица):</div>
+                    <pre id="raw-remote-json" style="background: var(--code-chip-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; color: var(--text-main); font-size: 11px; max-height: 250px; overflow-y: auto; white-space: pre-wrap; font-family: monospace;"></pre>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- Всплывающее уведомление -->
+<div id="toast-banner">
+    <span id="toast-icon">✅</span>
+    <span id="toast-msg">Поручение выполнено!</span>
+</div>
+
+<script>
+    let currentFilter = 'all';
+    let isActivelyDragging = false;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        // Запись входа на страницу заданий в историю
+        if (typeof window.recordCommandAction === 'function') {
+            window.recordCommandAction('go to missions', 'Открыта страница поручений /missions.html');
+        }
+
+        // Отображение локальной таймзоны
+        try {
+            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            const offsetMin = -new Date().getTimezoneOffset();
+            const sign = offsetMin >= 0 ? '+' : '-';
+            const hours = String(Math.floor(Math.abs(offsetMin) / 60)).padStart(2, '0');
+            const mins = String(Math.abs(offsetMin) % 60).padStart(2, '0');
+            document.getElementById('current-timezone').textContent = `${tz} (GMT${sign}${hours}:${mins})`;
+        } catch (e) {
+            document.getElementById('current-timezone').textContent = 'UTC';
+        }
+
+        renderMissions();
+
+        window.addEventListener('missions:updated', () => {
+            if (!isActivelyDragging) {
+                renderMissions();
+            }
+        });
+
+        // Периодическая автосинхронизация (чтобы ПК и телефон оставались идентичными в реальном времени)
+        setInterval(() => {
+            if (isActivelyDragging) return;
+            if (document.visibilityState !== 'visible') return;
+            if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+            if (window.MissionsStore) {
+                window.MissionsStore.trySyncSupabase(false).catch(() => {});
+            }
+        }, 8000);
+    });
+
+    let toastTimer = null;
+    function showToast(msg, icon = '✅', type = 'success') {
+        const toast = document.getElementById('toast-banner');
+        const iconEl = document.getElementById('toast-icon');
+        const text = document.getElementById('toast-msg');
+        if (toastTimer) clearTimeout(toastTimer);
+        if (toast && text) {
+            text.textContent = msg;
+            if (iconEl) iconEl.textContent = icon;
+            if (type === 'error' || icon === '❌' || icon === '🚨') {
+                toast.style.borderColor = '#ef4444';
+                toast.style.color = '#fca5a5';
+            } else if (type === 'loading' || icon === '🔄' || icon === '⏳') {
+                toast.style.borderColor = '#f59e0b';
+                toast.style.color = '#fde68a';
+            } else {
+                toast.style.borderColor = '#10b981';
+                toast.style.color = '#34d399';
+            }
+            toast.style.display = 'flex';
+            toastTimer = setTimeout(() => {
+                toast.style.display = 'none';
+            }, 3500);
+        }
+    }
+
+    function toggleSqlHelp() {
+        const box = document.getElementById('sql-help');
+        if (box) {
+            box.style.display = box.style.display === 'block' ? 'none' : 'block';
+        }
+    }
+
+    async function forceSyncSupabase(btn) {
+        const originalText = btn ? btn.textContent : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = '⏳ Синхронизация...';
+        }
+        showToast('Выгрузка в Supabase и двусторонняя синхронизация...', '⏳', 'loading');
+
+        try {
+            const res = await window.MissionsStore.trySyncSupabase(true);
+            const count = window.MissionsStore.getAllMissions().length;
+            renderMissions();
+            const remoteStr = res && res.remoteCount !== undefined ? ` (в Supabase: ${res.remoteCount})` : '';
+            showToast(`Успешно! Локально: ${count}${remoteStr}`, '✅', 'success');
+        } catch (e) {
+            console.error('Ошибка forceSyncSupabase:', e);
+            renderMissions();
+            showToast(`Ошибка Supabase: ${e.message}`, '🚨', 'error');
+            alert(`🚨 Ошибка подключения к Supabase:\n\n${e.message}\nКод ошибки: ${e.code || e.status || 'N/A'}\n${e.hint ? 'Подсказка базы: ' + e.hint + '\n' : ''}\nПодробности открыты в красной плашке ошибки.`);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = originalText || '🔄 Синхронизировать';
+            }
+        }
+    }
+
+    async function seedSampleMissions(btn) {
+        if (!confirm('Загрузить 3 типовых поручения ("Развесить стирку", "Купить кофе и зерна", "Проверить счетчики") в базу данных Supabase?')) return;
+        const originalText = btn ? btn.textContent : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = '⏳ Запись в базу...';
+        }
+        showToast('Отправка типовых поручений в Supabase...', '⏳', 'loading');
+
+        try {
+            const now = Date.now();
+            const samples = [
+                {
+                    id: 'm_1',
+                    title: 'Развесить стирку',
+                    position: 1,
+                    status: 'pending',
+                    created_at: new Date(now - 3600000).toISOString(),
+                    created_display: window.MissionsStore.getFormattedTimezone(new Date(now - 3600000)),
+                    completed_at: null,
+                    completed_display: null,
+                    created_by: 'seed'
+                },
+                {
+                    id: 'm_2',
+                    title: 'Купить кофе и зерна',
+                    position: 2,
+                    status: 'pending',
+                    created_at: new Date(now - 2400000).toISOString(),
+                    created_display: window.MissionsStore.getFormattedTimezone(new Date(now - 2400000)),
+                    completed_at: null,
+                    completed_display: null,
+                    created_by: 'seed'
+                },
+                {
+                    id: 'm_3',
+                    title: 'Проверить показания счетчиков',
+                    position: 3,
+                    status: 'pending',
+                    created_at: new Date(now - 1200000).toISOString(),
+                    created_display: window.MissionsStore.getFormattedTimezone(new Date(now - 1200000)),
+                    completed_at: null,
+                    completed_display: null,
+                    created_by: 'seed'
+                }
+            ];
+
+            if (window.supabaseDirectApi) {
+                await window.supabaseDirectApi.upsert('missions', samples);
+            }
+            await window.MissionsStore.trySyncSupabase(true);
+            renderMissions();
+            showToast('3 поручения успешно записаны в Supabase!', '✅', 'success');
+        } catch (e) {
+            console.error('Ошибка seedSampleMissions:', e);
+            renderMissions();
+            showToast(`Ошибка записи: ${e.message}`, '🚨', 'error');
+            alert(`🚨 Ошибка записи в базу данных Supabase:\n\n${e.message}\nКод: ${e.code || e.status || 'N/A'}\n${e.details ? 'Детали: ' + e.details : ''}`);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = originalText || '📦 Загрузить примеры в базу';
+            }
+        }
+    }
+
+    async function runSupabasePing(btn) {
+        const diagCard = document.getElementById('diag-result-card');
+        const diagText = document.getElementById('diag-output-text');
+        const originalText = btn ? btn.textContent : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = '⏳ Тестирование связи...';
+        }
+
+        if (diagCard && diagText) {
+            diagCard.style.display = 'block';
+            diagText.innerHTML = '<span style="color:#38bdf8;">⏳ Отправка REST GET запроса к https://qecyotztitajldibychu.supabase.co/rest/v1/missions...</span>';
+        }
+
+        try {
+            const res = await window.testSupabaseConnection();
+            if (res.ok) {
+                let itemsListHtml = '';
+                if (Array.isArray(res.data) && res.data.length > 0) {
+                    itemsListHtml = `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color);">
+                        <span style="color:var(--text-muted);">Записи в таблице Supabase:</span><br>
+                        ${res.data.slice(0, 5).map(item => `• <strong style="color:var(--text-main);">${escapeHtml(item.title)}</strong> <span style="color:var(--text-muted);">(id: ${escapeHtml(item.id)}, статус: ${escapeHtml(item.status || 'pending')})</span>`).join('<br>')}
+                    </div>`;
+                }
+
+                diagText.innerHTML = `
+                    <div style="color: var(--accent-green); font-weight: 700; margin-bottom: 6px;">🟢 Связь с Supabase установлена успешно! (HTTP 200 OK)</div>
+                    <div>• Время отклика (Latency): <strong style="color:var(--accent-blue);">${res.latency} ms</strong></div>
+                    <div>• Записей в таблице missions: <strong style="color:var(--text-main); font-size: 14px;">${res.count}</strong></div>
+                    <div>• Протокол: Direct REST Fetch (PostgREST v1)</div>
+                    ${itemsListHtml}
+                    <div style="margin-top: 8px; color: var(--accent-green); font-size: 11px;">База данных отвечает без ошибок. Права доступа (Grants) и RLS настроены корректно.</div>
+                `;
+                // Выполняем двустороннюю синхронизацию
+                await window.MissionsStore.trySyncSupabase(false);
+                renderMissions();
+                showToast(`Supabase онлайн: ${res.count} записей (${res.latency} ms)`, '🟢', 'success');
+            } else {
+                diagText.innerHTML = `
+                    <div style="color: #f87171; font-weight: 700; margin-bottom: 6px;">🔴 Ошибка подключения к Supabase!</div>
+                    <div>• Время отклика: <span style="color:#f59e0b;">${res.latency} ms</span></div>
+                    <div>• Код ошибки (Code): <strong style="color:#fca5a5;">${escapeHtml(res.error.code)}</strong> (HTTP ${res.error.status})</div>
+                    <div>• Сообщение: <span style="color:#f87171;">${escapeHtml(res.error.message)}</span></div>
+                    ${res.error.details ? `<div>• Детали: ${escapeHtml(res.error.details)}</div>` : ''}
+                    ${res.error.hint ? `<div style="color:#fbbf24;">• Подсказка базы: ${escapeHtml(res.error.hint)}</div>` : ''}
+                    <div style="margin-top: 8px; color: #94a3b8; font-size: 11px;">💡 Если ошибка связана с RLS или permissions: откройте блок "Схема таблицы Supabase SQL ▼" внизу страницы и выполните SQL-скрипт в консоли Supabase.</div>
+                `;
+                showToast(`Ошибка связи с Supabase: ${res.error.message}`, '❌', 'error');
+            }
+        } catch (err) {
+            if (diagText) {
+                diagText.innerHTML = `<span style="color:#ef4444;">Исключение при тесте: ${escapeHtml(err.message)}</span>`;
+            }
+            showToast(`Исключение: ${err.message}`, '❌', 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = originalText || '📡 Проверить Ping';
+            }
+        }
+    }
+
+    function closeDiagCard() {
+        const diagCard = document.getElementById('diag-result-card');
+        if (diagCard) diagCard.style.display = 'none';
+    }
+
+    function dismissDbError() {
+        const errBanner = document.getElementById('db-error-banner');
+        if (errBanner) errBanner.style.display = 'none';
+    }
+
+    async function toggleRawDataModal() {
+        const modal = document.getElementById('raw-data-modal');
+        if (!modal) return;
+        if (modal.style.display === 'block') {
+            modal.style.display = 'none';
+            return;
+        }
+        modal.style.display = 'block';
+
+        const localPre = document.getElementById('raw-local-json');
+        const remotePre = document.getElementById('raw-remote-json');
+
+        if (localPre) {
+            localPre.textContent = JSON.stringify(window.MissionsStore.missions, null, 2);
+        }
+
+        if (remotePre) {
+            remotePre.textContent = '⏳ Загрузка записей из Supabase...';
+            try {
+                if (window.supabaseDirectApi) {
+                    const data = await window.supabaseDirectApi.select('missions', 'select=*&order=position.asc');
+                    remotePre.textContent = JSON.stringify(data, null, 2);
+                } else {
+                    remotePre.textContent = 'window.supabaseDirectApi недоступен';
+                }
+            } catch (e) {
+                remotePre.textContent = `Ошибка получения данных из Supabase:\n${e.message}\nКод: ${e.code || e.status}\n${e.details || ''}`;
+            }
+        }
+    }
+
+    function renderMissions() {
+        if (!window.MissionsStore) return;
+
+        const syncBadge = document.getElementById('sync-badge');
+        const dbDetail = document.getElementById('db-status-detail');
+        const dbStatLocal = document.getElementById('db-stat-local');
+        const dbStatRemote = document.getElementById('db-stat-remote');
+        const dbStatTime = document.getElementById('db-stat-time');
+        const dbStatusBar = document.getElementById('db-status-bar');
+        const dbStatusIcon = document.getElementById('db-status-icon');
+        const dbStatusTitle = document.getElementById('db-status-title');
+        const errorBanner = document.getElementById('db-error-banner');
+
+        const allCount = window.MissionsStore.getAllMissions().length;
+        const remoteCount = window.MissionsStore.remoteCount !== null ? window.MissionsStore.remoteCount : '—';
+        const pendingCount = typeof window.MissionsStore.getPendingOpsCount === 'function' ? window.MissionsStore.getPendingOpsCount() : 0;
+        const lastErr = window.MissionsStore.lastError;
+        const syncStatus = window.MissionsStore.syncStatus;
+        const syncTime = window.MissionsStore.lastSyncTime || '—';
+
+        if (dbStatLocal) dbStatLocal.textContent = allCount;
+        if (dbStatRemote) dbStatRemote.textContent = remoteCount;
+        if (dbStatTime) dbStatTime.textContent = syncTime;
+
+        // Отображение / скрытие банера ошибки
+        if (errorBanner) {
+            if (lastErr) {
+                errorBanner.style.display = 'block';
+                const codeBadge = document.getElementById('err-code-badge');
+                const timeEl = document.getElementById('err-time');
+                const msgEl = document.getElementById('err-message');
+                if (codeBadge) codeBadge.textContent = lastErr.code || 'ERROR';
+                if (timeEl) timeEl.textContent = lastErr.time || '';
+                if (msgEl) msgEl.textContent = lastErr.message || 'Неизвестная ошибка базы данных';
+
+                const detailsBox = document.getElementById('err-details-box');
+                const detailsEl = document.getElementById('err-details');
+                const hintEl = document.getElementById('err-hint');
+
+                if (detailsBox && (lastErr.details || lastErr.hint)) {
+                    detailsBox.style.display = 'block';
+                    if (detailsEl) detailsEl.textContent = lastErr.details ? `Детали: ${lastErr.details}` : '';
+                    if (hintEl) hintEl.textContent = lastErr.hint ? `💡 Подсказка Supabase: ${lastErr.hint}` : '';
+                } else if (detailsBox) {
+                    detailsBox.style.display = 'none';
+                }
+            } else {
+                errorBanner.style.display = 'none';
+            }
+        }
+
+        // Обновление плашки статуса и верхнего бейджа
+        if (syncBadge) {
+            if (syncStatus === 'synced' && pendingCount === 0) {
+                syncBadge.textContent = `🟢 Supabase Live (${allCount})`;
+                syncBadge.style.color = '#34d399';
+                syncBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+                syncBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+            } else if (syncStatus === 'syncing') {
+                syncBadge.textContent = pendingCount > 0 ? `⏳ Синхронизация (${pendingCount})...` : '⏳ Синхронизация...';
+                syncBadge.style.color = '#f59e0b';
+                syncBadge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+                syncBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+            } else if (syncStatus === 'offline') {
+                syncBadge.textContent = pendingCount > 0 ? `📡 Офлайн (очередь: ${pendingCount})` : `📡 Офлайн (${allCount})`;
+                syncBadge.style.color = '#f59e0b';
+                syncBadge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+                syncBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+            } else if (syncStatus === 'error') {
+                syncBadge.textContent = '🔴 Ошибка Supabase';
+                syncBadge.style.color = '#f87171';
+                syncBadge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                syncBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+            } else {
+                syncBadge.textContent = pendingCount > 0 ? `💾 В очереди: ${pendingCount}` : `💾 LocalStorage (${allCount})`;
+                syncBadge.style.color = '#38bdf8';
+                syncBadge.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+                syncBadge.style.background = 'rgba(56, 189, 248, 0.15)';
+            }
+        }
+
+        if (dbStatusBar && dbStatusIcon && dbStatusTitle) {
+            if (syncStatus === 'synced' && pendingCount === 0) {
+                dbStatusIcon.textContent = '🟢';
+                dbStatusTitle.textContent = 'Supabase Live: Двусторонняя синхронизация активна';
+                if (dbDetail) dbDetail.textContent = `• Локально: ${allCount} | В базе: ${remoteCount}`;
+            } else if (syncStatus === 'syncing') {
+                dbStatusIcon.textContent = '⏳';
+                dbStatusTitle.textContent = 'Supabase: Синхронизация данных...';
+                if (dbDetail) dbDetail.textContent = pendingCount > 0 ? `• В очереди отправки: ${pendingCount}` : '';
+            } else if (syncStatus === 'offline') {
+                dbStatusIcon.textContent = '📡';
+                dbStatusTitle.textContent = 'Офлайн-режим: изменения сохраняются локально и синхронизируются при подключении';
+                if (dbDetail) dbDetail.textContent = `• Локально: ${allCount} | В очереди синхронизации: ${pendingCount}`;
+            } else if (syncStatus === 'error') {
+                dbStatusIcon.textContent = '🔴';
+                dbStatusTitle.textContent = 'Supabase: Ошибка базы данных (см. банер ниже)';
+                if (dbDetail) dbDetail.textContent = `• Ошибка базы: ${lastErr?.code || 'ERR'}`;
+            } else {
+                dbStatusIcon.textContent = '💾';
+                dbStatusTitle.textContent = 'Локальный режим (LocalStorage)';
+                if (dbDetail) dbDetail.textContent = `• Локально: ${allCount} записей${pendingCount > 0 ? ` | В очереди: ${pendingCount}` : ''}`;
+            }
+        }
+
+        renderActiveList();
+        renderTableOnly();
+    }
+
+    function setTableFilter(filter, btn) {
+        currentFilter = filter;
+        document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+        renderTableOnly();
+    }
+
+    async function submitMission(placement = 'end') {
+        const input = document.getElementById('new-mission-title');
+        const title = (input.value || '').trim();
+        if (!title) {
+            input.focus();
+            return;
+        }
+
+        const startBtn = document.querySelector('.btn-add-start');
+        const endBtn = document.querySelector('.btn-add-end');
+        if (startBtn) startBtn.disabled = true;
+        if (endBtn) endBtn.disabled = true;
+
+        try {
+            const newMission = await window.MissionsStore.addMission(title, 'guest', placement);
+            input.value = '';
+            renderMissions();
+            const posLabel = placement === 'start' ? 'в начало списка (#1)' : 'в конец списка';
+            if (typeof window.recordCommandAction === 'function') {
+                window.recordCommandAction(`Add mission ${title}`, `Поручение создано (#${newMission.position}, ${posLabel}): "${title}"`);
+            }
+            showToast(`Поручение "${title}" добавлено ${posLabel}!`);
+        } catch (err) {
+            alert('Ошибка: ' + err.message);
+        } finally {
+            if (startBtn) startBtn.disabled = false;
+            if (endBtn) endBtn.disabled = false;
+        }
+    }
+
+    async function handleFormAdd(e, placement = 'end') {
+        if (e && e.preventDefault) e.preventDefault();
+        await submitMission(placement);
+    }
+
+    async function markDone(id) {
+        try {
+            const completed = await window.MissionsStore.completeMission(id);
+            if (typeof window.recordCommandAction === 'function') {
+                window.recordCommandAction(`Done mission #${completed.position || ''} ${completed.title}`, `Поручение выполнено: "${completed.title}"`);
+            }
+            showToast(`✅ "${completed.title}" выполнено и перенесено в таблицу!`);
+        } catch (err) {
+            alert('Ошибка: ' + err.message);
+        }
+    }
+
+    async function restoreMission(id) {
+        try {
+            const restored = await window.MissionsStore.restoreMission(id);
+            if (typeof window.recordCommandAction === 'function') {
+                window.recordCommandAction(`Restore mission #${restored.position || ''} ${restored.title}`, `Поручение возвращено в список: "${restored.title}"`);
+            }
+            showToast(`↩️ "${restored.title}" возвращено в активный список дел!`);
+        } catch (err) {
+            alert('Ошибка: ' + err.message);
+        }
+    }
+
+    async function deleteMission(id) {
+        if (!confirm('Вы уверены, что хотите удалить эту запись из базы?')) return;
+        try {
+            await window.MissionsStore.deleteMission(id);
+            if (typeof window.recordCommandAction === 'function') {
+                window.recordCommandAction(`Del mission ${id}`, `Поручение удалено`);
+            }
+            showToast('Запись удалена.');
+        } catch (err) {
+            alert('Ошибка: ' + err.message);
+        }
+    }
+
+    function copyOrRunCommand(cmd) {
+        navigator.clipboard.writeText(cmd).then(() => {
+            showToast(`Команда скопирована: "${cmd}". Вставьте в консоль!`);
+        }).catch(() => {
+            prompt('Скопируйте команду:', cmd);
+        });
+    }
+
+    function moveItemUp(idx) {
+        const active = window.MissionsStore.getActiveMissions();
+        if (idx <= 0 || idx >= active.length) return;
+        const ids = active.map(m => m.id);
+        const temp = ids[idx];
+        ids[idx] = ids[idx - 1];
+        ids[idx - 1] = temp;
+        window.MissionsStore.reorderActiveMissions(ids);
+        if (typeof window.recordCommandAction === 'function') {
+            window.recordCommandAction('Reorder missions', 'Изменен приоритет поручений в очереди');
+        }
+    }
+
+    function moveItemDown(idx) {
+        const active = window.MissionsStore.getActiveMissions();
+        if (idx < 0 || idx >= active.length - 1) return;
+        const ids = active.map(m => m.id);
+        const temp = ids[idx];
+        ids[idx] = ids[idx + 1];
+        ids[idx + 1] = temp;
+        window.MissionsStore.reorderActiveMissions(ids);
+        if (typeof window.recordCommandAction === 'function') {
+            window.recordCommandAction('Reorder missions', 'Изменен приоритет поручений в очереди');
+        }
+    }
+
+    function renderActiveList() {
+        const activeMissions = window.MissionsStore.getActiveMissions();
+        const container = document.getElementById('missions-list');
+        const countBadge = document.getElementById('active-count-badge');
+
+        if (countBadge) {
+            countBadge.textContent = `${activeMissions.length} активных`;
+        }
+
+        if (!activeMissions || activeMissions.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div style="font-size: 28px; margin-bottom: 8px;">🎉</div>
+                    <div style="font-weight: 600; color: var(--text-main); margin-bottom: 4px;">Все поручения выполнены!</div>
+                    <div>В очереди нет активных дел. Добавьте новое через форму выше или в терминале: <code style="color:var(--accent-blue);">Add mission Развесить стирку</code></div>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = '';
+
+        activeMissions.forEach((mission, index) => {
+            const item = document.createElement('div');
+            item.className = 'mission-item';
+            item.dataset.id = mission.id;
+            item.dataset.index = index;
+
+            item.innerHTML = `
+                <div class="drag-handle" title="Зажмите и перетаскивайте">⠿</div>
+                <div class="mission-pos">#${mission.position || (index + 1)}</div>
+                <div class="mission-content">
+                    <div class="mission-title">${escapeHtml(mission.title)}</div>
+                    <div class="mission-meta">
+                        <span>⏱️ Добавлено: ${escapeHtml(mission.created_display || mission.created_at)}</span>
+                    </div>
+                </div>
+                <div class="mission-actions">
+                    <button type="button" class="mobile-order-btn" title="Поднять выше" onclick="moveItemUp(${index})" ${index === 0 ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▲</button>
+                    <button type="button" class="mobile-order-btn" title="Опустить ниже" onclick="moveItemDown(${index})" ${index === activeMissions.length - 1 ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▼</button>
+                    <button type="button" class="btn-complete" onclick="markDone('${mission.id}')">✓ Выполнить</button>
+                </div>
+            `;
+
+            attachSortablePointerHandler(item, container);
+            container.appendChild(item);
+        });
+    }
+
+    function updateLivePositionBadges(container, floatingItem, placeholder) {
+        let pos = 1;
+        Array.from(container.children).forEach(el => {
+            if (el === floatingItem) return;
+            const target = el === placeholder ? floatingItem : el;
+            const badge = target.querySelector('.mission-pos');
+            if (badge) badge.textContent = `#${pos}`;
+            pos++;
+        });
+    }
+
+    function attachSortablePointerHandler(item, container) {
+        item.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0 && e.pointerType !== 'touch') return;
+            const targetEl = e.target && e.target.nodeType === 1 ? e.target : e.target?.parentElement;
+            if (!targetEl || targetEl.closest('button, a, input, textarea, select')) return;
+
+            const handleEl = targetEl.closest('.drag-handle');
+            const isTouch = e.pointerType === 'touch' || e.pointerType === 'pen';
+            // На телефоне/сенсоре перетаскивание работает строго за ползунок ⠿, чтобы не мешать обычному скроллу
+            if (isTouch && !handleEl) return;
+            if (container.querySelectorAll('.mission-item').length < 2) return;
+
+            const pointerId = e.pointerId;
+            const captureTarget = handleEl || item;
+            const startX = e.clientX;
+            const startY = e.clientY;
+            const cardRect = item.getBoundingClientRect();
+            const offsetX = startX - cardRect.left;
+            const offsetY = startY - cardRect.top;
+            const initialOrder = Array.from(container.querySelectorAll('.mission-item[data-id]')).map(el => el.dataset.id);
+
+            let dragStarted = false;
+            let placeholder = null;
+            let scrollRaf = null;
+            let lastClientX = startX;
+            let lastClientY = startY;
+
+            if (isTouch && handleEl) {
+                handleEl.classList.add('is-touch-pressed');
+                try {
+                    captureTarget.setPointerCapture(pointerId);
+                } catch (_) {}
+            }
+
+            const preventTouchScroll = (touchEv) => {
+                if (isTouch) {
+                    touchEv.preventDefault();
+                }
+            };
+
+            if (isTouch && handleEl) {
+                handleEl.addEventListener('touchmove', preventTouchScroll, { passive: false });
+            }
+
+            const startDrag = () => {
+                dragStarted = true;
+                isActivelyDragging = true;
+
+                if (isTouch) {
+                    try {
+                        if (navigator.vibrate) navigator.vibrate(15);
+                    } catch (_) {}
+                } else {
+                    try {
+                        captureTarget.setPointerCapture(pointerId);
+                    } catch (_) {}
+                }
+
+                placeholder = document.createElement('div');
+                placeholder.className = 'mission-item drag-placeholder';
+                placeholder.style.height = `${cardRect.height}px`;
+                placeholder.style.boxSizing = 'border-box';
+
+                container.insertBefore(placeholder, item);
+
+                item.classList.add('drag-floating');
+                item.style.width = `${cardRect.width}px`;
+                item.style.height = `${cardRect.height}px`;
+                item.style.left = `${cardRect.left}px`;
+                item.style.top = `${cardRect.top}px`;
+
+                document.body.classList.add('is-dragging-mission');
+            };
+
+            const swapWithFlip = (insertBeforeEl) => {
+                const siblings = Array.from(container.querySelectorAll('.mission-item:not(.drag-floating):not(.drag-placeholder)'));
+                const beforeTops = new Map();
+                siblings.forEach(sib => beforeTops.set(sib, sib.getBoundingClientRect().top));
+
+                if (insertBeforeEl) {
+                    container.insertBefore(placeholder, insertBeforeEl);
+                } else {
+                    container.appendChild(placeholder);
+                }
+
+                siblings.forEach(sib => {
+                    const oldTop = beforeTops.get(sib);
+                    const newTop = sib.getBoundingClientRect().top;
+                    const deltaY = oldTop - newTop;
+                    if (deltaY !== 0) {
+                        sib.style.transition = 'none';
+                        sib.style.transform = `translateY(${deltaY}px)`;
+                        sib.getBoundingClientRect();
+                        sib.style.transition = 'transform 0.16s ease';
+                        sib.style.transform = '';
+                    }
+                });
+
+                updateLivePositionBadges(container, item, placeholder);
+            };
+
+            const updatePositionAtPointer = (clientX, clientY) => {
+                const currentTop = clientY - offsetY;
+                // На телефоне двигаем карточку ровно по вертикали внутри колонки, чтобы не уезжала за край экрана
+                const currentLeft = isTouch ? cardRect.left : (clientX - offsetX);
+                item.style.top = `${currentTop}px`;
+                item.style.left = `${currentLeft}px`;
+
+                const dragMidY = currentTop + cardRect.height / 2;
+                const siblings = Array.from(container.querySelectorAll('.mission-item:not(.drag-floating):not(.drag-placeholder)'));
+
+                let insertBeforeEl = null;
+                for (const sib of siblings) {
+                    const box = sib.getBoundingClientRect();
+                    const sibMidY = box.top + box.height / 2;
+                    if (dragMidY < sibMidY) {
+                        insertBeforeEl = sib;
+                        break;
+                    }
+                }
+
+                const nextNonFloating = (() => {
+                    let node = placeholder.nextElementSibling;
+                    while (node && node === item) node = node.nextElementSibling;
+                    return node;
+                })();
+
+                if (insertBeforeEl !== nextNonFloating) {
+                    swapWithFlip(insertBeforeEl);
+                }
+            };
+
+            const autoScrollStep = () => {
+                if (!dragStarted) return;
+                const edge = isTouch ? 85 : 70;
+                const beforeY = window.scrollY;
+                if (lastClientY < edge) {
+                    window.scrollBy(0, -Math.max(4, Math.round((edge - lastClientY) / 4)));
+                    if (window.scrollY !== beforeY) {
+                        updatePositionAtPointer(lastClientX, lastClientY);
+                    }
+                } else if (lastClientY > window.innerHeight - edge) {
+                    window.scrollBy(0, Math.max(4, Math.round((lastClientY - (window.innerHeight - edge)) / 4)));
+                    if (window.scrollY !== beforeY) {
+                        updatePositionAtPointer(lastClientX, lastClientY);
+                    }
+                }
+                scrollRaf = requestAnimationFrame(autoScrollStep);
+            };
+
+            const cleanup = (commit) => {
+                window.removeEventListener('pointermove', onPointerMove);
+                window.removeEventListener('pointerup', onPointerUp);
+                window.removeEventListener('pointercancel', onPointerCancel);
+                window.removeEventListener('touchmove', preventTouchScroll);
+                window.removeEventListener('keydown', onKeyDown);
+                if (handleEl) {
+                    handleEl.removeEventListener('touchmove', preventTouchScroll);
+                    handleEl.classList.remove('is-touch-pressed');
+                }
+                try {
+                    if (captureTarget.hasPointerCapture && captureTarget.hasPointerCapture(pointerId)) {
+                        captureTarget.releasePointerCapture(pointerId);
+                    }
+                } catch (_) {}
+                if (scrollRaf) cancelAnimationFrame(scrollRaf);
+
+                if (!dragStarted) return;
+
+                isActivelyDragging = false;
+                document.body.classList.remove('is-dragging-mission');
+
+                if (commit && placeholder && placeholder.parentNode === container) {
+                    container.insertBefore(item, placeholder);
+                }
+
+                if (placeholder && placeholder.parentNode) {
+                    placeholder.remove();
+                }
+
+                item.classList.remove('drag-floating');
+                item.style.width = '';
+                item.style.height = '';
+                item.style.left = '';
+                item.style.top = '';
+
+                if (!commit) {
+                    renderMissions();
+                    return;
+                }
+
+                const newOrder = Array.from(container.querySelectorAll('.mission-item[data-id]')).map(el => el.dataset.id);
+                const changed = newOrder.length === initialOrder.length && newOrder.some((id, idx) => id !== initialOrder[idx]);
+                if (changed) {
+                    window.MissionsStore.reorderActiveMissions(newOrder);
+                    if (typeof window.recordCommandAction === 'function') {
+                        window.recordCommandAction('Reorder missions', 'Изменен приоритет поручений в очереди');
+                    }
+                } else {
+                    renderMissions();
+                }
+            };
+
+            const onPointerMove = (moveEvent) => {
+                if (moveEvent.pointerId !== pointerId) return;
+                lastClientX = moveEvent.clientX;
+                lastClientY = moveEvent.clientY;
+                if (!dragStarted) {
+                    const dist = Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY);
+                    if (dist < (isTouch ? 3 : 5)) return;
+                    startDrag();
+                    scrollRaf = requestAnimationFrame(autoScrollStep);
+                }
+                moveEvent.preventDefault();
+                updatePositionAtPointer(moveEvent.clientX, moveEvent.clientY);
+            };
+
+            const onPointerUp = (upEvent) => {
+                if (upEvent.pointerId !== pointerId) return;
+                cleanup(true);
+            };
+            const onPointerCancel = (cancelEvent) => {
+                if (cancelEvent.pointerId !== pointerId) return;
+                cleanup(false);
+            };
+            const onKeyDown = (keyEvent) => {
+                if (keyEvent.key === 'Escape') cleanup(false);
+            };
+
+            window.addEventListener('pointermove', onPointerMove, { passive: false });
+            window.addEventListener('pointerup', onPointerUp);
+            window.addEventListener('pointercancel', onPointerCancel);
+            if (isTouch) {
+                window.addEventListener('touchmove', preventTouchScroll, { passive: false });
+            }
+            window.addEventListener('keydown', onKeyDown);
+        });
+    }
+
+    function renderTableOnly() {
+        const allMissions = window.MissionsStore.getAllMissions();
+        const activeMissions = window.MissionsStore.getActiveMissions();
+        const completedMissions = window.MissionsStore.getCompletedMissions();
+
+        // Обновляем счетчики на табах
+        document.getElementById('tab-all').textContent = `Все (${allMissions.length})`;
+        document.getElementById('tab-pending').textContent = `В процессе (${activeMissions.length})`;
+        document.getElementById('tab-completed').textContent = `Выполненные (${completedMissions.length})`;
+
+        let displayList = allMissions;
+        if (currentFilter === 'pending') displayList = activeMissions;
+        if (currentFilter === 'completed') displayList = completedMissions;
+
+        const tbody = document.getElementById('missions-table-body');
+        if (!displayList || displayList.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 24px;">Записей в этой категории не найдено.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = '';
+
+        displayList.forEach((m, idx) => {
+            const isDone = !!m.completed_at || m.status === 'completed';
+            const tr = document.createElement('tr');
+
+            tr.innerHTML = `
+                <td style="font-family: monospace; color: #94a3b8; font-weight: 600;">#${m.position || (idx + 1)}</td>
+                <td style="font-weight: 600; color: var(--text-main);">
+                    ${escapeHtml(m.title)}
+                </td>
+                <td style="font-size: 12px; color: #94a3b8;">
+                    ${escapeHtml(m.created_display || m.created_at || '—')}
+                </td>
+                <td>
+                    ${isDone
+                        ? `<span class="time-completed-val">✅ ${escapeHtml(m.completed_display || m.completed_at)}</span>`
+                        : `<span class="time-pending-val">⏳ В процессе (в активном списке)</span>`
+                    }
+                </td>
+                <td>
+                    ${isDone
+                        ? `<span class="badge-completed">Выполнено</span>`
+                        : `<span class="badge-pending">В процессе</span>`
+                    }
+                </td>
+                <td style="text-align: right; white-space: nowrap;">
+                    ${isDone
+                        ? `<button type="button" class="btn-table-action" onclick="restoreMission('${m.id}')" title="Вернуть в список дел">↩️ В список</button>`
+                        : `<button type="button" class="btn-table-action" onclick="markDone('${m.id}')" style="color:#34d399;" title="Отметить выполненным">✓ Сделано</button>`
+                    }
+                    <button type="button" class="btn-table-action btn-table-delete" onclick="deleteMission('${m.id}')" title="Удалить из таблицы">🗑️</button>
+                </td>
+            `;
+
+            tbody.appendChild(tr);
+        });
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+</script>
+
+</body>
+</html>

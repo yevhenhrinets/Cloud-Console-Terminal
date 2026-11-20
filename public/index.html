@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
+    <title>Cloud Terminal</title>
+    
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    
+    <link rel="stylesheet" href="/style.css?v=5.0">
+
+    <!-- 1. Библиотеки Supabase и JSZip для локального хранилища и ZIP-экспорта -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="/local-fs.js?v=5.0"></script>
+    <!-- 2. Ключи -->
+    <script src="/api.js?v=5.0"></script>
+    <!-- 3. Ядро и утилиты -->
+    <script src="/registry.js?v=5.0"></script>
+    <script src="/helpers.js?v=5.0"></script>
+    <script src="/localization.js?v=5.0"></script>
+    <script src="/missions-store.js?v=5.0"></script>
+    
+    <!-- 4. Плагины команд (добавлена версия для сброса кэша Cloudflare) -->
+    <script src="/commands-actions.js?v=5.0"></script>
+    <script src="/commands/system.js?v=5.0"></script>
+    <script src="/commands/timers.js?v=5.0"></script>
+    <script src="/commands/inventory.js?v=5.0"></script>
+    <script src="/commands/add.js?v=5.0"></script>
+    <script src="/commands/missions.js?v=5.0"></script>
+    <script src="/commands/history.js?v=5.0"></script>
+    <script src="/commands/show.js?v=5.0"></script>
+    <script src="/commands/read.js?v=5.0"></script>
+    <script src="/commands/edit.js?v=5.0"></script>
+    <script src="/commands/del.js?v=5.0"></script>
+    <script src="/commands/pin.js?v=5.0"></script>
+    <script src="/commands/unpin.js?v=5.0"></script>
+    <script src="/commands/auth.js?v=5.0"></script>
+    <script src="/commands/lang.js?v=5.0"></script>
+    <script src="/commands/trash_notes.js?v=5.0"></script>
+    <script src="/commands/trash_history.js?v=5.0"></script>
+    <script src="/commands/restore.js?v=5.0"></script>
+    <script src="/commands/note_history.js?v=5.0"></script>
+    <script src="/commands/go_to.js?v=5.0"></script>
+    <script src="/commands/building.js?v=5.0"></script>
+    <script src="/commands/task.js?v=5.0"></script>
+    <script src="/commands/theme.js?v=5.0"></script>
+    <script src="/commands/fs.js?v=5.0"></script>
+    
+    <!-- 5. Справка и диспетчер должны подключаться ПОСЛЕ всех команд -->
+    <script src="/commands/help.js?v=5.0"></script>
+    <script src="/commands.js?v=5.0"></script>
+</head>
+<body>
+    <div class="terminal-container">
+        <div id="terminal">
+            <div id="terminal-output" class="terminal-output"></div>
+        </div>
+
+        <div id="quick-bar" class="quick-bar">
+            <button type="button" class="quick-chip chip-login" onclick="executeCommand('help')">📚 help</button>
+            <button type="button" class="quick-chip chip-login" onclick="reloadTerminalPage()">🔄 reload</button>
+            <a href="/missions.html" class="quick-chip chip-login" onclick="return handleQuickNav(event, 'go to missions')" onauxclick="handleQuickNavAux(event, 'go to missions')">📋 missions.html</a>
+            <a href="/dashboard.html" class="quick-chip chip-login" onclick="return handleQuickNav(event, 'go to dashboard')" onauxclick="handleQuickNavAux(event, 'go to dashboard')">🎛️ dashboard.html</a>
+            <button type="button" class="quick-chip chip-login" onclick="executeCommand('download project')">💾 скачать код</button>
+            <button type="button" class="quick-chip" onclick="executeCommand('ls')">📁 файлы</button>
+            <button type="button" class="quick-chip" onclick="executeCommand('fs export')">📦 zip</button>
+            <button type="button" class="quick-chip" onclick="executeCommand('theme toggle')">🎨 theme</button>
+            <button type="button" class="quick-chip" onclick="executeCommand('history 20')">📜 history 20</button>
+            <button type="button" class="quick-chip" onclick="executeCommand('show notes')">📝 notes</button>
+            <button type="button" class="quick-chip" onclick="executeCommand('show buildings')">🏭 buildings</button>
+            <button type="button" class="quick-chip" onclick="executeCommand('timers')">⏱️ timers</button>
+            <button type="button" class="quick-chip" onclick="executeCommand('inventory')">📦 inventory</button>
+            <button type="button" class="quick-chip" onclick="executeCommand('whoami')">👤 whoami</button>
+            <button type="button" class="quick-chip" onclick="executeCommand('show date')">📅 date</button>
+            <a href="/house/kitchen.html" class="quick-chip" onclick="return handleQuickNav(event, 'go to kitchen')" onauxclick="handleQuickNavAux(event, 'go to kitchen')">🍳 kitchen</a>
+            <a href="/house/hall.html" class="quick-chip" onclick="return handleQuickNav(event, 'go to hall')" onauxclick="handleQuickNavAux(event, 'go to hall')">🛋️ hall</a>
+            <a href="/house2/kitchen.html" class="quick-chip" onclick="return handleQuickNav(event, 'go to kitchen 2')" onauxclick="handleQuickNavAux(event, 'go to kitchen 2')">🏡 kitchen 2</a>
+            <a href="/house2/hall.html" class="quick-chip" onclick="return handleQuickNav(event, 'go to hall 2')" onauxclick="handleQuickNavAux(event, 'go to hall 2')">🏡 hall 2</a>
+            <button type="button" class="quick-chip chip-login" onclick="executeCommand('login')">🔑 login</button>
+            <button type="button" class="quick-chip chip-login" onclick="executeCommand('switch account')">🔄 switch account</button>
+            <button type="button" class="quick-chip" onclick="executeCommand('logout')">🚪 logout</button>
+        </div>
+
+        <form id="command-form" class="input-line" onsubmit="handleFormSubmit(event)">
+            <div id="prompt" class="prompt"></div>
+            <div id="active-cmd-bar" class="active-cmd-bar" style="display: none;">
+                <span id="active-cmd-text" class="active-cmd-text"></span>
+                <button type="button" id="active-cmd-clear" class="active-cmd-clear" onclick="clearPendingCommand(true)" title="Сбросить команду">✕</button>
+            </div>
+            <div class="input-row">
+                <textarea rows="1" id="command-input" autofocus autocomplete="off" autocapitalize="sentences" placeholder="Команда (help, go to missions, go to hall, go to kitchen, history, add task, select)..."></textarea>
+                <button type="button" id="send-btn" onclick="handleFormSubmit(event)">➔</button>
+            </div>
+        </form>
+    </div>
+
+<script>
+    let currentTerminalUser = null;
+
+    async function initTerminal() {
+        const prompt = document.getElementById('prompt');
+        
+        printOutput('Инициализация облачного терминала...', 'output-info');
+
+        try {
+            currentTerminalUser = await fetchCurrentUser();
+
+            if (currentTerminalUser && !currentTerminalUser.isGuest) {
+                restoreConsoleHistory();
+                prompt.textContent = `${currentTerminalUser.email}:~$`;
+                if (window.supabaseClient && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+                    updateLoginTimestamp(currentTerminalUser.id).catch(() => {});
+                    if (typeof window.flushAllOfflineConsoleQueues === 'function') {
+                        window.flushAllOfflineConsoleQueues().catch(() => {});
+                    }
+                } else {
+                    printOutput('📡 Офлайн-режим: консоль работает локально. Изменения синхронизируются при подключении.', 'output-info', false);
+                }
+            } else {
+                prompt.textContent = `user@cloud:~$`;
+                printOutput('👋 Хмарний термінал готовий до роботи (Демо-режим). Всі команди активні!', 'output-info');
+                printOutput('💡 Натискайте кнопки швидких команд вгорі або вводьте: help, notes, buildings, timers, inventory', 'output-success');
+                restoreConsoleHistory();
+            }
+
+            if (window.supabaseClient && window.supabaseClient.auth) {
+                window.supabaseClient.auth.onAuthStateChange(async (event, session) => {
+                    if (event === 'SIGNED_IN') {
+                        const freshUser = await fetchCurrentUser();
+                        if (freshUser) {
+                            currentTerminalUser = freshUser;
+                            restoreConsoleHistory();
+                            prompt.textContent = `${freshUser.email}:~$`;
+                            if (typeof window.flushAllOfflineConsoleQueues === 'function') {
+                                window.flushAllOfflineConsoleQueues().catch(() => {});
+                            }
+                        }
+                    } else if (event === 'SIGNED_OUT') {
+                        currentTerminalUser = null;
+                        if (typeof currentUserCache !== 'undefined') currentUserCache = null;
+                        if (typeof clearCachedAuthUser === 'function') clearCachedAuthUser();
+                        if (terminalOutput) terminalOutput.innerHTML = '';
+                        localStorage.removeItem(STORAGE_HISTORY_KEY);
+                        prompt.textContent = `user@cloud:~$`;
+                        printOutput('👋 Вы вышли из аккаунта. Введите "login" или "switch account" для входа.', 'output-info', true);
+                    }
+                });
+            }
+        } catch (err) {
+            prompt.textContent = currentTerminalUser && !currentTerminalUser.isGuest ? `${currentTerminalUser.email}:~$` : `user@cloud:~$`;
+            restoreConsoleHistory();
+            printOutput('📡 Локальный режим активен (' + err.message + ')', 'output-info', false);
+        }
+    }
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initTerminal);
+    } else {
+        initTerminal();
+    }
+    
+// Движок тиканья таймеров с поддержкой ends_at (не сбивается при закрытии вкладки)
+function initTimerEngine() {
+    let lastSecond = -1;
+
+    setInterval(async () => {
+        const now = new Date();
+        const currentSecond = now.getSeconds();
+
+        if (currentSecond !== lastSecond) {
+            lastSecond = currentSecond;
+            await tickTimers();
+        }
+    }, 200);
+}
+
+async function tickTimers() {
+    if (!window.supabaseClient || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
+    try {
+        const { data: { session } } = await window.supabaseClient.auth.getSession();
+        if (!session) return;
+        const userId = session.user.id;
+
+        const { data: runningTimers, error } = await window.supabaseClient
+            .from('active_timers')
+            .select('*')
+            .eq('created_by', userId)
+            .eq('status', 'running');
+
+        if (error || !runningTimers || runningTimers.length === 0) return;
+
+        const now = Date.now();
+
+        for (const timer of runningTimers) {
+            const span = document.getElementById(`timer-val-${timer.id}`);
+            
+            // Вычисляем оставшееся время по ends_at
+            let remaining = timer.remaining_seconds;
+            if (timer.ends_at) {
+                const diffMs = new Date(timer.ends_at).getTime() - now;
+                remaining = Math.max(0, Math.floor(diffMs / 1000));
+            }
+
+            if (remaining > 0) {
+                // Обновляем отображение в DOM, если элемент виден на экране
+                if (span) {
+                    const mins = Math.floor(remaining / 60);
+                    const secs = remaining % 60;
+                    span.textContent = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+                }
+            } else {
+                // Время вышло! Удаляем активный таймер
+                await window.supabaseClient.from('active_timers').delete().eq('id', timer.id);
+
+                // Записываем на склад completed_items
+                const { data: existingItem } = await window.supabaseClient
+                    .from('completed_items').select('*').eq('created_by', userId).eq('name', timer.name).single();
+
+                if (existingItem) {
+                    await window.supabaseClient.from('completed_items')
+                        .update({ count: existingItem.count + 1, updated_at: new Date().toISOString() }).eq('id', existingItem.id);
+                } else {
+                    await window.supabaseClient.from('completed_items')
+                        .insert([{ name: timer.name, count: 1, created_by: userId }]);
+                }
+
+                // Автоматически запускаем следующий из очереди в этой же группе (queue_group_id)
+                const { data: queuedItems } = await window.supabaseClient
+                    .from('active_timers').select('*').eq('created_by', userId).eq('queue_group_id', timer.queue_group_id)
+                    .eq('status', 'queued').order('id', { ascending: true }).limit(1);
+
+                if (queuedItems && queuedItems.length > 0) {
+                    const nextTimer = queuedItems[0];
+                    const newEndsAt = new Date(Date.now() + nextTimer.total_seconds * 1000).toISOString();
+                    
+                    await window.supabaseClient.from('active_timers')
+                        .update({ 
+                            status: 'running',
+                            ends_at: newEndsAt 
+                        }).eq('id', nextTimer.id);
+                }
+
+                if (span) span.textContent = "0:00 (Готово!)";
+            }
+        }
+    } catch (err) {
+        console.error('Ошибка движка таймеров:', err);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initTimerEngine();
+});
+</script>
+<script>
+    const terminal = document.getElementById('terminal');
+    const terminalOutput = document.getElementById('terminal-output');
+    const input = document.getElementById('command-input');
+
+    const STORAGE_HISTORY_KEY = 'terminal_console_history';
+    const STORAGE_DRAFT_KEY = 'terminal_input_draft';
+    const STORAGE_ACTIVE_CMD_KEY = 'terminal_active_cmd_prefix';
+    const DEFAULT_INPUT_PLACEHOLDER = 'Команда (help, go to missions, go to hall, go to kitchen, history, add task, select)...';
+
+    let pendingCommandPrefix = '';
+
+    function setPendingCommand(prefix, textValue = null, customPlaceholder = null) {
+        pendingCommandPrefix = String(prefix || '').trim();
+        const bar = document.getElementById('active-cmd-bar');
+        const barText = document.getElementById('active-cmd-text');
+        if (pendingCommandPrefix) {
+            localStorage.setItem(STORAGE_ACTIVE_CMD_KEY, pendingCommandPrefix);
+            if (barText) barText.textContent = pendingCommandPrefix;
+            if (bar) bar.style.display = 'flex';
+            input.placeholder = customPlaceholder || `Введите текст для "${pendingCommandPrefix}"...`;
+        } else {
+            localStorage.removeItem(STORAGE_ACTIVE_CMD_KEY);
+            if (barText) barText.textContent = '';
+            if (bar) bar.style.display = 'none';
+            input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
+        }
+        if (textValue !== null && textValue !== undefined) {
+            input.value = String(textValue);
+            localStorage.setItem(STORAGE_DRAFT_KEY, input.value);
+        }
+        if (typeof autoResizeTextarea === 'function') autoResizeTextarea();
+        if (typeof syncViewportHeight === 'function') syncViewportHeight();
+    }
+
+    function clearPendingCommand(clearText = true) {
+        pendingCommandPrefix = '';
+        localStorage.removeItem(STORAGE_ACTIVE_CMD_KEY);
+        const bar = document.getElementById('active-cmd-bar');
+        const barText = document.getElementById('active-cmd-text');
+        if (barText) barText.textContent = '';
+        if (bar) bar.style.display = 'none';
+        input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
+        if (clearText) {
+            input.value = '';
+            localStorage.removeItem(STORAGE_DRAFT_KEY);
+        }
+        if (typeof autoResizeTextarea === 'function') autoResizeTextarea();
+        input.focus();
+        if (typeof syncViewportHeight === 'function') syncViewportHeight();
+    }
+
+    const savedDraft = localStorage.getItem(STORAGE_DRAFT_KEY);
+    if (savedDraft) {
+        input.value = savedDraft;
+    }
+    const savedActiveCmd = localStorage.getItem(STORAGE_ACTIVE_CMD_KEY);
+    if (savedActiveCmd) {
+        setPendingCommand(savedActiveCmd, null, null);
+    }
+
+    // Универсальная функция вывода с поддержкой HTML (isHtml) для таймеров
+    function printOutput(inputData, customClassName = '', save = true) {
+        if (!inputData) return;
+
+        let text = '';
+        let className = customClassName;
+        let isHtml = false;
+
+        if (typeof inputData === 'object' && inputData !== null) {
+            text = inputData.response || '';
+            className = `terminal-line ${inputData.style || ''}`;
+            isHtml = !!inputData.isHtml;
+        } else {
+            text = String(inputData);
+            className = customClassName;
+        }
+
+        if (!text) return;
+
+        const div = document.createElement('div');
+        div.className = className;
+
+        if (isHtml) {
+            let formattedText = text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\n/g, '<br>');
+            div.innerHTML = formattedText;
+        } else {
+            div.textContent = text;
+        }
+
+        if (terminalOutput) {
+            terminalOutput.appendChild(div);
+            
+            // Двойной requestAnimationFrame гарантирует выполнение ровно в момент окончания отрисовки
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    terminalOutput.scrollTop = terminalOutput.scrollHeight;
+                });
+            });
+        }
+
+        if (save) {
+            try {
+                let history = JSON.parse(localStorage.getItem(STORAGE_HISTORY_KEY) || '[]');
+                history.push({ text, className, isHtml });
+                if (history.length > 100) history.shift();
+                localStorage.setItem(STORAGE_HISTORY_KEY, JSON.stringify(history));
+            } catch (e) {
+                console.error('Ошибка сохранения истории в localStorage', e);
+            }
+        }
+    }
+
+function restoreConsoleHistory() {
+    try {
+        const savedHistory = localStorage.getItem(STORAGE_HISTORY_KEY);
+        if (savedHistory) {
+            const history = JSON.parse(savedHistory);
+            
+            // Восстанавливаем всю историю
+            history.forEach(item => {
+                printOutput(item.text, item.className, false);
+            });
+            
+            // Двойная страховка: ждем окончания верстки браузером
+            setTimeout(() => {
+                requestAnimationFrame(() => {
+                    const terminalOutput = document.getElementById('terminal-output');
+                    const terminal = document.getElementById('terminal');
+                    
+                    // Прокручиваем внутренний блок вывода
+                    if (terminalOutput) {
+                        terminalOutput.scrollTop = terminalOutput.scrollHeight;
+                    }
+                    // На случай, если скролл висит на самом терминале
+                    if (terminal) {
+                        terminal.scrollTop = terminal.scrollHeight;
+                    }
+                    // На случай, если прокручивается вся страница целиком
+                    window.scrollTo(0, document.body.scrollHeight);
+                });
+            }, 50); // задержка в 50мс гарантирует, что DOM успел перестроиться
+        }
+    } catch (e) {
+        console.error('Ошибка восстановления истории', e);
+    }
+}
+
+    function handleQuickNav(e, cmd) {
+        if (e && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+            executeCommand(cmd, { skipRedirect: true });
+            return true;
+        }
+        if (e && e.preventDefault) e.preventDefault();
+        executeCommand(cmd, { skipRedirect: false });
+        return false;
+    }
+
+    function handleQuickNavAux(e, cmd) {
+        if (e && e.button === 1) {
+            executeCommand(cmd, { skipRedirect: true });
+        }
+    }
+
+    async function executeCommand(rawText, options = {}) {
+        const prompt = document.getElementById('prompt');
+        
+        let userProfileData = currentTerminalUser;
+        if (!userProfileData && typeof fetchCurrentUser === 'function') {
+            userProfileData = await fetchCurrentUser();
+        }
+        const UserIsAuthed = !!(userProfileData && !userProfileData.isGuest && userProfileData.email && userProfileData.id !== 'guest');
+
+        if (UserIsAuthed) {
+            prompt.textContent = `${userProfileData.email}:~$`;
+            printOutput(`${userProfileData.email}:~$ ${rawText}`);
+        } else {
+            prompt.textContent = `user@cloud:~$`;
+            printOutput(`user@cloud:~$ ${rawText}`);
+        }
+
+        if (/^((download|downoad)\s+(project|code)|export\s+project|fs\s+export|export\s+zip|скачать\s+(код|проект))/i.test(String(rawText || '').trim())) {
+            printOutput('⏳ Собираю ZIP-архив...', 'output-info', false);
+        }
+        
+        const result = await processCommand(rawText, options);
+
+        if (result.action === 'clear') {
+            terminalOutput.innerHTML = '';
+            localStorage.removeItem(STORAGE_HISTORY_KEY);
+            return;
+        }
+
+        printOutput(result);
+
+        if (result.commandPrefix) {
+            setPendingCommand(result.commandPrefix, result.inputValue ?? '', result.inputPlaceholder || null);
+            input.focus();
+            input.setSelectionRange(input.value.length, input.value.length);
+            return;
+        }
+
+        if (result.inputValue !== null && result.inputValue !== undefined) {
+            input.value = result.inputValue;
+            localStorage.setItem(STORAGE_DRAFT_KEY, input.value);
+            input.style.height = 'auto';
+            input.style.height = input.scrollHeight + 'px';
+            input.dispatchEvent(new Event('input'));
+            input.focus();
+            input.setSelectionRange(input.value.length, input.value.length);
+            return;
+        }
+
+        // Автоскролл до низу
+        requestAnimationFrame(() => {
+            if (terminalOutput) terminalOutput.scrollTop = terminalOutput.scrollHeight;
+            if (terminal) terminal.scrollTop = terminal.scrollHeight;
+        });
+
+        const parts = rawText.trim().split(/\s+/);
+        const baseCmd = parts[0] ? parts[0].toLowerCase() : '';
+        const fullCmdLower = rawText.trim().toLowerCase().replace(/\s+/g, ' ');
+
+        const isEditCommand = ['edit', 'ред', 'редактировать', 'ред.', 'редагувати', 'змінити'].includes(baseCmd) && result.style === 'output-success';
+        const isDeleteCommand = ['del', 'delete', 'удалить', 'видалити', 'rm'].includes(baseCmd) && result.style === 'output-success';
+        const isPinCommand = (
+            ['pin', 'unpin', 'fix', 'закріпити', 'закрепить', 'открепить', 'відкріпити', 'приколоть', 'приколоти'].includes(baseCmd) ||
+            fullCmdLower.startsWith('make fixed') ||
+            fullCmdLower === 'make last note fixed'
+        ) && result.style === 'output-success';
+        const isAddCommand = ['add', 'добавить', 'додати', 'write'].includes(baseCmd) && result.style === 'output-success';
+        
+        if (isEditCommand || isDeleteCommand || isPinCommand || isAddCommand) {
+            if (result.editedEntity === 'history') {
+                await executeCommand('Show history');
+            } else if (result.editedEntity === 'note') {
+                await executeCommand('Show notes');
+            }
+        }
+    }
+
+    async function handleFormSubmit(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        const rawText = input.value;
+
+        if (pendingCommandPrefix) {
+            const payloadText = rawText.trim();
+            if (!payloadText) {
+                printOutput(`⚠️ Введите текст для "${pendingCommandPrefix}" или нажмите ✕ для отмены.`, 'output-error', false);
+                return;
+            }
+            const combinedCommand = `${pendingCommandPrefix} ${payloadText}`;
+            clearPendingCommand(true);
+            await executeCommand(combinedCommand);
+            return;
+        }
+
+        if (!rawText.trim()) return;
+
+        input.value = '';
+        localStorage.removeItem(STORAGE_DRAFT_KEY);
+        input.style.height = 'auto';
+        await executeCommand(rawText);
+    }
+</script>
+<script>
+function autoResizeTextarea() {
+    input.style.height = 'auto';
+    input.style.height = input.scrollHeight + 'px';
+    const maxHeight = parseFloat(window.getComputedStyle(input).maxHeight);
+    if (input.scrollHeight > maxHeight) {
+        input.style.overflowY = 'auto';
+    } else {
+        input.style.overflowY = 'hidden';
+    }
+}
+
+input.addEventListener('input', () => {
+    autoResizeTextarea();
+    if (typeof STORAGE_DRAFT_KEY !== 'undefined') {
+        localStorage.setItem(STORAGE_DRAFT_KEY, input.value);
+    }
+});
+
+function reloadTerminalPage() {
+    window.location.reload();
+}
+
+function syncViewportHeight() {
+    const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    document.documentElement.style.setProperty('--app-height', `${vh}px`);
+    if (window.scrollY !== 0 || window.scrollX !== 0) {
+        window.scrollTo(0, 0);
+    }
+    const terminalEl = document.getElementById('terminal');
+    if (terminalEl) {
+        requestAnimationFrame(() => {
+            terminalEl.scrollTop = terminalEl.scrollHeight;
+        });
+    }
+}
+
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncViewportHeight);
+    window.visualViewport.addEventListener('scroll', syncViewportHeight);
+}
+window.addEventListener('resize', syncViewportHeight);
+window.addEventListener('pageshow', (e) => {
+    syncViewportHeight();
+    setTimeout(syncViewportHeight, 100);
+    if (e.persisted) {
+        autoResizeTextarea();
+    }
+});
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        syncViewportHeight();
+        setTimeout(syncViewportHeight, 100);
+    }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    syncViewportHeight();
+    const commandInput = document.getElementById('command-input');
+    if (commandInput) {
+        // Відправка на Enter (без Shift)
+        commandInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleFormSubmit(e);
+            } else if (e.key === 'Escape' && pendingCommandPrefix) {
+                e.preventDefault();
+                clearPendingCommand(true);
+            }
+        });
+        commandInput.addEventListener('focus', () => {
+            setTimeout(syncViewportHeight, 150);
+        });
+    }
+    autoResizeTextarea();
+});
+</script>
+    
+<script>
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+            .then((reg) => {
+                if (reg && typeof reg.update === 'function') reg.update().catch(() => {});
+            })
+            .catch((err) => console.log('Ошибка SW:', err));
+    });
+}
+</script>
+    
+</body>
+</html>

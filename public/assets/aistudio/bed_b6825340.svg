@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Изголовье -->
+  <rect x="64" y="80" width="64" height="352" rx="16" fill="#334155" stroke="#1e293b" stroke-width="12"/>
+  <!-- Каркас кровати -->
+  <rect x="96" y="160" width="352" height="272" rx="20" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+  <!-- Матрас -->
+  <rect x="144" y="192" width="276" height="208" rx="16" fill="#f8fafc" stroke="#1e293b" stroke-width="10"/>
+  <!-- Подушки -->
+  <rect x="176" y="216" width="96" height="72" rx="16" fill="#e2e8f0" stroke="#1e293b" stroke-width="8"/>
+  <rect x="288" y="216" width="96" height="72" rx="16" fill="#e2e8f0" stroke="#1e293b" stroke-width="8"/>
+  <!-- Одеяло / плед -->
+  <path d="M144 304h276v96a16 16 0 0 1-16 16H160a16 16 0 0 1-16-16v-96z" fill="#0284c7" opacity="0.2" stroke="#1e293b" stroke-width="10"/>
+</svg>

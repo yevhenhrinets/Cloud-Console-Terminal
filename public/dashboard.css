@@ -1,0 +1,175 @@
+/* dashboard.css — Стили для панели управления построек и очередей (с полной поддержкой Dark и Light тем) */
+
+:root {
+    --bg-page: #0f172a;
+    --text-primary: #f8fafc;
+    --card-bg: #1e293b;
+    --card-border: #334155;
+    --card-header: #f1f5f9;
+    --card-shadow: none;
+    --slot-bg: #0f172a;
+    --slot-empty-border: #334155;
+    --slot-empty-text: #475569;
+    --badge-bg: #334155;
+    --badge-text: #f8fafc;
+    --section-title: #38bdf8;
+    --border-color: #334155;
+    --building-name: #38bdf8;
+    --subtle-text: #94a3b8;
+}
+
+[data-theme="light"], .theme-light {
+    --bg-page: #f8fafc;
+    --text-primary: #0f172a;
+    --card-bg: #ffffff;
+    --card-border: #e2e8f0;
+    --card-header: #0f172a;
+    --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    --slot-bg: #f8fafc;
+    --slot-empty-border: #cbd5e1;
+    --slot-empty-text: #94a3b8;
+    --badge-bg: #e2e8f0;
+    --badge-text: #0f172a;
+    --section-title: #0284c7;
+    --border-color: #e2e8f0;
+    --building-name: #0284c7;
+    --subtle-text: #64748b;
+}
+
+body {
+    background-color: var(--bg-page);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 16px;
+    box-sizing: border-box;
+    overflow-y: auto;
+    min-height: 100vh;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.header h2 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.btn-console {
+    background-color: #3b82f6;
+    color: #ffffff;
+    padding: 8px 14px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: opacity 0.15s;
+}
+
+.btn-console:hover {
+    opacity: 0.9;
+}
+
+.section-title {
+    font-size: 18px;
+    font-weight: bold;
+    margin: 16px 0 10px 0;
+    color: var(--section-title);
+}
+
+.building-label {
+    font-size: 13px;
+    color: var(--building-name);
+    font-weight: bold;
+    width: 130px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.subtle-hint {
+    color: var(--subtle-text);
+    font-size: 13px;
+}
+
+.grid-queues {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: var(--card-shadow);
+    color: var(--text-primary);
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.card-header {
+    font-weight: bold;
+    font-size: 16px;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    color: var(--card-header);
+}
+
+.timer-slot {
+    background: var(--slot-bg);
+    color: var(--text-primary);
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.timer-slot-empty {
+    background: var(--slot-bg);
+    border: 2px dashed var(--slot-empty-border);
+    color: var(--slot-empty-text);
+}
+
+.btn-action {
+    background: #22c55e;
+    color: #ffffff;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: filter 0.15s;
+}
+
+.btn-action:hover {
+    filter: brightness(1.1);
+}
+
+.inventory-list {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding-bottom: 40px;
+}
+
+.badge {
+    background: var(--badge-bg);
+    color: var(--badge-text);
+    border: 1px solid var(--card-border);
+    padding: 8px 14px;
+    border-radius: 20px;
+    font-size: 14px;
+    transition: background 0.2s, color 0.2s;
+}

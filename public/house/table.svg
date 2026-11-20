@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Тень под столом -->
+  <ellipse cx="256" cy="450" rx="200" ry="30" fill="#000000" opacity="0.3"/>
+
+  <!-- Задние ножки -->
+  <rect x="110" y="220" width="28" height="200" rx="6" fill="#15803D"/>
+  <rect x="374" y="220" width="28" height="200" rx="6" fill="#15803D"/>
+
+  <!-- Передние ножки -->
+  <rect x="70" y="240" width="36" height="200" rx="8" fill="#16A34A" stroke="#15803D" stroke-width="4"/>
+  <rect x="406" y="240" width="36" height="200" rx="8" fill="#16A34A" stroke="#15803D" stroke-width="4"/>
+
+  <!-- Подстолье (царга) -->
+  <rect x="80" y="230" width="352" height="40" fill="#16A34A"/>
+
+  <!-- Столешница (основная крышка стола) -->
+  <rect x="40" y="190" width="432" height="45" rx="12" fill="#22C55E" stroke="#15803D" stroke-width="6"/>
+
+  <!-- Блик/светлая полоса на передней грани столешницы -->
+  <rect x="52" y="200" width="408" height="8" rx="4" fill="#4ADE80" opacity="0.6"/>
+</svg>

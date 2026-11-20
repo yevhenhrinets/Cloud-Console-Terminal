@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Контрастный цементный шов между плитками -->
+  <rect width="128" height="128" fill="#526071"/>
+
+  <!-- Четыре четверти синего ромба по углам (при стыковке образуют целые ромбы на перекрёстках плиток) -->
+  <g transform="translate(0,0)">
+    <polygon points="0,-30 30,0 0,30 -30,0" fill="#2563EB" stroke="#334155" stroke-width="2.5"/>
+    <polygon points="0,-21 21,0 0,21 -21,0" fill="#3B82F6"/>
+  </g>
+  <g transform="translate(128,0)">
+    <polygon points="0,-30 30,0 0,30 -30,0" fill="#2563EB" stroke="#334155" stroke-width="2.5"/>
+    <polygon points="0,-21 21,0 0,21 -21,0" fill="#3B82F6"/>
+  </g>
+  <g transform="translate(0,128)">
+    <polygon points="0,-30 30,0 0,30 -30,0" fill="#2563EB" stroke="#334155" stroke-width="2.5"/>
+    <polygon points="0,-21 21,0 0,21 -21,0" fill="#3B82F6"/>
+  </g>
+  <g transform="translate(128,128)">
+    <polygon points="0,-30 30,0 0,30 -30,0" fill="#2563EB" stroke="#334155" stroke-width="2.5"/>
+    <polygon points="0,-21 21,0 0,21 -21,0" fill="#3B82F6"/>
+  </g>
+
+  <!-- Целая белая восьмиугольная керамическая плитка с фаской -->
+  <polygon points="37,4 91,4 124,37 124,91 91,124 37,124 4,91 4,37" fill="#FFFFFF" stroke="#334155" stroke-width="2.5"/>
+  <polygon points="40,10 88,10 118,40 118,88 88,118 40,118 10,88 10,40" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+</svg>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Шаблон для замощения (бежевые восьмиугольники по углам, целый синий ромбик по центру) -->
+    <pattern id="tile-pattern" patternUnits="userSpaceOnUse" width="128" height="128">
+      <!-- Цвет швов (между плитками) в качестве подложки -->
+      <rect width="128" height="128" fill="#D1D5DB"/>
+
+      <!-- Четыре части бежевого восьмиугольника по углам паттерна (при повторении образуют целые восьмиугольники) -->
+      <g fill="#FDFBF7" stroke="#D1D5DB" stroke-width="2">
+        <polygon points="-20,-48 20,-48 48,-20 48,20 20,48 -20,48 -48,20 -48,-20" transform="translate(0,0)"/>
+        <polygon points="-20,-48 20,-48 48,-20 48,20 20,48 -20,48 -48,20 -48,-20" transform="translate(128,0)"/>
+        <polygon points="-20,-48 20,-48 48,-20 48,20 20,48 -20,48 -48,20 -48,-20" transform="translate(0,128)"/>
+        <polygon points="-20,-48 20,-48 48,-20 48,20 20,48 -20,48 -48,20 -48,-20" transform="translate(128,128)"/>
+      </g>
+
+      <!-- Цельный синий ромбик по центру (монолитная плитка без внутренних стыков) -->
+      <polygon points="64,24 104,64 64,104 24,64" fill="#3B82F6" stroke="#D1D5DB" stroke-width="2"/>
+    </pattern>
+  </defs>
+
+  <!-- Применяем узор на всю область с возможностью масштабирования -->
+  <rect width="100%" height="100%" fill="url(#tile-pattern)"/>
+</svg>

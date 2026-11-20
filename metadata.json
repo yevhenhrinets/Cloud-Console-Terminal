@@ -1,0 +1,6 @@
+{
+  "name": "Google AI Studio vs Gemini Guide",
+  "description": "Порівняльний гід та аналіз збереження коду та можливостей розробки в Google AI Studio та Gemini.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

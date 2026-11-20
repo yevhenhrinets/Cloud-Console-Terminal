@@ -1,0 +1,205 @@
+// commands/support.js — добавление issues
+
+CommandRegistry.register({
+    names: ['support', 'report', 'issue'],
+    description: 'Adding new item',
+    category: 'Support',
+    usage: 'Report TEXT | support TEXT | issue TEXT',
+    
+    handler: async (parameters) => {
+        const currentUser = await fetchCurrentUser();
+        if (!currentUser) {
+            return { response: t('not_authorized'), style: 'output-error' };
+        }
+
+        const args = parameters.args;
+        const subCmd = args[0] ? args[0].toLowerCase() : '';
+
+        // 1. Добавление заметки
+        if (subCmd === 'note' || subCmd === 'заметка' || subCmd === 'нотатка') {
+            const content = args.slice(1).join(' ').trim();
+            if (!content) {
+                return { response: '❌ Укажите текст заметки. Пример: `add note Купить молоко`', style: 'output-error' };
+            }
+            
+            const { error } = await window.supabaseClient
+                .from('notes')
+                .insert([{ content, created_by: currentUser.id }]);
+                
+            if (error) throw error;
+            return { response: `🟢 Заметка успешно сохранена!`, style: 'output-success', editedEntity: 'note' };
+        }
+
+        // 2. Добавление задачи в постройку (Add task Печь Макароны 10м)
+        if (['task', 'tasks', 'задача', 'задачи', 'завдання'].includes(subCmd)) {
+            const cleanArgs = args.slice(1).filter(w => !['в', 'на'].includes(w.toLowerCase()));
+            
+            if (cleanArgs.length < 3) {
+                return { response: '❓ Формат команды добавления задачи:\n  • `Add task <Постройка> <Задача> <Время>`\nПример: `Add task Печь Макароны 10м`', style: 'output-error' };
+            }
+
+            const buildingQuery = cleanArgs[0];
+            const durationStr = cleanArgs[cleanArgs.length - 1];
+            const taskName = cleanArgs.slice(1, cleanArgs.length - 1).join(' ');
+
+            if (!buildingQuery || !taskName || !durationStr) {
+                return { response: '❌ Неверный формат. Пример: `Add task Печь Макароны 10м`', style: 'output-error' };
+            }
+
+            // Вызываем общую логику модификации задач
+            return await modifyTaskInBuildingGlobal(currentUser.id, buildingQuery, taskName, durationStr, 'add');
+        }
+
+        // 3. Добавление таймера
+        let timerNameIndex = 0;
+        if (['timer', 'таймер', 'add'].includes(subCmd)) {
+            timerNameIndex = 1;
+            if (args[1] && ['timer', 'таймер', 'note', 'заметка'].includes(args[1].toLowerCase())) {
+                timerNameIndex = 2;
+            }
+        }
+
+        const rawTimerName = args[timerNameIndex];
+        if (!rawTimerName) {
+            return { response: '❌ Неверный формат команды. Примеры:\n  • `add note Текст`\n  • `timer Сосиска 1`\n  • `add timer Мультиварка 2`', style: 'output-error' };
+        }
+
+        let queueGroupId = 1;
+        const possibleQueue = args[timerNameIndex + 1];
+        if (possibleQueue && !isNaN(possibleQueue)) {
+            queueGroupId = parseInt(possibleQueue, 10);
+        }
+
+        const timerQueryName = rawTimerName.charAt(0).toUpperCase() + rawTimerName.slice(1).toLowerCase();
+
+        try {
+            const { data: templates, error: tError } = await window.supabaseClient
+                .from('timer_templates')
+                .select('*')
+                .ilike('name', timerQueryName)
+                .limit(1);
+
+            if (tError) throw tError;
+            
+            const template = templates && templates.length > 0 ? templates[0] : null;
+
+            if (!template) {
+                return { response: `❌ Неизвестный таймер "${rawTimerName}".`, style: 'output-error' };
+            }
+
+            const { data: existingTimers, error: qError } = await window.supabaseClient
+                .from('active_timers')
+                .select('*')
+                .eq('created_by', currentUser.id)
+                .eq('queue_group_id', queueGroupId)
+                .order('ends_at', { ascending: false });
+
+            if (qError) throw qError;
+
+            const MAX_QUEUE_LIMIT = 5;
+            if (existingTimers && existingTimers.length >= MAX_QUEUE_LIMIT) {
+                return { response: `❌ Очередь заполнена (лимит очереди #${queueGroupId} исчерпан).`, style: 'output-error' };
+            }
+
+            let baseTime = Date.now();
+            if (existingTimers && existingTimers.length > 0) {
+                const validEnds = existingTimers
+                    .map(t => t.ends_at ? new Date(t.ends_at).getTime() : 0)
+                    .filter(t => t > baseTime);
+                
+                if (validEnds.length > 0) {
+                    baseTime = Math.max(...validEnds);
+                }
+            }
+
+            const durationMs = template.duration_seconds * 1000;
+            const endsAt = new Date(baseTime + durationMs).toISOString();
+            const status = (!existingTimers || existingTimers.length === 0) ? 'running' : 'queued';
+
+            const { data: maxIdData } = await window.supabaseClient
+                .from('active_timers')
+                .select('inner_id')
+                .eq('created_by', currentUser.id)
+                .order('inner_id', { ascending: false })
+                .limit(1);
+
+            const nextInnerId = (maxIdData && maxIdData.length > 0 && maxIdData[0].inner_id) ? maxIdData[0].inner_id + 1 : 1;
+
+            const { error: insertError } = await window.supabaseClient
+                .from('active_timers')
+                .insert([{
+                    inner_id: nextInnerId,
+                    name: template.name,
+                    queue_group_id: queueGroupId,
+                    total_seconds: template.duration_seconds,
+                    remaining_seconds: template.duration_seconds,
+                    ends_at: endsAt,
+                    status: status,
+                    created_by: currentUser.id
+                }]);
+
+            if (insertError) throw insertError;
+
+            const statusMsg = status === 'running' ? '🟢 Запущен в работу!' : '⏳ Встал в очередь (время суммировано).';
+            return { 
+                response: `⏱️ Таймер "${template.name}" добавлен в очередь #${queueGroupId}. ${statusMsg}`, 
+                style: 'output-success' 
+            };
+
+        } catch (err) {
+            return { response: '❌ Ошибка добавления таймера: ' + err.message, style: 'output-error' };
+        }
+    }
+});
+
+// Глобальная вспомогательная функция для работы с задачами в постройках
+async function modifyTaskInBuildingGlobal(userId, buildingQuery, taskName, durationStr, action) {
+    const parseDurationSeconds = (str) => {
+        if (!str) return 60;
+        const lowerStr = str.toLowerCase();
+        const num = parseInt(str, 10) || 1;
+        if (lowerStr.includes('м') || lowerStr.includes('m')) return num * 60;
+        if (lowerStr.includes('ч') || lowerStr.includes('h')) return num * 3600;
+        if (lowerStr.includes('с') || lowerStr.includes('s')) return num;
+        return num;
+    };
+
+    try {
+        const { data: buildings, error: fetchErr } = await window.supabaseClient
+            .from('terminal_buildings')
+            .select('*')
+            .eq('created_by', userId)
+            .ilike('building_name', buildingQuery);
+
+        if (fetchErr) throw fetchErr;
+        if (!buildings || buildings.length === 0) {
+            return { response: `❌ Постройка "${buildingQuery}" не найдена.`, style: 'output-error' };
+        }
+
+        if (action === 'add') {
+            const durationSeconds = parseDurationSeconds(durationStr);
+
+            for (const building of buildings) {
+                let tasks = building.tasks || [];
+                const existingIdx = tasks.findIndex(t => t.name.toLowerCase() === taskName.toLowerCase());
+                
+                if (existingIdx !== -1) {
+                    tasks[existingIdx].duration = durationSeconds;
+                } else {
+                    tasks.push({ name: taskName, duration: durationSeconds });
+                }
+
+                const { error: updateErr } = await window.supabaseClient
+                    .from('terminal_buildings')
+                    .update({ tasks: tasks, updated_at: new Date().toISOString() })
+                    .eq('id', building.id);
+
+                if (updateErr) throw updateErr;
+            }
+
+            return { response: `🟢 Задача "${taskName}" (${durationStr}) добавлена во все постройки "${buildingQuery}" (${buildings.length} шт.)!`, style: 'output-success' };
+        }
+    } catch (err) {
+        return { response: '❌ Ошибка: ' + err.message, style: 'output-error' };
+    }
+}

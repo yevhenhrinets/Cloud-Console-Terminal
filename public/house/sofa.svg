@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Ножки -->
+  <rect x="80" y="416" width="32" height="48" rx="8" fill="#1e293b"/>
+  <rect x="400" y="416" width="32" height="48" rx="8" fill="#1e293b"/>
+  <!-- Основание дивана -->
+  <rect x="48" y="272" width="416" height="160" rx="24" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+  <!-- Подушки сиденья -->
+  <rect x="80" y="288" width="172" height="120" rx="16" fill="#e2e8f0" stroke="#1e293b" stroke-width="10"/>
+  <rect x="260" y="288" width="172" height="120" rx="16" fill="#e2e8f0" stroke="#1e293b" stroke-width="10"/>
+  <!-- Спинка дивана -->
+  <rect x="64" y="128" width="384" height="160" rx="24" fill="#94a3b8" stroke="#1e293b" stroke-width="12"/>
+  <!-- Подлокотники -->
+  <rect x="32" y="160" width="48" height="240" rx="16" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+  <rect x="432" y="160" width="48" height="240" rx="16" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+</svg>

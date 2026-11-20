@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Верхние и нижние патрубки труб -->
+  <rect x="208" y="32" width="32" height="48" fill="#94a3b8" stroke="#1e293b" stroke-width="10"/>
+  <rect x="272" y="32" width="32" height="48" fill="#94a3b8" stroke="#1e293b" stroke-width="10"/>
+  <rect x="160" y="432" width="32" height="48" fill="#94a3b8" stroke="#1e293b" stroke-width="10"/>
+  <rect x="320" y="432" width="32" height="48" fill="#94a3b8" stroke="#1e293b" stroke-width="10"/>
+  <!-- Основной корпус котла -->
+  <rect x="112" y="80" width="288" height="360" rx="24" fill="#e2e8f0" stroke="#1e293b" stroke-width="12"/>
+  <!-- Панель управления с экраном и манометром -->
+  <rect x="144" y="128" width="224" height="128" rx="16" fill="#1e293b"/>
+  <circle cx="200" cy="192" r="32" fill="#334155" stroke="#38bdf8" stroke-width="6"/>
+  <rect x="256" y="168" width="80" height="48" rx="8" fill="#0f172a"/>
+  <text x="270" y="200" font-family="monospace" font-size="22" font-weight="bold" fill="#ef4444">65°</text>
+  <!-- Кнопки управления -->
+  <circle cx="192" cy="336" r="16" fill="#cbd5e1" stroke="#1e293b" stroke-width="8"/>
+  <circle cx="256" cy="336" r="16" fill="#ef4444" stroke="#1e293b" stroke-width="8"/>
+  <circle cx="320" cy="336" r="16" fill="#cbd5e1" stroke="#1e293b" stroke-width="8"/>
+</svg>

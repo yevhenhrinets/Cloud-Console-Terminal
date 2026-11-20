@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Корпус кондиционера -->
+  <rect x="64" y="128" width="384" height="224" rx="32" fill="#e2e8f0" stroke="#1e293b" stroke-width="12"/>
+  <!-- Жалюзи / воздуховод снизу -->
+  <rect x="96" y="280" width="320" height="40" rx="12" fill="#cbd5e1" stroke="#1e293b" stroke-width="10"/>
+  <line x1="128" y1="300" x2="384" y2="300" stroke="#1e293b" stroke-width="6" stroke-linecap="round"/>
+  <!-- Дисплей температуры -->
+  <rect x="336" y="160" width="80" height="48" rx="8" fill="#1e293b"/>
+  <text x="356" y="195" font-family="monospace" font-size="28" font-weight="bold" fill="#10b981">22</text>
+  <!-- Индикатор питания -->
+  <circle cx="104" cy="160" r="8" fill="#10b981"/>
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Корпус шкафа -->
+  <rect x="80" y="48" width="352" height="416" rx="16" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+  <!-- Разделитель дверей -->
+  <line x1="256" y1="48" x2="256" y2="464" stroke="#1e293b" stroke-width="12"/>
+  <!-- Ручки -->
+  <rect x="232" y="220" width="12" height="64" rx="6" fill="#1e293b"/>
+  <rect x="268" y="220" width="12" height="64" rx="6" fill="#1e293b"/>
+  <!-- Полки / ножки цоколя -->
+  <rect x="80" y="440" width="352" height="24" fill="#94a3b8" stroke="#1e293b" stroke-width="12"/>
+</svg>
