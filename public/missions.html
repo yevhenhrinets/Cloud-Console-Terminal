@@ -8,8 +8,8 @@
     <meta http-equiv="Expires" content="0">
     <title>Поручения и Задания — Cloud Terminal</title>
     
-    <link rel="stylesheet" href="style.css?v=4.2">
-    <link rel="stylesheet" href="dashboard.css?v=4.2">
+    <link rel="stylesheet" href="/style.css?v=20261121_2">
+    <link rel="stylesheet" href="/dashboard.css?v=20261121_2">
     
     <style>
         :root {
@@ -774,10 +774,10 @@
     </style>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="/api.js?v=4.6"></script>
-    <script src="/helpers.js?v=4.6"></script>
-    <script src="/localization.js?v=4.2"></script>
-    <script src="/missions-store.js?v=4.6"></script>
+    <script src="/api.js?v=20261121_2"></script>
+    <script src="/helpers.js?v=20261121_2"></script>
+    <script src="/localization.js?v=20261121_2"></script>
+    <script src="/missions-store.js?v=20261121_2"></script>
 </head>
 <body>
 
@@ -799,8 +799,9 @@
             <button type="button" class="nav-btn" onclick="toggleThemeGlobal()">🎨 Тема</button>
             <a href="/terminal.html" class="nav-btn nav-btn-primary">💻 В консоль</a>
             <a href="/dashboard.html" class="nav-btn">🎛️ Дашборд</a>
-            <a href="/house/kitchen.html" class="nav-btn">🍳 Кухня</a>
-            <a href="/house/hall.html" class="nav-btn">🛋️ Зал</a>
+            <a href="/house/index.html" class="nav-btn">🏠 Дом 1</a>
+            <a href="/house2/index.html" class="nav-btn">🏡 Дом 2</a>
+            <a href="/house3/index.html" class="nav-btn">🏘️ Дом 3</a>
         </nav>
     </header>
 
@@ -1815,6 +1816,16 @@ on conflict (id) do nothing;</div>
         document.getElementById('tab-pending').textContent = `В процессе (${activeMissions.length})`;
         document.getElementById('tab-completed').textContent = `Выполненные (${completedMissions.length})`;
 
+        const activeNumberMap = new Map();
+        activeMissions.forEach((am, i) => {
+            activeNumberMap.set(String(am.id), am.position || (i + 1));
+        });
+
+        const completedNumberMap = new Map();
+        completedMissions.forEach((cm, i) => {
+            completedNumberMap.set(String(cm.id), i + 1);
+        });
+
         let displayList = allMissions;
         if (currentFilter === 'pending') displayList = activeMissions;
         if (currentFilter === 'completed') displayList = completedMissions;
@@ -1829,10 +1840,13 @@ on conflict (id) do nothing;</div>
 
         displayList.forEach((m, idx) => {
             const isDone = !!m.completed_at || m.status === 'completed';
+            const displayNum = isDone
+                ? (completedNumberMap.get(String(m.id)) || (idx + 1))
+                : (activeNumberMap.get(String(m.id)) || m.position || (idx + 1));
             const tr = document.createElement('tr');
 
             tr.innerHTML = `
-                <td style="font-family: monospace; color: #94a3b8; font-weight: 600;">#${m.position || (idx + 1)}</td>
+                <td style="font-family: monospace; color: #94a3b8; font-weight: 600;">#${displayNum}</td>
                 <td style="font-weight: 600; color: var(--text-main);">
                     ${escapeHtml(m.title)}
                 </td>

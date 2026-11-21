@@ -79,22 +79,34 @@
         }
     });
 
-    // 2. Прямая команда Add mission
+    // 2. Прямая команда Add mission (строго в 2 этапа)
     CommandRegistry.register({
         names: ['add mission', 'добавить задание', 'додати завдання', 'добавить поручение', 'додати доручення', 'add task mission'],
-        description: 'Добавление поручения в список дел',
+        description: 'Добавление поручения в список дел (строго в 2 этапа)',
         category: '📋 Задания',
-        usage: 'Add mission ТЕКСТ_ПОРУЧЕНИЯ',
-        handler: async (parameters) => {
+        usage: 'Add mission (затем ввести текст в поле)',
+        handler: async (parameters, options = {}) => {
             if (!window.MissionsStore) {
                 return { response: '❌ Ошибка: модуль MissionsStore не загружен.', style: 'output-error' };
             }
 
-            const cleanText = parameters.args.join(' ').trim();
+            const cleanText = (parameters && parameters.raw_args ? String(parameters.raw_args) : (parameters && Array.isArray(parameters.args) ? parameters.args.join(' ') : '')).trim();
+            const prefix = (parameters && parameters.matchedCmd) ? parameters.matchedCmd : 'add mission';
+
+            if (cleanText && !(options && options.fromTwoStepBar)) {
+                return {
+                    response: `⚠️ Команда \`${prefix}\` работает только в 2 этапа — текст нельзя вводить сразу в команде!\n1) Введите \`add mission\` без текста\n2) После появления команды под строкой ввода напишите текст поручения.`,
+                    style: 'output-error'
+                };
+            }
+
             if (!cleanText) {
                 return {
-                    response: '❌ Укажите текст поручения.\nПример: `Add mission Развесить стирку`',
-                    style: 'output-error'
+                    response: '📋 Режим создания поручения активирован. Введите текст поручения и нажмите Enter (или ✕ для отмены).',
+                    style: 'output-info',
+                    commandPrefix: 'add mission',
+                    inputValue: '',
+                    inputPlaceholder: 'Введите текст нового поручения...'
                 };
             }
 

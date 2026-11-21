@@ -22,8 +22,8 @@ function saveDemoBuildings(b) {
     localStorage.setItem(DEMO_BUILDINGS_KEY, JSON.stringify(b));
 }
 
-// 1. Создание постройки (Add building <Название>)
-async function handleAddBuilding(parameters) {
+// 1. Создание постройки (Add building — строго в 2 этапа)
+async function handleAddBuilding(parameters, options = {}) {
     const currentUser = await fetchCurrentUser();
     if (!currentUser) return { response: 'Помилка: користувач не визначений.', style: 'output-error' };
 
@@ -31,8 +31,21 @@ async function handleAddBuilding(parameters) {
     const cleanWords = rawArgs.filter(w => !['add', 'create', 'building', 'buildings', 'здание', 'постройка', 'постройки', 'будівля', 'споруда', 'добавить', 'создай', 'создать', 'створи', 'створити', 'додай', 'додати'].includes(w.toLowerCase()));
     const buildingName = cleanWords.join(' ').trim();
 
+    if (buildingName && !(options && options.fromTwoStepBar)) {
+        return {
+            response: '⚠️ Команда `add building` работает только в 2 этапа — название нельзя вводить сразу в команде!\n1) Введите `add building` без текста\n2) После появления команды под строкой ввода напишите название постройки.',
+            style: 'output-error'
+        };
+    }
+
     if (!buildingName) {
-        return { response: '❌ Укажите название постройки. Пример: `Add building Печь`', style: 'output-error' };
+        return {
+            response: '🏭 Режим создания постройки активирован. Введите название постройки и нажмите Enter (или ✕ для отмены).',
+            style: 'output-info',
+            commandPrefix: 'add building',
+            inputValue: '',
+            inputPlaceholder: 'Введите название новой постройки...'
+        };
     }
 
     if (currentUser.isGuest) {
@@ -188,11 +201,11 @@ CommandRegistry.register({
     description: 'Список построек и закрепленных за ними задач',
     category: '🏭 Постройки',
     usage: 'Show buildings | list buildings',
-    handler: async (parameters) => {
+    handler: async (parameters, options = {}) => {
         const fullText = (parameters.args || []).join(' ').toLowerCase();
         // Поддержка обратной грамматики: building add / building del
         if (fullText.includes('add') || fullText.includes('добавить') || fullText.includes('создай')) {
-            return await handleAddBuilding(parameters);
+            return await handleAddBuilding(parameters, options);
         }
         if (fullText.includes('del') || fullText.includes('delete') || fullText.includes('удалить') || fullText.includes('rm')) {
             return await handleDeleteBuilding(parameters);

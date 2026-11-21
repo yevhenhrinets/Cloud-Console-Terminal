@@ -7,8 +7,8 @@ function getDemoNotes() {
     if (!saved) {
         const initial = [
             { id: 1, inner_id: 1, content: 'Ласкаво просимо в Cloud Terminal! Всі команди активовані.', is_pinned: true, created_at: new Date(Date.now() - 3600000).toISOString(), version: 1 },
-            { id: 2, inner_id: 2, content: 'Спробуйте: help, show date, buildings, timers, inventory, kitchen, hall', is_pinned: false, created_at: new Date(Date.now() - 1800000).toISOString(), version: 1 },
-            { id: 3, inner_id: 3, content: 'Додайте нову нотатку: add note Текст нової нотатки', is_pinned: false, created_at: new Date(Date.now() - 600000).toISOString(), version: 1 }
+            { id: 2, inner_id: 2, content: 'Спробуйте: commands list, support, show date, home 1, home 2, home 3', is_pinned: false, created_at: new Date(Date.now() - 1800000).toISOString(), version: 1 },
+            { id: 3, inner_id: 3, content: 'Додайте нову нотатку у 2 етапи: введіть write note або add note', is_pinned: false, created_at: new Date(Date.now() - 600000).toISOString(), version: 1 }
         ];
         localStorage.setItem(DEMO_NOTES_KEY, JSON.stringify(initial));
         return initial;

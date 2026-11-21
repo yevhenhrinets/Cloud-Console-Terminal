@@ -2,7 +2,7 @@
 
 CommandRegistry.register({
     names: ['edit', 'ред', 'редактировать', 'ред.', 'редагувати', 'змінити'],
-    handler: async (parameters) => {
+    handler: async (parameters, options = {}) => {
         const currentUser = await fetchCurrentUser();
         if (!currentUser) {
             return { response: t('not_authorized'), style: 'output-error' };
@@ -151,6 +151,14 @@ CommandRegistry.register({
                 }
                 newContent = args.slice(startIndex).join(' ').trim();
             }
+        }
+
+        if (newContent && !(options && options.fromTwoStepBar)) {
+            const cmdHint = isHistory ? `edit history ${targetInnerId}` : `edit ${targetInnerId}`;
+            return {
+                response: `⚠️ Редактирование текста работает только в 2 этапа — нельзя указывать новый текст прямо в команде!\n1) Введите \`${cmdHint}\` (или \`edit last\`)\n2) Отредактируйте загруженный текст в поле ввода.`,
+                style: 'output-error'
+            };
         }
 
         // Оффлайн-ветка для заметок (загрузка в инпут и сохранение в очередь синхронизации)

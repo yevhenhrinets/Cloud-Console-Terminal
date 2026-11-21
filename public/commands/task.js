@@ -10,8 +10,8 @@ function parseTaskDuration(str) {
     return num;
 }
 
-// 1. Добавление задачи: Add task <Постройка> <Задача> <Время>
-async function handleAddTask(parameters) {
+// 1. Добавление задачи: Add task (строго в 2 этапа)
+async function handleAddTask(parameters, options = {}) {
     const currentUser = await fetchCurrentUser();
     if (!currentUser) return { response: t('not_authorized'), style: 'output-error' };
 
@@ -19,9 +19,26 @@ async function handleAddTask(parameters) {
     // Удаляем служебные слова команды (add, task, tasks, etc.)
     const cleanArgs = rawArgs.filter(w => !['add', 'create', 'task', 'tasks', 'задача', 'задачи', 'завдання', 'добавить', 'создать', 'додати', 'в', 'на'].includes(w.toLowerCase()));
 
+    if (cleanArgs.length > 0 && !(options && options.fromTwoStepBar)) {
+        return {
+            response: '⚠️ Команда `add task` работает только в 2 этапа — текст задачи нельзя вводить сразу в команде!\n1) Введите `add task` без параметров\n2) После появления команды под строкой ввода напишите: `<Постройка> <Задача> <Время>`.',
+            style: 'output-error'
+        };
+    }
+
+    if (cleanArgs.length === 0) {
+        return {
+            response: '📋 Режим добавления задачи активирован. Введите `<Постройка> <Задача> <Время>` (например: `Печь Пирог 10м`) или нажмите ✕ для отмены.',
+            style: 'output-info',
+            commandPrefix: 'add task',
+            inputValue: '',
+            inputPlaceholder: 'Постройка Задача Время (напр: Печь Пирог 10м)...'
+        };
+    }
+
     if (cleanArgs.length < 3) {
         return { 
-            response: '❓ Формат команды добавления задачи:\n  • `Add task <Постройка> <Задача> <Время>`\nПример: `Add task Кухня Кипяток 5м`\n(Поддерживается также: `Task add ...`)', 
+            response: '❓ Формат данных после `add task`:\n  • `<Постройка> <Задача> <Время>`\nПример: `Печь Макароны 10м`', 
             style: 'output-error' 
         };
     }
@@ -31,7 +48,7 @@ async function handleAddTask(parameters) {
     const taskName = cleanArgs.slice(1, cleanArgs.length - 1).join(' ');
 
     if (!buildingQuery || !taskName || !durationStr) {
-        return { response: '❌ Неверный формат. Пример: `Add task Кухня Кипяток 5м`', style: 'output-error' };
+        return { response: '❌ Неверный формат. Пример: `Печь Макароны 10м`', style: 'output-error' };
     }
 
     return await modifyTaskInBuilding(currentUser.id, buildingQuery, taskName, durationStr, 'add');
@@ -234,10 +251,10 @@ CommandRegistry.register({
     description: 'Список задач в постройках',
     usage: 'Show tasks [Постройка]',
     category: '🏭 Постройки',
-    handler: async (parameters) => {
+    handler: async (parameters, options = {}) => {
         const fullText = (parameters.args || []).join(' ').toLowerCase();
         if (fullText.includes('add') || fullText.includes('добавить') || fullText.includes('создать')) {
-            return await handleAddTask(parameters);
+            return await handleAddTask(parameters, options);
         }
         if (fullText.includes('del') || fullText.includes('delete') || fullText.includes('удалить') || fullText.includes('rm')) {
             return await handleDeleteTask(parameters);

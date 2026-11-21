@@ -54,11 +54,11 @@
         }
     });
 
-    // 2. Команда ls / dir / list directory
+    // 2. Команда ls / list / directories / dir / vdir
     CommandRegistry.register({
         names: [
-            'ls', 'dir', 
-            'list directory', 'list folder', 
+            'ls', 'list', 'directories', 'directories list', 'show directories', 'directories tree', 'dir', 'vdir',
+            'list directory', 'list folder',
             'список файлов', 'папки', 'файлы', 'содержимое'
         ],
         description: 'Просмотр содержимого текущей директории',
@@ -100,7 +100,7 @@
 
                 lines.push(`\n📊 Всего: ${totalFolders} папок, ${totalFiles} файлов.`);
                 lines.push(`💡 Подсказки:`);
-                lines.push(`  • Создать папку: create directory <имя>`);
+                lines.push(`  • Создать папку: create directory (двухэтапная команда)`);
                 lines.push(`  • Перейти: cd <имя> | cd ..`);
                 lines.push(`  • Найти папку: find directory <начало имени>`);
                 lines.push(`  • Скачать zip: fs export`);
@@ -138,30 +138,41 @@
         }
     });
 
-    // 4. Команда mkdir / add directory / create directory / make directory
+    // 4. Команда create directory / mkdir / add directory / make directory (строго в 2 этапа)
     CommandRegistry.register({
         names: [
-            'mkdir', 
-            'add directory', 'create directory', 'make directory',
+            'create directory', 'mkdir',
+            'add directory', 'make directory',
             'add folder', 'create folder', 'make folder',
             'создать папку', 'добавить папку', 'новая папка'
         ],
-        description: 'Создание новой папки (включая вложенные пути: a/b/c)',
+        description: 'Создание новой папки (строго в 2 этапа, включая вложенные пути: a/b/c)',
         category: 'FileSystem',
-        usage: 'create directory <название> | mkdir Test1 | add directory /org/proj/Test',
+        usage: 'create directory (затем ввести название в поле)',
 
-        handler: async (parameters) => {
+        handler: async (parameters, options = {}) => {
             if (!window.LocalFS) {
                 return { response: '❌ Файловая система LocalFS не инициализирована.', style: 'output-error' };
             }
 
             const raw = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
             const folderName = cleanArgString(raw);
+            const prefix = (parameters && parameters.matchedCmd) ? parameters.matchedCmd : 'create directory';
+
+            if (folderName && !(options && options.fromTwoStepBar)) {
+                return {
+                    response: `⚠️ Команда \`${prefix}\` работает только в 2 этапа — нельзя указывать название папки сразу в команде!\n1) Введите \`${prefix}\` без названия\n2) После появления команды под строкой ввода напишите имя новой папки.`,
+                    style: 'output-error'
+                };
+            }
 
             if (!folderName) {
                 return {
-                    response: '❌ Укажите название папки.\nПример: `create directory Test1` или `mkdir "TestContent TestValue1"`',
-                    style: 'output-error'
+                    response: '📁 Создание папки: введите название новой папки (или путь a/b/c) и нажмите Enter (или ✕ для отмены).',
+                    style: 'output-info',
+                    commandPrefix: prefix,
+                    inputValue: '',
+                    inputPlaceholder: 'Название новой папки (например: Test1 или org/proj)...'
                 };
             }
 
@@ -381,73 +392,97 @@
         }
     });
 
-    // 9. Команда fs (управление хранилищем, экспорт zip, выбор системной папки)
+    // 9.1. Отдельная команда fs export (чтобы любые пользовательские алиасы работали напрямую)
     CommandRegistry.register({
         names: [
-            'fs', 'файлы', 'файловая система',
-            'fs export', 'export zip', 'скачать zip', 'экспорт zip',
-            'fs pick', 'pick directory', 'выбрать папку',
-            'fs status', 'статус хранилища'
+            'fs export', 'export zip',
+            'export file system', 'download all files', 'save project',
+            'скачать zip', 'экспорт zip'
         ],
+        description: 'Экспорт всей текущей директории и подпапок в .ZIP архив',
+        category: 'FileSystem',
+        usage: 'fs export | export file system | download all files | save project',
+
+        handler: async () => {
+            if (!window.LocalFS) {
+                return { response: '❌ Файловая система LocalFS не инициализирована.', style: 'output-error' };
+            }
+            try {
+                const zipRes = await window.LocalFS.exportZip();
+                return {
+                    response: `📦 Архив "${zipRes.filename}" (${zipRes.size}) успешно сгенерирован и подготовлен к скачиванию!\n<a href="${zipRes.downloadUrl}" download="${zipRes.filename}" style="color:#38bdf8;text-decoration:underline;font-weight:600;">📥 Нажмите здесь, если скачивание не началось автоматически</a>\n\n💡 Теперь вы можете открыть Google Диск и просто закинуть скачанный .zip файл в любую папку — 100% бесплатно и без привязки карт!`,
+                    style: 'output-success',
+                    isHtml: true
+                };
+            } catch (e) {
+                return {
+                    response: `❌ Ошибка экспорта архива: ${e.message}`,
+                    style: 'output-error'
+                };
+            }
+        }
+    });
+
+    // 9.2. Отдельная команда fs pick
+    CommandRegistry.register({
+        names: ['fs pick', 'pick directory', 'выбрать папку'],
+        description: 'Выбрать реальную системную папку на устройстве (File System Access API)',
+        category: 'FileSystem',
+        usage: 'fs pick | pick directory',
+
+        handler: async () => {
+            if (!window.LocalFS) {
+                return { response: '❌ Файловая система LocalFS не инициализирована.', style: 'output-error' };
+            }
+            try {
+                const pickRes = await window.LocalFS.pick();
+                if (pickRes.cancelled) {
+                    return { response: 'Выбор папки отменен.', style: 'output-info' };
+                }
+                return {
+                    response: `📁 Папка устройства "${pickRes.name}" успешно подключена!\n📍 Текущий путь: ${pickRes.path}\nВведите \`ls\` для просмотра содержимого.`,
+                    style: 'output-success'
+                };
+            } catch (e) {
+                return {
+                    response: `ℹ️ ${e.message}`,
+                    style: 'output-info'
+                };
+            }
+        }
+    });
+
+    // 9.3. Отдельная команда fs status
+    CommandRegistry.register({
+        names: ['fs status', 'статус хранилища'],
+        description: 'Показать статус локального файлового хранилища',
+        category: 'FileSystem',
+        usage: 'fs status',
+
+        handler: async () => {
+            if (!window.LocalFS) {
+                return { response: '❌ Файловая система LocalFS не инициализирована.', style: 'output-error' };
+            }
+            const st = window.LocalFS.getStatus();
+            return {
+                response: `📍 Путь: ${st.path}\n💾 Тип хранилища: ${st.storageType}\n📱 Платформа: Android PWA (Origin Private File System)\n💰 Стоимость: 0$ (полностью бесплатно)`,
+                style: 'output-info'
+            };
+        }
+    });
+
+    // 9.4. Общая справка fs
+    CommandRegistry.register({
+        names: ['fs', 'файлы', 'файловая система'],
         description: 'Локальное файловое хранилище Android / Браузера (OPFS, ZIP-экспорт)',
         category: 'FileSystem',
-        usage: 'fs | fs export | fs pick | fs status | export zip',
+        usage: 'fs | fs export | fs pick | fs status',
 
-        handler: async (parameters) => {
+        handler: async () => {
             if (!window.LocalFS) {
                 return { response: '❌ Файловая система LocalFS не инициализирована.', style: 'output-error' };
             }
 
-            const raw = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').toLowerCase().trim();
-            const fullCmd = (parameters && parameters.cmd ? String(parameters.cmd) : '').toLowerCase();
-            const combined = `${fullCmd} ${raw}`.trim();
-
-            // А. Экспорт ZIP
-            if (combined.includes('export') || combined.includes('zip') || combined.includes('скачать')) {
-                try {
-                    const zipRes = await window.LocalFS.exportZip();
-                    return {
-                        response: `📦 Архив "${zipRes.filename}" (${zipRes.size}) успешно сгенерирован и подготовлен к скачиванию!\n<a href="${zipRes.downloadUrl}" download="${zipRes.filename}" style="color:#38bdf8;text-decoration:underline;font-weight:600;">📥 Нажмите здесь, если скачивание не началось автоматически</a>\n\n💡 Теперь вы можете открыть Google Диск и просто закинуть скачанный .zip файл в любую папку — 100% бесплатно и без привязки карт!`,
-                        style: 'output-success',
-                        isHtml: true
-                    };
-                } catch (e) {
-                    return {
-                        response: `❌ Ошибка экспорта архива: ${e.message}`,
-                        style: 'output-error'
-                    };
-                }
-            }
-
-            // Б. Выбор системной папки устройства (File System Access API)
-            if (combined.includes('pick') || combined.includes('выбрать')) {
-                try {
-                    const pickRes = await window.LocalFS.pick();
-                    if (pickRes.cancelled) {
-                        return { response: 'Выбор папки отменен.', style: 'output-info' };
-                    }
-                    return {
-                        response: `📁 Папка устройства "${pickRes.name}" успешно подключена!\n📍 Текущий путь: ${pickRes.path}\nВведите \`ls\` для просмотра содержимого.`,
-                        style: 'output-success'
-                    };
-                } catch (e) {
-                    return {
-                        response: `ℹ️ ${e.message}`,
-                        style: 'output-info'
-                    };
-                }
-            }
-
-            // В. Статус
-            if (combined.includes('status') || combined.includes('статус')) {
-                const st = window.LocalFS.getStatus();
-                return {
-                    response: `📍 Путь: ${st.path}\n💾 Тип хранилища: ${st.storageType}\n📱 Платформа: Android PWA (Origin Private File System)\n💰 Стоимость: 0$ (полностью бесплатно)`,
-                    style: 'output-info'
-                };
-            }
-
-            // Г. Общая справка по командам файловой системы
             const st = window.LocalFS.getStatus();
             return {
                 response: `📁 Локальная файловая система (Android / PWA)\n` +
@@ -455,15 +490,14 @@
                           `📍 Текущий путь: ${st.path}\n` +
                           `💾 Хранилище: ${st.storageType}\n\n` +
                           `📌 Доступные команды:\n` +
-                          `  • ls | dir — просмотр содержимого текущей папки\n` +
-                          `  • cd <путь> | cd .. | cd ~ — переход по папкам\n` +
-                          `  • change directory to /path/to/folder — переход по полному пути\n` +
-                          `  • create directory <имя> | mkdir <имя> — создание папки\n` +
+                          `  • ls | list | directories | dir | vdir — просмотр текущей папки\n` +
+                          `  • cd <путь> | change directory <путь> | cd .. | cd ~ — переход по папкам\n` +
+                          `  • create directory (в 2 этапа) — создание папки\n` +
                           `  • find directory <имя> — поиск папки по началу названия (префиксу)\n` +
                           `  • edit directory <старое> to <новое> — переименование папки\n` +
                           `  • del directory <имя> — удаление папки (в корзину)\n` +
                           `  • undel directory <имя> — восстановление удаленной папки\n` +
-                          `  • fs export (или export zip) — скачать всю структуру в .ZIP архив\n` +
+                          `  • fs export | Save project | Download all files — скачать в .ZIP архив\n` +
                           `  • fs pick — выбрать реальную папку на устройстве\n` +
                           `  • pwd — показать текущий рабочий каталог\n` +
                           `──────────────────────────────────────────────\n` +

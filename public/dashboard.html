@@ -3,15 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Cloud Terminal — Dashboard</title>
     
-    <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="dashboard.css">
+    <link rel="stylesheet" href="/style.css?v=20261121_2">
+    <link rel="stylesheet" href="/dashboard.css?v=20261121_2">
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="/api.js?v=5.0"></script>
-    <script src="/helpers.js?v=5.0"></script>
-    <script src="/localization.js?v=5.0"></script>
+    <script src="/api.js?v=20261121_2"></script>
+    <script src="/helpers.js?v=20261121_2"></script>
+    <script src="/localization.js?v=20261121_2"></script>
 </head>
 <body>
 
@@ -19,10 +22,9 @@
         <h2>🎛️ Dashboard</h2>
         <div style="display: flex; gap: 6px; flex-wrap: wrap;">
             <button type="button" class="btn-console" onclick="toggleThemeGlobal()" style="background: #475569; border: 1px solid #64748b; cursor: pointer;">🎨 Тема</button>
-            <a href="/house/kitchen.html" class="btn-console" style="background: #15803d; border-color: #166534;">🏠1 Кухня</a>
-            <a href="/house/hall.html" class="btn-console" style="background: #7c3aed; border-color: #6d28d9;">🏠1 Зал</a>
-            <a href="/house2/kitchen.html" class="btn-console" style="background: #0f766e; border-color: #115e59;">🏡2 Кухня</a>
-            <a href="/house2/hall.html" class="btn-console" style="background: #b45309; border-color: #92400e;">🏡2 Зал</a>
+            <a href="/house/index.html" class="btn-console" style="background: #15803d; border-color: #166534;">🏠 Дом 1</a>
+            <a href="/house2/index.html" class="btn-console" style="background: #0f766e; border-color: #115e59;">🏡 Дом 2</a>
+            <a href="/house3/index.html" class="btn-console" style="background: #7c3aed; border-color: #6d28d9;">🏘️ Дом 3</a>
             <a href="/missions.html" class="btn-console" style="background: #0284c7; border-color: #0369a1;">📋 Задания</a>
             <a id="header-action-btn" href="/terminal.html" class="btn-console">💻 В консоль</a>
         </div>
@@ -52,7 +54,7 @@
         <div class="badge">Загрузка склада...</div>
     </div>
 
-    <script src="/dashboard-logic.js?v=4.4"></script>
-    <script src="/dashboard-ui.js?v=4.4"></script>
+    <script src="/dashboard-logic.js?v=20261121_2"></script>
+    <script src="/dashboard-ui.js?v=20261121_2"></script>
 </body>
 </html>

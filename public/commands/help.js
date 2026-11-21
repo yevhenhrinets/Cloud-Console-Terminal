@@ -1,31 +1,35 @@
 // commands/help.js — автоматический справочник по всем командам терминала
 
 CommandRegistry.register({
-    names: ['help', 'помощь', 'допомога', '?', 'с чего начать?', 'помогите', 'допоможіть'],
+    names: [
+        'commands list', 'show commands', 'show commands list',
+        'list commands', 'commands', 'all commands',
+        'список команд', 'показать команды', 'команды', 'команди', 'перелік команд'
+    ],
     description: 'Выводит список всех доступных команд',
-    usage: 'help [название_команды]',
+    usage: 'commands list | show commands list',
     category: '🌐 Системные',
     handler: async (parameters) => {
         try {
             const currentUser = await fetchCurrentUser();
-            const isAdmin = currentUser && ['root', 'support'].includes(currentUser.role);
+            const isAdmin = typeof window.isAdminUser === 'function'
+                ? window.isAdminUser(currentUser)
+                : (currentUser && ['root', 'support', 'admin'].includes(currentUser.role));
 
-            // Получаем все зарегистрированные команды через новый метод getAll()
-            const registeredCommands = typeof CommandRegistry.getAll === 'function' 
-                ? CommandRegistry.getAll() 
+            const registeredCommands = typeof CommandRegistry.getAll === 'function'
+                ? CommandRegistry.getAll()
                 : Object.values(CommandRegistry.commands);
 
             if (!registeredCommands || registeredCommands.length === 0) {
                 return { response: '⚠️ Список команд пуст.', style: 'output-error' };
             }
 
-            // Убираем дубликаты по первому имени
             const uniqueCommandsMap = new Map();
             registeredCommands.forEach(cmd => {
                 if (!cmd || !cmd.names) return;
                 const names = Array.isArray(cmd.names) ? cmd.names : [cmd.names[0]];
                 const primaryName = names[0].toLowerCase();
-                
+
                 if (!uniqueCommandsMap.has(primaryName)) {
                     uniqueCommandsMap.set(primaryName, {
                         names: names,
@@ -36,7 +40,6 @@ CommandRegistry.register({
                 }
             });
 
-            // Группируем по категориям
             const categories = {};
             uniqueCommandsMap.forEach(cmd => {
                 if (!categories[cmd.category]) {
@@ -60,14 +63,14 @@ CommandRegistry.register({
             if (isAdmin) {
                 helpText += "🔑 **Админ-модификаторы:**\n" +
                     "  • Фильтрация данных: добавьте `of user [UUID]` к командам просмотра\n" +
-                    "  • Действия от чужого лица: добавьте `as user [UUID]`";
+                    "  • Действия от чужого лица: добавьте `as user [UUID]`\n" +
+                    "  • Обращения в поддержку: `reports` / `show issues`";
             }
 
             return { response: helpText.trim(), style: 'output-info' };
         } catch (err) {
-            console.error('Ошибка в справке help:', err);
-            return { response: '❌ Ошибка выполнения help: ' + err.message, style: 'output-error' };
+            console.error('Ошибка в списке команд:', err);
+            return { response: '❌ Ошибка выполнения commands list: ' + err.message, style: 'output-error' };
         }
     }
 });
-

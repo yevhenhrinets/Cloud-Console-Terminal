@@ -39,7 +39,16 @@ CommandRegistry.register({
             // 🧠 ГРУППИРУЕМ ПО inner_id И ОСТАВЛЯЕМ ТОЛЬКО ПОСЛЕДНЮЮ ВЕРСИЮ
             const deletedHistoryMap = new Map();
             data.forEach(history => {
-                if (history.command === '__house_layout__' || String(history.raw_text || '').startsWith('__house_layout__:')) return;
+                if (
+                    history.command === '__house_layout__' ||
+                    String(history.raw_text || '').startsWith('__house_layout__:') ||
+                    history.command === '__support_report__' ||
+                    String(history.raw_text || '').startsWith('__support_report__:') ||
+                    history.command === '__command_alias__' ||
+                    String(history.raw_text || '').startsWith('__command_alias__:') ||
+                    history.command === '__task_cooldown__' ||
+                    String(history.raw_text || '').startsWith('__task_cooldown__:')
+                ) return;
                 // Если такого inner_id еще нет в карте или версия текущей заметки выше — обновляем
                 if (!deletedHistoryMap.has(history.inner_id) || history.version > deletedHistoryMap.get(history.inner_id).version) {
                     deletedHistoryMap.set(history.inner_id, history);

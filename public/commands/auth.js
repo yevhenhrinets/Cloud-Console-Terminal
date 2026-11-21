@@ -136,21 +136,36 @@ CommandRegistry.register({
 CommandRegistry.register({
     names: ['set nickname', 'set name', 'изменить ник', 'изменить имя'],
 
-    description: 'Изменить имя или никнейм профиля',
+    description: 'Изменить имя или никнейм профиля (строго в 2 этапа)',
     category: 'User',
-    usage: 'set name Имя | set nickname Ник',
+    usage: 'set name | set nickname',
 
-    handler: async (parameters) => {
+    handler: async (parameters, options = {}) => {
         const user = await fetchCurrentUser();
         if (!user || user.isGuest) {
             return { response: 'Ошибка: сначала войдите в реальный аккаунт командой `login`.', style: 'output-error' };
         }
 
-        const newText = parameters.args.slice(1).join(' ');
-        const isNickname = parameters.args[0]?.toLowerCase().includes('nick') || parameters.args[0]?.toLowerCase().includes('ник');
+        const matchedLower = String((parameters && parameters.matchedCmd) || '').toLowerCase();
+        const isNickname = matchedLower.includes('nick') || matchedLower.includes('ник');
+        const prefix = isNickname ? 'set nickname' : 'set name';
+        const newText = (parameters && parameters.raw_args ? String(parameters.raw_args) : (parameters && Array.isArray(parameters.args) ? parameters.args.join(' ') : '')).trim();
+
+        if (newText && !(options && options.fromTwoStepBar)) {
+            return {
+                response: `⚠️ Команда \`${prefix}\` работает только в 2 этапа!\n1) Введите \`${prefix}\` без текста\n2) После появления команды под строкой ввода напишите новое значение.`,
+                style: 'output-error'
+            };
+        }
 
         if (!newText) {
-            return { response: `Ошибка: укажите новое значение.\nПример: ${isNickname ? 'set nickname cool_coder' : 'set name Алексей'}`, style: 'output-error' };
+            return {
+                response: `👤 Введите ${isNickname ? 'новый никнейм' : 'новое имя'} и нажмите Enter (или ✕ для отмены).`,
+                style: 'output-info',
+                commandPrefix: prefix,
+                inputValue: '',
+                inputPlaceholder: isNickname ? 'Введите новый никнейм...' : 'Введите новое имя...'
+            };
         }
 
         const updateData = isNickname

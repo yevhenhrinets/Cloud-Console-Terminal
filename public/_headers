@@ -1,0 +1,14 @@
+/*
+  Cache control headers for Cloudflare Pages so HTML and Service Worker are always revalidated.
+*/
+/
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/*.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/service-worker.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/manifest.json
+  Cache-Control: no-cache, no-store, must-revalidate

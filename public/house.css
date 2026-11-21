@@ -1,0 +1,366 @@
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent !important;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    overflow: hidden;
+    background-color: #0f172a;
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    transition: background-color 0.2s ease, color 0.2s ease;
+    overscroll-behavior: none;
+}
+
+[data-theme="light"] html,
+[data-theme="light"] body,
+body.theme-light {
+    background-color: #f8fafc;
+    color: #1e293b;
+}
+
+[data-theme="light"] .top-nav,
+body.theme-light .top-nav {
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(203, 213, 225, 0.9);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="light"] .top-nav a,
+[data-theme="light"] .top-nav button,
+body.theme-light .top-nav a,
+body.theme-light .top-nav button {
+    color: #334155;
+}
+
+[data-theme="light"] .room-label,
+body.theme-light .room-label {
+    background: rgba(255, 255, 255, 0.9);
+    color: #1e293b;
+    border-color: rgba(148, 163, 184, 0.55);
+}
+
+[data-theme="light"] .room-connector-wall,
+body.theme-light .room-connector-wall {
+    background: #64748b;
+}
+
+/* Верхняя панель навигации */
+.top-nav {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(15, 23, 42, 0.9);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(51, 65, 85, 0.85);
+    border-radius: 9999px;
+    padding: 5px 10px;
+    z-index: 200;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.42);
+    max-width: calc(100vw - 16px);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.top-nav::-webkit-scrollbar {
+    display: none;
+}
+
+.top-nav a,
+.top-nav button {
+    color: #cbd5e1;
+    background: transparent;
+    border: none;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 5px 10px;
+    border-radius: 9999px;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    cursor: pointer;
+    flex-shrink: 0;
+    font-family: inherit;
+}
+
+.top-nav a:hover,
+.top-nav button:hover {
+    color: #ffffff;
+    background: rgba(56, 189, 248, 0.22);
+}
+
+.top-nav a.active {
+    background: #0284c7;
+    color: #ffffff;
+}
+
+.top-nav-sep {
+    width: 1px;
+    height: 18px;
+    background: rgba(148, 163, 184, 0.35);
+    margin: 0 2px;
+    flex-shrink: 0;
+}
+
+/* Прокручиваемый 2D-холст Дома (пальцем на смартфоне и тачпадом на ноутбуке) */
+.house-viewport {
+    width: 100vw;
+    height: 100dvh;
+    padding: 64px 20px 28px 20px;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
+    overscroll-behavior: contain;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    cursor: grab;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(100, 116, 139, 0.5) transparent;
+}
+
+.house-viewport.is-panning {
+    cursor: grabbing;
+}
+
+.house-viewport::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+.house-viewport::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.45);
+    border-radius: 4px;
+}
+
+.house-world {
+    margin: auto;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 0;
+    padding: 8px 12px 24px 12px;
+    position: relative;
+    flex-shrink: 0;
+    touch-action: pan-x pan-y;
+}
+
+.room-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    touch-action: pan-x pan-y;
+}
+
+.room-label {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 5px 14px;
+    border-radius: 9999px;
+    background: rgba(30, 41, 59, 0.85);
+    border: 1px solid rgba(71, 85, 105, 0.8);
+    color: #e2e8f0;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Перемычка / дверной проем между кухней и залом */
+.room-connector {
+    width: 26px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    align-self: stretch;
+    padding-top: 38px;
+    flex-shrink: 0;
+    user-select: none;
+    pointer-events: none;
+}
+
+.room-connector-wall {
+    width: 10px;
+    flex: 1;
+    background: #334155;
+    border-radius: 4px;
+    opacity: 0.75;
+}
+
+.room-connector-door {
+    height: 92px;
+    width: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: #38bdf8;
+    border-top: 3px dashed rgba(56, 189, 248, 0.5);
+    border-bottom: 3px dashed rgba(56, 189, 248, 0.5);
+    background: rgba(56, 189, 248, 0.08);
+    margin: 8px 0;
+}
+
+/* Поле комнаты (плитка N×M) */
+.room-board {
+    position: relative;
+    box-sizing: content-box;
+    background-image: url('/floor.svg?v=20261121_2');
+    background-repeat: repeat;
+    background-position: 0 0;
+    border: 2px solid rgba(148, 163, 184, 0.55);
+    border-radius: 6px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+    flex-shrink: 0;
+    touch-action: pan-x pan-y;
+}
+
+.drag-grid-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+.drag-grid-overlay.visible {
+    opacity: 1;
+}
+
+.drag-target-box {
+    position: absolute;
+    pointer-events: none;
+    z-index: 3;
+    border-radius: 6px;
+    background: rgba(56, 189, 248, 0.28);
+    border: 2px dashed #38bdf8;
+    display: none;
+}
+.drag-target-box.visible {
+    display: block;
+}
+.drag-target-box.blocked {
+    background: rgba(239, 68, 68, 0.32);
+    border-color: #ef4444;
+}
+
+/* Элементы комнаты (критично для мобильного перетаскивания: touch-action: none НЕ наследуется, задаем явно везде) */
+.room-item,
+.room-item *,
+.appliance-object,
+.appliance-object * {
+    touch-action: none !important;
+    -webkit-tap-highlight-color: transparent !important;
+    -webkit-touch-callout: none !important;
+    -webkit-user-drag: none !important;
+    user-drag: none !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+}
+
+.room-item {
+    position: absolute;
+    display: block;
+    pointer-events: none;
+    text-decoration: none;
+    z-index: 10;
+    outline: none !important;
+}
+
+.room-item[data-id="table"],
+.room-item[data-id="hall_table"],
+.room-item[data-id="sofa"],
+.room-item[data-id="table2"],
+.room-item[data-id="hall2_table"],
+.room-item[data-id="sofa2"],
+.room-item[data-id="table3"],
+.room-item[data-id="hall3_table"],
+.room-item[data-id="sofa3"],
+.room-item[data-id="bed3"] {
+    z-index: 8;
+}
+
+.room-item[data-id="multicooker"],
+.room-item[data-id="armchair"],
+.room-item[data-id="armchair2"],
+.room-item[data-id="multicooker2"],
+.room-item[data-id="armchair_h2"],
+.room-item[data-id="multicooker3"] {
+    z-index: 12;
+}
+
+.room-item.is-holding,
+.room-item.is-dragging {
+    z-index: 50;
+}
+
+.appliance-object {
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    filter: drop-shadow(0px 6px 10px rgba(0, 0, 0, 0.35));
+    transition: transform 0.14s ease, filter 0.14s ease;
+    transform-origin: center center;
+}
+
+/* Захват строго по нарисованным формам SVG-объекта */
+.appliance-object path,
+.appliance-object rect,
+.appliance-object circle,
+.appliance-object ellipse,
+.appliance-object polygon,
+.appliance-object polyline,
+.appliance-object line,
+.appliance-object text {
+    pointer-events: visiblePainted;
+    cursor: grab;
+}
+
+.appliance-object .non-hit-shadow {
+    pointer-events: none !important;
+}
+
+@media (hover: hover) {
+    .room-item:hover .appliance-object {
+        transform: scale(1.035);
+        filter:
+            drop-shadow(0 0 2px rgba(56, 189, 248, 0.85))
+            drop-shadow(0 8px 14px rgba(0, 0, 0, 0.42));
+    }
+}
+
+.room-item.is-holding .appliance-object,
+.room-item.is-dragging .appliance-object {
+    cursor: grabbing;
+    transform: scale(1.045);
+    filter:
+        drop-shadow(0 0 2px #38bdf8)
+        drop-shadow(0 0 8px rgba(56, 189, 248, 0.95))
+        drop-shadow(0 10px 18px rgba(0, 0, 0, 0.45));
+    transition: none;
+}
+
+.room-item.is-dragging .appliance-object * {
+    cursor: grabbing;
+}
+
+.room-item.is-blocked .appliance-object {
+    filter:
+        drop-shadow(0 0 2px #ef4444)
+        drop-shadow(0 0 9px rgba(239, 68, 68, 0.98))
+        drop-shadow(0 10px 18px rgba(0, 0, 0, 0.45));
+}

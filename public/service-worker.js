@@ -1,4 +1,4 @@
-const CACHE_NAME = 'terminal-v33';
+const CACHE_NAME = 'terminal-v37';
 
 const URLS_TO_CACHE = [
     '/',
@@ -6,12 +6,17 @@ const URLS_TO_CACHE = [
     '/terminal.html',
     '/dashboard.html',
     '/missions.html',
+    '/house/index.html',
+    '/house2/index.html',
+    '/house3/index.html',
     '/house/kitchen.html',
     '/house/hall.html',
     '/house2/kitchen.html',
     '/house2/hall.html',
     '/kitchen.html',
     '/hall.html',
+    '/house.css',
+    '/house-engine.js',
     '/api.js',
     '/registry.js',
     '/helpers.js',
@@ -32,6 +37,7 @@ const URLS_TO_CACHE = [
     '/icon.svg',
     '/icon-512.png',
     '/commands/add.js',
+    '/commands/aliases.js',
     '/commands/auth.js',
     '/commands/building.js',
     '/commands/del.js',
@@ -48,6 +54,7 @@ const URLS_TO_CACHE = [
     '/commands/read.js',
     '/commands/restore.js',
     '/commands/show.js',
+    '/commands/support.js',
     '/commands/system.js',
     '/commands/task.js',
     '/commands/theme.js',
@@ -63,7 +70,7 @@ self.addEventListener('install', (event) => {
         caches.open(CACHE_NAME).then((cache) => {
             return Promise.all(
                 URLS_TO_CACHE.map((url) =>
-                    fetch(new Request(url, { cache: 'reload' }))
+                    fetch(new Request(url, { cache: 'no-store' }))
                         .then((res) => {
                             if (res && res.status === 200) {
                                 return cache.put(url, res);
@@ -91,7 +98,7 @@ self.addEventListener('activate', (event) => {
     self.clients.claim();
 });
 
-// Перехват запросов: Network-First с обновлением кэша и ignoreSearch fallback для ?v=...
+// Перехват запросов: Network-First в обход HTTP-кэша с обновлением кэша и ignoreSearch fallback для ?v=...
 self.addEventListener('fetch', (event) => {
     const req = event.request;
     if (req.method !== 'GET') return;
@@ -99,8 +106,12 @@ self.addEventListener('fetch', (event) => {
     const url = new URL(req.url);
     const isSameOrigin = url.origin === self.location.origin;
 
+    const networkPromise = isSameOrigin
+        ? fetch(new Request(req.url, { cache: 'no-store' }))
+        : fetch(req);
+
     event.respondWith(
-        fetch(req)
+        networkPromise
             .then((response) => {
                 if (isSameOrigin && response && response.status === 200 && response.type === 'basic') {
                     const clone = response.clone();

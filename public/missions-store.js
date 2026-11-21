@@ -281,7 +281,15 @@
         getCompletedMissions() {
             return this.missions
                 .filter(m => !!m.completed_at || m.status === 'completed')
-                .sort((a, b) => new Date(b.completed_at || 0) - new Date(a.completed_at || 0));
+                .sort((a, b) => {
+                    const ta = new Date(a.completed_at || 0).getTime();
+                    const tb = new Date(b.completed_at || 0).getTime();
+                    if (ta !== tb) return ta - tb;
+                    const ca = new Date(a.created_at || 0).getTime();
+                    const cb = new Date(b.created_at || 0).getTime();
+                    if (ca !== cb) return ca - cb;
+                    return String(a.id).localeCompare(String(b.id));
+                });
         }
 
         getAllMissions() {
@@ -296,7 +304,13 @@
                     if (posA !== posB) return posA - posB;
                     return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
                 }
-                return new Date(b.completed_at || 0) - new Date(a.completed_at || 0);
+                const ta = new Date(a.completed_at || 0).getTime();
+                const tb = new Date(b.completed_at || 0).getTime();
+                if (ta !== tb) return ta - tb;
+                const ca = new Date(a.created_at || 0).getTime();
+                const cb = new Date(b.created_at || 0).getTime();
+                if (ca !== cb) return ca - cb;
+                return String(a.id).localeCompare(String(b.id));
             });
         }
 

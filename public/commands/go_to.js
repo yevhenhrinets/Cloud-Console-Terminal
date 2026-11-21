@@ -1,98 +1,161 @@
-// commands/go_to.js — единый модуль навигации (go to kitchen, go to hall, go to dashboard, go to house, go to terminal и др.)
+// commands/go_to.js — единый модуль навигации (home 1 / home 2 / home 3, go to house 1/2/3, kitchen/hall, dashboard, terminal)
+
+CommandRegistry.register({
+    names: [
+        'go to home', 'go to home 1', 'go to house', 'go to house 1',
+        'home', 'home 1', 'house', 'house 1',
+        'дом', 'дом 1', 'дім', 'дім 1', 'будинок', 'будинок 1',
+        'go home', 'go house', 'open home', 'open house'
+    ],
+    description: 'Переход в Дом 1 (Кухня 7×7 и Зал 7×9 на одной странице)',
+    category: 'House',
+    usage: 'go to home 1 | home 1 | house 1',
+    handler: async (parameters, options = {}) => {
+        if (options && options.skipRedirect) {
+            return { response: '🆕 Открываю Дом 1 в новой вкладке: /house/index.html', style: 'output-info' };
+        }
+        setTimeout(() => {
+            window.location.href = '/house/index.html';
+        }, 200);
+        return { response: '🚀 Переход в Дом 1 (/house/index.html)...', style: 'output-info' };
+    }
+});
 
 CommandRegistry.register({
     names: ['go to kitchen', 'go to kitchen 1', 'kitchen', 'kitchen 1', 'kitchen.html', 'кухня', 'кухня 1', 'go kitchen', 'open kitchen'],
-    description: 'Переход в помещение кухни (Дом 1)',
+    description: 'Переход на кухню Дома 1',
     category: 'House',
     usage: 'go to kitchen | kitchen',
     handler: async (parameters, options = {}) => {
         if (options && options.skipRedirect) {
-            return { response: '🆕 Открываю кухню (Дом 1) в новой вкладке: /house/kitchen.html', style: 'output-info' };
+            return { response: '🆕 Открываю Дом 1 (Кухня) в новой вкладке: /house/index.html#kitchen', style: 'output-info' };
         }
         setTimeout(() => {
-            window.location.href = '/house/kitchen.html';
+            window.location.href = '/house/index.html#kitchen';
         }, 200);
-        return { response: '🚀 Переход на кухню Дома 1 (/house/kitchen.html)...', style: 'output-info' };
+        return { response: '🚀 Переход на кухню Дома 1 (/house/index.html#kitchen)...', style: 'output-info' };
     }
 });
 
 CommandRegistry.register({
     names: ['go to hall', 'go to hall 1', 'hall', 'hall 1', 'hall.html', 'parlor', 'parlour', 'go to parlor', 'go to parlour', 'зал', 'зала', 'зал 1', 'гостиная', 'вітальня', 'go hall', 'open hall'],
-    description: 'Переход в помещение зала (Дом 1)',
+    description: 'Переход в зал Дома 1 (7×9)',
     category: 'House',
     usage: 'go to hall | hall',
     handler: async (parameters, options = {}) => {
         if (options && options.skipRedirect) {
-            return { response: '🆕 Открываю зал (Дом 1) в новой вкладке: /house/hall.html', style: 'output-info' };
+            return { response: '🆕 Открываю Дом 1 (Зал) в новой вкладке: /house/index.html#hall', style: 'output-info' };
         }
         setTimeout(() => {
-            window.location.href = '/house/hall.html';
+            window.location.href = '/house/index.html#hall';
         }, 200);
-        return { response: '🚀 Переход в зал Дома 1 (/house/hall.html)...', style: 'output-info' };
+        return { response: '🚀 Переход в зал Дома 1 (/house/index.html#hall)...', style: 'output-info' };
     }
 });
 
 CommandRegistry.register({
-    names: ['go to house', 'go to house 1', 'house', 'house 1', 'дом', 'дом 1', 'будинок', 'go house', 'open house'],
-    description: 'Переход в Дом 1 (по умолчанию на кухню)',
+    names: [
+        'go to home 2', 'go to home2', 'go to house 2', 'go to house2',
+        'home 2', 'home2', 'house 2', 'house2',
+        'дом 2', 'дом2', 'дім 2', 'дім2', 'будинок 2',
+        'go home 2', 'go house 2', 'open home 2', 'open house 2'
+    ],
+    description: 'Переход в Дом 2 (вторая локация — Кухня и Зал)',
     category: 'House',
-    usage: 'go to house | house',
+    usage: 'go to home 2 | home 2 | house 2',
     handler: async (parameters, options = {}) => {
         if (options && options.skipRedirect) {
-            return { response: '🆕 Открываю Дом 1 в новой вкладке: /house/kitchen.html', style: 'output-info' };
+            return { response: '🆕 Открываю Дом 2 в новой вкладке: /house2/index.html', style: 'output-info' };
         }
         setTimeout(() => {
-            window.location.href = '/house/kitchen.html';
+            window.location.href = '/house2/index.html';
         }, 200);
-        return { response: '🚀 Переход в Дом 1 (/house/kitchen.html)...', style: 'output-info' };
+        return { response: '🚀 Переход в Дом 2 (/house2/index.html)...', style: 'output-info' };
     }
 });
 
 CommandRegistry.register({
-    names: ['go to kitchen 2', 'go to kitchen2', 'go to house 2 kitchen', 'go to house2 kitchen', 'kitchen 2', 'kitchen2', 'кухня 2', 'кухня2', 'go kitchen 2', 'open kitchen 2'],
-    description: 'Переход в помещение кухни (Дом 2)',
+    names: ['go to kitchen 2', 'go to kitchen2', 'go to house 2 kitchen', 'go to house2 kitchen', 'go to home 2 kitchen', 'kitchen 2', 'kitchen2', 'кухня 2', 'кухня2', 'go kitchen 2', 'open kitchen 2'],
+    description: 'Переход на кухню Дома 2',
     category: 'House',
     usage: 'go to kitchen 2 | kitchen 2',
     handler: async (parameters, options = {}) => {
         if (options && options.skipRedirect) {
-            return { response: '🆕 Открываю кухню (Дом 2) в новой вкладке: /house2/kitchen.html', style: 'output-info' };
+            return { response: '🆕 Открываю Дом 2 (Кухня) в новой вкладке: /house2/index.html#kitchen', style: 'output-info' };
         }
         setTimeout(() => {
-            window.location.href = '/house2/kitchen.html';
+            window.location.href = '/house2/index.html#kitchen';
         }, 200);
-        return { response: '🚀 Переход на кухню Дома 2 (/house2/kitchen.html)...', style: 'output-info' };
+        return { response: '🚀 Переход на кухню Дома 2 (/house2/index.html#kitchen)...', style: 'output-info' };
     }
 });
 
 CommandRegistry.register({
-    names: ['go to hall 2', 'go to hall2', 'go to house 2 hall', 'go to house2 hall', 'hall 2', 'hall2', 'зал 2', 'зала 2', 'зал2', 'go hall 2', 'open hall 2'],
-    description: 'Переход в помещение зала (Дом 2)',
+    names: ['go to hall 2', 'go to hall2', 'go to house 2 hall', 'go to house2 hall', 'go to home 2 hall', 'hall 2', 'hall2', 'зал 2', 'зала 2', 'зал2', 'go hall 2', 'open hall 2'],
+    description: 'Переход в зал Дома 2',
     category: 'House',
     usage: 'go to hall 2 | hall 2',
     handler: async (parameters, options = {}) => {
         if (options && options.skipRedirect) {
-            return { response: '🆕 Открываю зал (Дом 2) в новой вкладке: /house2/hall.html', style: 'output-info' };
+            return { response: '🆕 Открываю Дом 2 (Зал) в новой вкладке: /house2/index.html#hall', style: 'output-info' };
         }
         setTimeout(() => {
-            window.location.href = '/house2/hall.html';
+            window.location.href = '/house2/index.html#hall';
         }, 200);
-        return { response: '🚀 Переход в зал Дома 2 (/house2/hall.html)...', style: 'output-info' };
+        return { response: '🚀 Переход в зал Дома 2 (/house2/index.html#hall)...', style: 'output-info' };
     }
 });
 
 CommandRegistry.register({
-    names: ['go to house 2', 'go to house2', 'house 2', 'house2', 'дом 2', 'дом2', 'будинок 2', 'go house 2', 'open house 2'],
-    description: 'Переход в Дом 2 (вторая локация — кухня)',
+    names: [
+        'go to home 3', 'go to home3', 'go to house 3', 'go to house3',
+        'home 3', 'home3', 'house 3', 'house3',
+        'дом 3', 'дом3', 'дім 3', 'дім3', 'будинок 3',
+        'go home 3', 'go house 3', 'open home 3', 'open house 3'
+    ],
+    description: 'Переход в Дом 3 (третья локация — Кухня и Зал)',
     category: 'House',
-    usage: 'go to house 2 | house 2',
+    usage: 'go to home 3 | home 3 | house 3',
     handler: async (parameters, options = {}) => {
         if (options && options.skipRedirect) {
-            return { response: '🆕 Открываю Дом 2 в новой вкладке: /house2/kitchen.html', style: 'output-info' };
+            return { response: '🆕 Открываю Дом 3 в новой вкладке: /house3/index.html', style: 'output-info' };
         }
         setTimeout(() => {
-            window.location.href = '/house2/kitchen.html';
+            window.location.href = '/house3/index.html';
         }, 200);
-        return { response: '🚀 Переход в Дом 2 (/house2/kitchen.html)...', style: 'output-info' };
+        return { response: '🚀 Переход в Дом 3 (/house3/index.html)...', style: 'output-info' };
+    }
+});
+
+CommandRegistry.register({
+    names: ['go to kitchen 3', 'go to kitchen3', 'go to house 3 kitchen', 'go to house3 kitchen', 'go to home 3 kitchen', 'kitchen 3', 'kitchen3', 'кухня 3', 'кухня3', 'go kitchen 3', 'open kitchen 3'],
+    description: 'Переход на кухню Дома 3',
+    category: 'House',
+    usage: 'go to kitchen 3 | kitchen 3',
+    handler: async (parameters, options = {}) => {
+        if (options && options.skipRedirect) {
+            return { response: '🆕 Открываю Дом 3 (Кухня) в новой вкладке: /house3/index.html#kitchen', style: 'output-info' };
+        }
+        setTimeout(() => {
+            window.location.href = '/house3/index.html#kitchen';
+        }, 200);
+        return { response: '🚀 Переход на кухню Дома 3 (/house3/index.html#kitchen)...', style: 'output-info' };
+    }
+});
+
+CommandRegistry.register({
+    names: ['go to hall 3', 'go to hall3', 'go to house 3 hall', 'go to house3 hall', 'go to home 3 hall', 'hall 3', 'hall3', 'зал 3', 'зала 3', 'зал3', 'go hall 3', 'open hall 3'],
+    description: 'Переход в зал Дома 3',
+    category: 'House',
+    usage: 'go to hall 3 | hall 3',
+    handler: async (parameters, options = {}) => {
+        if (options && options.skipRedirect) {
+            return { response: '🆕 Открываю Дом 3 (Зал) в новой вкладке: /house3/index.html#hall', style: 'output-info' };
+        }
+        setTimeout(() => {
+            window.location.href = '/house3/index.html#hall';
+        }, 200);
+        return { response: '🚀 Переход в зал Дома 3 (/house3/index.html#hall)...', style: 'output-info' };
     }
 });
 
@@ -131,14 +194,14 @@ CommandRegistry.register({
 // Универсальный маршрутизатор: go to <цель> / go <цель>
 CommandRegistry.register({
     names: ['go to', 'go', 'перейти', 'перейти в', 'открыть', 'open'],
-    description: 'Универсальный переход к страницам и разделам (missions, hall, kitchen, dashboard, house, notes, history...)',
+    description: 'Универсальный переход к страницам и локациям (home 1/2/3, house 1/2/3, missions, dashboard, terminal...)',
     category: 'House',
-    usage: 'go to <missions | hall | kitchen | dashboard | house | terminal | notes | history | buildings | timers | inventory>',
+    usage: 'go to <home 1 | home 2 | home 3 | house 1 | house 2 | house 3 | missions | dashboard | terminal>',
     handler: async (parameters, options = {}) => {
         const rawTarget = (parameters && Array.isArray(parameters.args) ? parameters.args.join(' ') : '').trim().toLowerCase();
         if (!rawTarget) {
             return {
-                response: '🧭 Укажите куда перейти.\nПримеры: `go to missions`, `go to hall`, `go to kitchen`, `go to dashboard`, `go to house`, `go to notes`',
+                response: '🧭 Укажите куда перейти.\nПримеры: `go to home 1`, `go to home 2`, `go to home 3`, `go to missions`, `go to dashboard`, `go to notes`',
                 style: 'output-info'
             };
         }
@@ -152,6 +215,17 @@ CommandRegistry.register({
             'поручения': 'go to missions',
             'поручення': 'go to missions',
             'завдання': 'go to missions',
+            'home': 'go to home 1',
+            'home 1': 'go to home 1',
+            'home1': 'go to home 1',
+            'house': 'go to home 1',
+            'house 1': 'go to home 1',
+            'house1': 'go to home 1',
+            'дом': 'go to home 1',
+            'дом 1': 'go to home 1',
+            'дім': 'go to home 1',
+            'дім 1': 'go to home 1',
+            'будинок': 'go to home 1',
             'hall': 'go to hall',
             'hall 1': 'go to hall',
             'hall.html': 'go to hall',
@@ -167,22 +241,22 @@ CommandRegistry.register({
             'kitchen.html': 'go to kitchen',
             'кухня': 'go to kitchen',
             'кухня 1': 'go to kitchen',
-            'house': 'go to house',
-            'house 1': 'go to house',
-            'дом': 'go to house',
-            'дом 1': 'go to house',
-            'будинок': 'go to house',
-            'house 2': 'go to house 2',
-            'house2': 'go to house 2',
-            'дом 2': 'go to house 2',
-            'дом2': 'go to house 2',
-            'будинок 2': 'go to house 2',
+            'home 2': 'go to home 2',
+            'home2': 'go to home 2',
+            'house 2': 'go to home 2',
+            'house2': 'go to home 2',
+            'дом 2': 'go to home 2',
+            'дом2': 'go to home 2',
+            'дім 2': 'go to home 2',
+            'дім2': 'go to home 2',
+            'будинок 2': 'go to home 2',
             'kitchen 2': 'go to kitchen 2',
             'kitchen2': 'go to kitchen 2',
             'кухня 2': 'go to kitchen 2',
             'кухня2': 'go to kitchen 2',
             'house 2 kitchen': 'go to kitchen 2',
             'house2 kitchen': 'go to kitchen 2',
+            'home 2 kitchen': 'go to kitchen 2',
             'hall 2': 'go to hall 2',
             'hall2': 'go to hall 2',
             'зал 2': 'go to hall 2',
@@ -190,14 +264,36 @@ CommandRegistry.register({
             'зал2': 'go to hall 2',
             'house 2 hall': 'go to hall 2',
             'house2 hall': 'go to hall 2',
+            'home 2 hall': 'go to hall 2',
+            'home 3': 'go to home 3',
+            'home3': 'go to home 3',
+            'house 3': 'go to home 3',
+            'house3': 'go to home 3',
+            'дом 3': 'go to home 3',
+            'дом3': 'go to home 3',
+            'дім 3': 'go to home 3',
+            'дім3': 'go to home 3',
+            'будинок 3': 'go to home 3',
+            'kitchen 3': 'go to kitchen 3',
+            'kitchen3': 'go to kitchen 3',
+            'кухня 3': 'go to kitchen 3',
+            'кухня3': 'go to kitchen 3',
+            'house 3 kitchen': 'go to kitchen 3',
+            'house3 kitchen': 'go to kitchen 3',
+            'home 3 kitchen': 'go to kitchen 3',
+            'hall 3': 'go to hall 3',
+            'hall3': 'go to hall 3',
+            'зал 3': 'go to hall 3',
+            'зала 3': 'go to hall 3',
+            'зал3': 'go to hall 3',
+            'house 3 hall': 'go to hall 3',
+            'house3 hall': 'go to hall 3',
+            'home 3 hall': 'go to hall 3',
             'dashboard': 'go to dashboard',
             'dashboard.html': 'go to dashboard',
             'дашборд': 'go to dashboard',
             'дашбоард': 'go to dashboard',
             'панель': 'go to dashboard',
-            'house': 'go to house',
-            'дом': 'go to house',
-            'будинок': 'go to house',
             'terminal': 'go to terminal',
             'terminal.html': 'go to terminal',
             'console': 'go to terminal',
@@ -216,7 +312,11 @@ CommandRegistry.register({
             'timers': 'timers',
             'таймеры': 'timers',
             'inventory': 'inventory',
-            'склад': 'inventory'
+            'склад': 'inventory',
+            'commands': 'commands list',
+            'commands list': 'commands list',
+            'support': 'support',
+            'reports': 'reports'
         };
 
         const resolvedCmd = routeAliases[rawTarget] || rawTarget;
@@ -227,7 +327,7 @@ CommandRegistry.register({
         }
 
         return {
-            response: `❓ Неизвестный раздел "${rawTarget}".\nДоступные варианты: \`go to missions\`, \`go to hall\`, \`go to kitchen\`, \`go to dashboard\`, \`go to house\`, \`go to terminal\`, \`go to notes\``,
+            response: `❓ Неизвестный раздел "${rawTarget}".\nДоступные варианты: \`go to home 1\`, \`go to home 2\`, \`go to home 3\`, \`go to missions\`, \`go to dashboard\`, \`go to terminal\``,
             style: 'output-error'
         };
     }

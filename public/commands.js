@@ -39,11 +39,12 @@ async function processCommand(rawText, options = {}) {
     let skipHistorySave = false;
     let inputValue = null;
     let commandPrefix = null;
+    let commandSteps = null;
     let inputPlaceholder = null;
     let isHtml = false;
 
     if (!handler) {
-        response = `Команда не найдена: '${String(rawText || '').trim()}'. Введите 'help' для справки.`;
+        response = `Команда не найдена: '${String(rawText || '').trim()}'. Введите 'commands list' для списка команд или 'support' для обращения в поддержку.`;
         style = 'output-error';
     } else {
         try {
@@ -56,6 +57,7 @@ async function processCommand(rawText, options = {}) {
                 skipHistorySave = res.skipHistorySave || false;
                 inputValue = (res.inputValue !== undefined && res.inputValue !== null) ? res.inputValue : null;
                 commandPrefix = res.commandPrefix || null;
+                commandSteps = Array.isArray(res.commandSteps) ? res.commandSteps : null;
                 inputPlaceholder = res.inputPlaceholder || null;
                 isHtml = Boolean(res.isHtml);
             }
@@ -73,5 +75,5 @@ async function processCommand(rawText, options = {}) {
         await saveToCloud(rawText, parsed.cmd, parameters, response, consoleResultLog, status);
     }
 
-    return { response, style, action, editedEntity, inputValue, commandPrefix, inputPlaceholder, isHtml };
+    return { response, style, action, editedEntity, inputValue, commandPrefix, commandSteps, inputPlaceholder, isHtml };
 }

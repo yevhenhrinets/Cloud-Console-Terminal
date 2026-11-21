@@ -1,10 +1,18 @@
 // commands/add.js — добавление заметок, задач в постройки и таймеров
 
-// Общий обработчик создания заметки (add note / write note / write a note)
-async function createNoteCommandHandler(currentUser, rawContent, matchedCmd = 'write note') {
+// Общий обработчик создания заметки (add note / write note / write a note — ТОЛЬКО в 2 этапа)
+async function createNoteCommandHandler(currentUser, rawContent, matchedCmd = 'write note', options = {}) {
     const content = String(rawContent || '').trim();
+    const prefix = (matchedCmd === 'write a note' || matchedCmd === 'add note') ? matchedCmd : 'write note';
+
+    if (content && !(options && options.fromTwoStepBar)) {
+        return {
+            response: `⚠️ Команда \`${prefix}\` работает только в 2 этапа — произвольный текст нельзя вводить сразу в команде!\n1) Введите \`${prefix}\` без текста\n2) После появления команды под строкой ввода напишите текст заметки.`,
+            style: 'output-error'
+        };
+    }
+
     if (!content) {
-        const prefix = (matchedCmd === 'write a note' || matchedCmd === 'add note') ? matchedCmd : 'write note';
         return {
             response: `📝 Режим создания заметки активирован. Введите текст заметки и нажмите Enter (или ✕ для отмены).`,
             style: 'output-info',
@@ -55,16 +63,16 @@ async function createNoteCommandHandler(currentUser, rawContent, matchedCmd = 'w
 
 CommandRegistry.register({
     names: ['add note', 'write note', 'write a note', 'написать заметку', 'написати нотатку'],
-    description: 'Create a new note (directly or in two-step prompt mode)',
+    description: 'Создать новую заметку (строго в 2 этапа)',
     category: 'Add',
-    usage: 'add note [TEXT] | write note [TEXT] | write a note [TEXT]',
-    handler: async (parameters) => {
+    usage: 'add note | write note | write a note',
+    handler: async (parameters, options = {}) => {
         const currentUser = await fetchCurrentUser();
         if (!currentUser) {
             return { response: t('not_authorized'), style: 'output-error' };
         }
         const content = (parameters && parameters.raw_args ? String(parameters.raw_args) : (parameters && Array.isArray(parameters.args) ? parameters.args.join(' ') : '')).trim();
-        return await createNoteCommandHandler(currentUser, content, parameters.matchedCmd || 'write note');
+        return await createNoteCommandHandler(currentUser, content, parameters.matchedCmd || 'write note', options);
     }
 });
 
@@ -72,9 +80,9 @@ CommandRegistry.register({
     names: ['add', 'добавить', 'додати', 'timer', 'таймер'],
     description: 'Adding new item',
     category: 'Add',
-    usage: 'Add note TEXT | Write note | Write a note | Add task BUILDING TASK DURATION | Add timer NAME GROUP',
+    usage: 'add note | write note | add mission | add building | add task',
     
-    handler: async (parameters) => {
+    handler: async (parameters, options = {}) => {
         const currentUser = await fetchCurrentUser();
         if (!currentUser) {
             return { response: t('not_authorized'), style: 'output-error' };
@@ -86,61 +94,37 @@ CommandRegistry.register({
         // 1. Добавление заметки
         if (subCmd === 'note' || subCmd === 'заметка' || subCmd === 'нотатка') {
             const content = args.slice(1).join(' ').trim();
-            return await createNoteCommandHandler(currentUser, content, 'add note');
+            return await createNoteCommandHandler(currentUser, content, 'add note', options);
         }
 
-        // 1.5. Добавление поручения / миссии (Add mission Развесить стирку)
+        // 1.5. Добавление поручения / миссии (строго 2 этапа)
         if (['mission', 'missions', 'миссия', 'миссию', 'задание', 'поручение', 'поручення', 'дело'].includes(subCmd)) {
-            const missionText = args.slice(1).join(' ').trim();
-            if (!missionText) {
-                return { response: '❌ Укажите текст поручения.\nПример: `Add mission Развесить стирку`', style: 'output-error' };
-            }
-
-            if (window.MissionsStore) {
-                try {
-                    const newMission = await window.MissionsStore.addMission(missionText, currentUser.id);
-                    return {
-                        response: `🟢 Поручение успешно создано!\n📋 [#${newMission.position}] "${newMission.title}"\n⏱️ Время фиксации: ${newMission.created_display}\n🔗 Откройте страницу заданий: /missions.html`,
-                        style: 'output-success',
-                        editedEntity: 'mission'
-                    };
-                } catch (e) {
-                    return { response: '❌ Ошибка создания поручения: ' + e.message, style: 'output-error' };
-                }
-            } else {
-                return { response: '❌ Модуль MissionsStore недоступен.', style: 'output-error' };
+            const addMissionHandler = window.CommandRegistry.getHandler('add mission');
+            const strippedParams = {
+                ...parameters,
+                args: args.slice(1),
+                raw_args: args.slice(1).join(' ').trim(),
+                matchedCmd: 'add mission'
+            };
+            if (addMissionHandler) {
+                return await addMissionHandler(strippedParams, options);
             }
         }
 
-        // 1.8. Добавление постройки (Add building Печь)
+        // 1.8. Добавление постройки (строго 2 этапа)
         if (['building', 'buildings', 'постройка', 'постройки', 'здание', 'будівля', 'споруда'].includes(subCmd)) {
             const addBuildingHandler = window.CommandRegistry.getHandler('add building');
             if (addBuildingHandler) {
-                return await addBuildingHandler(parameters);
+                return await addBuildingHandler(parameters, options);
             }
         }
 
-        // 2. Добавление задачи в постройку (Add task Печь Макароны 10м)
+        // 2. Добавление задачи в постройку (строго 2 этапа)
         if (['task', 'tasks', 'задача', 'задачи', 'завдання'].includes(subCmd)) {
             const addTaskHandler = window.CommandRegistry.getHandler('add task');
             if (addTaskHandler) {
-                return await addTaskHandler(parameters);
+                return await addTaskHandler(parameters, options);
             }
-            const cleanArgs = args.slice(1).filter(w => !['в', 'на'].includes(w.toLowerCase()));
-            
-            if (cleanArgs.length < 3) {
-                return { response: '❓ Формат команды добавления задачи:\n  • `Add task <Постройка> <Задача> <Время>`\nПример: `Add task Печь Макароны 10м`', style: 'output-error' };
-            }
-
-            const buildingQuery = cleanArgs[0];
-            const durationStr = cleanArgs[cleanArgs.length - 1];
-            const taskName = cleanArgs.slice(1, cleanArgs.length - 1).join(' ');
-
-            if (!buildingQuery || !taskName || !durationStr) {
-                return { response: '❌ Неверный формат. Пример: `Add task Печь Макароны 10м`', style: 'output-error' };
-            }
-
-            return await modifyTaskInBuildingGlobal(currentUser.id, buildingQuery, taskName, durationStr, 'add');
         }
 
         // 3. Добавление таймера
@@ -178,6 +162,35 @@ CommandRegistry.register({
 
             if (!template) {
                 return { response: `❌ Неизвестный таймер "${rawTimerName}".`, style: 'output-error' };
+            }
+
+            // Проверка кулдауна (Памперс — 3 часа, Кипяток — 1 час) и запрет дубля в очереди
+            if (window.TaskCooldowns) {
+                const rule = window.TaskCooldowns.getRule(template.name);
+                if (rule) {
+                    await window.TaskCooldowns.syncFromSupabase(currentUser.id);
+                    const cdState = window.TaskCooldowns.getState(template.name, currentUser.id);
+                    if (cdState && cdState.active) {
+                        return {
+                            response: `⛔ Нельзя запустить «${rule.label}» раньше времени! Идёт кулдаун — осталось ${cdState.formatted}.`,
+                            style: 'output-error'
+                        };
+                    }
+                    const { data: userActive } = await window.supabaseClient
+                        .from('active_timers')
+                        .select('id, name, status')
+                        .eq('created_by', currentUser.id);
+                    const duplicate = (userActive || []).find(t => {
+                        const r = window.TaskCooldowns.getRule(t.name);
+                        return r && r.key === rule.key;
+                    });
+                    if (duplicate) {
+                        return {
+                            response: `⏳ Задача «${rule.label}» уже выполняется или стоит в очереди! Повторный запуск будет доступен после завершения и окончания кулдауна.`,
+                            style: 'output-error'
+                        };
+                    }
+                }
             }
 
             const { data: existingTimers, error: qError } = await window.supabaseClient

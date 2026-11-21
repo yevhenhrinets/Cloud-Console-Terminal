@@ -10,52 +10,55 @@
     
     <title>Cloud Terminal</title>
     
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="/manifest.json?v=20261121_2">
     <meta name="theme-color" content="#0f172a">
     
-    <link rel="stylesheet" href="/style.css?v=5.0">
+    <link rel="stylesheet" href="/style.css?v=20261121_2">
 
     <!-- 1. Библиотеки Supabase и JSZip для локального хранилища и ZIP-экспорта -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-    <script src="/local-fs.js?v=5.0"></script>
+    <script src="/local-fs.js?v=20261121_2"></script>
     <!-- 2. Ключи -->
-    <script src="/api.js?v=5.0"></script>
+    <script src="/api.js?v=20261121_2"></script>
     <!-- 3. Ядро и утилиты -->
-    <script src="/registry.js?v=5.0"></script>
-    <script src="/helpers.js?v=5.0"></script>
-    <script src="/localization.js?v=5.0"></script>
-    <script src="/missions-store.js?v=5.0"></script>
+    <script src="/registry.js?v=20261121_2"></script>
+    <script src="/helpers.js?v=20261121_2"></script>
+    <script src="/localization.js?v=20261121_2"></script>
+    <script src="/missions-store.js?v=20261121_2"></script>
     
-    <!-- 4. Плагины команд (добавлена версия для сброса кэша Cloudflare) -->
-    <script src="/commands-actions.js?v=5.0"></script>
-    <script src="/commands/system.js?v=5.0"></script>
-    <script src="/commands/timers.js?v=5.0"></script>
-    <script src="/commands/inventory.js?v=5.0"></script>
-    <script src="/commands/add.js?v=5.0"></script>
-    <script src="/commands/missions.js?v=5.0"></script>
-    <script src="/commands/history.js?v=5.0"></script>
-    <script src="/commands/show.js?v=5.0"></script>
-    <script src="/commands/read.js?v=5.0"></script>
-    <script src="/commands/edit.js?v=5.0"></script>
-    <script src="/commands/del.js?v=5.0"></script>
-    <script src="/commands/pin.js?v=5.0"></script>
-    <script src="/commands/unpin.js?v=5.0"></script>
-    <script src="/commands/auth.js?v=5.0"></script>
-    <script src="/commands/lang.js?v=5.0"></script>
-    <script src="/commands/trash_notes.js?v=5.0"></script>
-    <script src="/commands/trash_history.js?v=5.0"></script>
-    <script src="/commands/restore.js?v=5.0"></script>
-    <script src="/commands/note_history.js?v=5.0"></script>
-    <script src="/commands/go_to.js?v=5.0"></script>
-    <script src="/commands/building.js?v=5.0"></script>
-    <script src="/commands/task.js?v=5.0"></script>
-    <script src="/commands/theme.js?v=5.0"></script>
-    <script src="/commands/fs.js?v=5.0"></script>
+    <!-- 4. Плагины команд (добавлен суффикс версии для принудительного сброса кэша) -->
+    <script src="/commands-actions.js?v=20261121_2"></script>
+    <script src="/commands/system.js?v=20261121_2"></script>
+    <script src="/commands/timers.js?v=20261121_2"></script>
+    <script src="/commands/inventory.js?v=20261121_2"></script>
+    <script src="/commands/add.js?v=20261121_2"></script>
+    <script src="/commands/missions.js?v=20261121_2"></script>
+    <script src="/commands/history.js?v=20261121_2"></script>
+    <script src="/commands/show.js?v=20261121_2"></script>
+    <script src="/commands/read.js?v=20261121_2"></script>
+    <script src="/commands/edit.js?v=20261121_2"></script>
+    <script src="/commands/del.js?v=20261121_2"></script>
+    <script src="/commands/pin.js?v=20261121_2"></script>
+    <script src="/commands/unpin.js?v=20261121_2"></script>
+    <script src="/commands/auth.js?v=20261121_2"></script>
+    <script src="/commands/lang.js?v=20261121_2"></script>
+    <script src="/commands/trash_notes.js?v=20261121_2"></script>
+    <script src="/commands/trash_history.js?v=20261121_2"></script>
+    <script src="/commands/restore.js?v=20261121_2"></script>
+    <script src="/commands/note_history.js?v=20261121_2"></script>
+    <script src="/commands/go_to.js?v=20261121_2"></script>
+    <script src="/commands/building.js?v=20261121_2"></script>
+    <script src="/commands/task.js?v=20261121_2"></script>
+    <script src="/commands/theme.js?v=20261121_2"></script>
+    <script src="/commands/fs.js?v=20261121_2"></script>
+    <script src="/commands/support.js?v=20261121_2"></script>
+    <script src="/commands/aliases.js?v=20261121_2"></script>
+    <script>if (window.CustomAliasesSync) window.CustomAliasesSync.applyStoredAliases();</script>
     
     <!-- 5. Справка и диспетчер должны подключаться ПОСЛЕ всех команд -->
-    <script src="/commands/help.js?v=5.0"></script>
-    <script src="/commands.js?v=5.0"></script>
+    <script src="/commands/help.js?v=20261121_2"></script>
+    <script src="/commands.js?v=20261121_2"></script>
 </head>
 <body>
     <div class="terminal-container">
@@ -64,25 +67,22 @@
         </div>
 
         <div id="quick-bar" class="quick-bar">
-            <button type="button" class="quick-chip chip-login" onclick="executeCommand('help')">📚 help</button>
+            <button type="button" class="quick-chip chip-login" onclick="executeCommand('commands list')">📚 commands list</button>
+            <button type="button" class="quick-chip chip-login" onclick="executeCommand('support')">🆘 support</button>
             <button type="button" class="quick-chip chip-login" onclick="reloadTerminalPage()">🔄 reload</button>
             <a href="/missions.html" class="quick-chip chip-login" onclick="return handleQuickNav(event, 'go to missions')" onauxclick="handleQuickNavAux(event, 'go to missions')">📋 missions.html</a>
             <a href="/dashboard.html" class="quick-chip chip-login" onclick="return handleQuickNav(event, 'go to dashboard')" onauxclick="handleQuickNavAux(event, 'go to dashboard')">🎛️ dashboard.html</a>
             <button type="button" class="quick-chip chip-login" onclick="executeCommand('download project')">💾 скачать код</button>
             <button type="button" class="quick-chip" onclick="executeCommand('ls')">📁 файлы</button>
             <button type="button" class="quick-chip" onclick="executeCommand('fs export')">📦 zip</button>
-            <button type="button" class="quick-chip" onclick="executeCommand('theme toggle')">🎨 theme</button>
-            <button type="button" class="quick-chip" onclick="executeCommand('history 20')">📜 history 20</button>
+            <button type="button" class="quick-chip" onclick="executeCommand('toggle theme')">🎨 toggle theme</button>
+            <button type="button" class="quick-chip" onclick="executeCommand('history')">📜 history</button>
             <button type="button" class="quick-chip" onclick="executeCommand('show notes')">📝 notes</button>
-            <button type="button" class="quick-chip" onclick="executeCommand('show buildings')">🏭 buildings</button>
-            <button type="button" class="quick-chip" onclick="executeCommand('timers')">⏱️ timers</button>
-            <button type="button" class="quick-chip" onclick="executeCommand('inventory')">📦 inventory</button>
             <button type="button" class="quick-chip" onclick="executeCommand('whoami')">👤 whoami</button>
             <button type="button" class="quick-chip" onclick="executeCommand('show date')">📅 date</button>
-            <a href="/house/kitchen.html" class="quick-chip" onclick="return handleQuickNav(event, 'go to kitchen')" onauxclick="handleQuickNavAux(event, 'go to kitchen')">🍳 kitchen</a>
-            <a href="/house/hall.html" class="quick-chip" onclick="return handleQuickNav(event, 'go to hall')" onauxclick="handleQuickNavAux(event, 'go to hall')">🛋️ hall</a>
-            <a href="/house2/kitchen.html" class="quick-chip" onclick="return handleQuickNav(event, 'go to kitchen 2')" onauxclick="handleQuickNavAux(event, 'go to kitchen 2')">🏡 kitchen 2</a>
-            <a href="/house2/hall.html" class="quick-chip" onclick="return handleQuickNav(event, 'go to hall 2')" onauxclick="handleQuickNavAux(event, 'go to hall 2')">🏡 hall 2</a>
+            <a href="/house/index.html" class="quick-chip" onclick="return handleQuickNav(event, 'go to home 1')" onauxclick="handleQuickNavAux(event, 'go to home 1')">🏠 home 1</a>
+            <a href="/house2/index.html" class="quick-chip" onclick="return handleQuickNav(event, 'go to home 2')" onauxclick="handleQuickNavAux(event, 'go to home 2')">🏡 home 2</a>
+            <a href="/house3/index.html" class="quick-chip" onclick="return handleQuickNav(event, 'go to home 3')" onauxclick="handleQuickNavAux(event, 'go to home 3')">🏘️ home 3</a>
             <button type="button" class="quick-chip chip-login" onclick="executeCommand('login')">🔑 login</button>
             <button type="button" class="quick-chip chip-login" onclick="executeCommand('switch account')">🔄 switch account</button>
             <button type="button" class="quick-chip" onclick="executeCommand('logout')">🚪 logout</button>
@@ -91,11 +91,11 @@
         <form id="command-form" class="input-line" onsubmit="handleFormSubmit(event)">
             <div id="prompt" class="prompt"></div>
             <div id="active-cmd-bar" class="active-cmd-bar" style="display: none;">
-                <span id="active-cmd-text" class="active-cmd-text"></span>
-                <button type="button" id="active-cmd-clear" class="active-cmd-clear" onclick="clearPendingCommand(true)" title="Сбросить команду">✕</button>
+                <div id="active-cmd-chips" class="active-cmd-chips"></div>
+                <button type="button" id="active-cmd-confirm" class="active-cmd-confirm" onclick="handleFormSubmit(event)" title="Подтвердить и выполнить">✅</button>
             </div>
             <div class="input-row">
-                <textarea rows="1" id="command-input" autofocus autocomplete="off" autocapitalize="sentences" placeholder="Команда (help, go to missions, go to hall, go to kitchen, history, add task, select)..."></textarea>
+                <textarea rows="1" id="command-input" autofocus autocomplete="off" autocapitalize="sentences" placeholder="Команда (commands list, support, go to missions, home 1, home 2, home 3, history, write note)..."></textarea>
                 <button type="button" id="send-btn" onclick="handleFormSubmit(event)">➔</button>
             </div>
         </form>
@@ -103,6 +103,31 @@
 
 <script>
     let currentTerminalUser = null;
+
+    function notifyAdminAboutSupportReports(reports) {
+        if (!reports || reports.length === 0) return;
+        reports.forEach(r => {
+            const preview = String(r.message || '').replace(/[\r\n]+/g, ' ').slice(0, 80);
+            printOutput(
+                `🔔 Новое обращение в поддержку [#${r.inner_id || '?'}] от ${r.user_email || 'unknown'}: "${preview}"\n👉 Введите 'reports' или 'show issues' для просмотра и ответа на email.`,
+                'output-info',
+                false
+            );
+        });
+    }
+
+    async function checkAdminSupportAlerts(user) {
+        if (!user || !window.SupportReportsSync) return;
+        if (typeof window.isAdminUser === 'function' && !window.isAdminUser(user)) return;
+        try {
+            await window.SupportReportsSync.checkAndNotifyAdmin(user, (unseen) => {
+                notifyAdminAboutSupportReports(unseen);
+            });
+            window.SupportReportsSync.subscribeRealtimeAdminNotifications(user, (newRep) => {
+                notifyAdminAboutSupportReports([newRep]);
+            });
+        } catch (e) {}
+    }
 
     async function initTerminal() {
         const prompt = document.getElementById('prompt');
@@ -118,7 +143,15 @@
                 if (window.supabaseClient && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
                     updateLoginTimestamp(currentTerminalUser.id).catch(() => {});
                     if (typeof window.flushAllOfflineConsoleQueues === 'function') {
-                        window.flushAllOfflineConsoleQueues().catch(() => {});
+                        window.flushAllOfflineConsoleQueues().then(() => {
+                            if (window.CustomAliasesSync) window.CustomAliasesSync.syncAndApply(currentTerminalUser).catch(() => {});
+                            if (window.TaskCooldowns) window.TaskCooldowns.syncFromSupabase(currentTerminalUser.id).catch(() => {});
+                            return checkAdminSupportAlerts(currentTerminalUser);
+                        }).catch(() => {});
+                    } else {
+                        if (window.CustomAliasesSync) window.CustomAliasesSync.syncAndApply(currentTerminalUser).catch(() => {});
+                        if (window.TaskCooldowns) window.TaskCooldowns.syncFromSupabase(currentTerminalUser.id).catch(() => {});
+                        checkAdminSupportAlerts(currentTerminalUser);
                     }
                 } else {
                     printOutput('📡 Офлайн-режим: консоль работает локально. Изменения синхронизируются при подключении.', 'output-info', false);
@@ -126,7 +159,7 @@
             } else {
                 prompt.textContent = `user@cloud:~$`;
                 printOutput('👋 Хмарний термінал готовий до роботи (Демо-режим). Всі команди активні!', 'output-info');
-                printOutput('💡 Натискайте кнопки швидких команд вгорі або вводьте: help, notes, buildings, timers, inventory', 'output-success');
+                printOutput('💡 Введіть: commands list, support, notes, home 1, home 2, home 3', 'output-success');
                 restoreConsoleHistory();
             }
 
@@ -139,7 +172,15 @@
                             restoreConsoleHistory();
                             prompt.textContent = `${freshUser.email}:~$`;
                             if (typeof window.flushAllOfflineConsoleQueues === 'function') {
-                                window.flushAllOfflineConsoleQueues().catch(() => {});
+                                window.flushAllOfflineConsoleQueues().then(() => {
+                                    if (window.CustomAliasesSync) window.CustomAliasesSync.syncAndApply(freshUser).catch(() => {});
+                                    if (window.TaskCooldowns) window.TaskCooldowns.syncFromSupabase(freshUser.id).catch(() => {});
+                                    return checkAdminSupportAlerts(freshUser);
+                                }).catch(() => {});
+                            } else {
+                                if (window.CustomAliasesSync) window.CustomAliasesSync.syncAndApply(freshUser).catch(() => {});
+                                if (window.TaskCooldowns) window.TaskCooldowns.syncFromSupabase(freshUser.id).catch(() => {});
+                                checkAdminSupportAlerts(freshUser);
                             }
                         }
                     } else if (event === 'SIGNED_OUT') {
@@ -219,6 +260,10 @@ async function tickTimers() {
                 // Время вышло! Удаляем активный таймер
                 await window.supabaseClient.from('active_timers').delete().eq('id', timer.id);
 
+                if (window.TaskCooldowns && typeof window.TaskCooldowns.recordCompletion === 'function') {
+                    window.TaskCooldowns.recordCompletion(timer.name, timer.ends_at || now, userId);
+                }
+
                 // Записываем на склад completed_items
                 const { data: existingItem } = await window.supabaseClient
                     .from('completed_items').select('*').eq('created_by', userId).eq('name', timer.name).single();
@@ -267,25 +312,60 @@ document.addEventListener('DOMContentLoaded', () => {
     const STORAGE_HISTORY_KEY = 'terminal_console_history';
     const STORAGE_DRAFT_KEY = 'terminal_input_draft';
     const STORAGE_ACTIVE_CMD_KEY = 'terminal_active_cmd_prefix';
-    const DEFAULT_INPUT_PLACEHOLDER = 'Команда (help, go to missions, go to hall, go to kitchen, history, add task, select)...';
+    const DEFAULT_INPUT_PLACEHOLDER = 'Команда (commands list, support, go to missions, home 1, home 2, home 3, history, write note)...';
 
-    let pendingCommandPrefix = '';
+    let pendingSteps = [];
 
-    function setPendingCommand(prefix, textValue = null, customPlaceholder = null) {
-        pendingCommandPrefix = String(prefix || '').trim();
+    function renderActiveCmdChips() {
         const bar = document.getElementById('active-cmd-bar');
-        const barText = document.getElementById('active-cmd-text');
-        if (pendingCommandPrefix) {
-            localStorage.setItem(STORAGE_ACTIVE_CMD_KEY, pendingCommandPrefix);
-            if (barText) barText.textContent = pendingCommandPrefix;
-            if (bar) bar.style.display = 'flex';
-            input.placeholder = customPlaceholder || `Введите текст для "${pendingCommandPrefix}"...`;
+        const chipsContainer = document.getElementById('active-cmd-chips');
+        if (!bar || !chipsContainer) return;
+
+        if (!pendingSteps || pendingSteps.length === 0) {
+            chipsContainer.innerHTML = '';
+            bar.style.display = 'none';
+            return;
+        }
+
+        chipsContainer.innerHTML = '';
+        pendingSteps.forEach((step, idx) => {
+            const chip = document.createElement('span');
+            chip.className = 'active-cmd-chip';
+
+            const label = document.createElement('span');
+            label.className = 'active-cmd-chip-text';
+            label.textContent = step;
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'active-cmd-chip-remove';
+            removeBtn.textContent = '✕';
+            removeBtn.title = idx === 0 ? 'Сбросить команду' : `Убрать шаг "${step}"`;
+            removeBtn.addEventListener('click', () => removePendingStep(idx));
+
+            chip.appendChild(label);
+            chip.appendChild(removeBtn);
+            chipsContainer.appendChild(chip);
+        });
+
+        bar.style.display = 'flex';
+    }
+
+    function setPendingSteps(steps, textValue = null, customPlaceholder = null) {
+        pendingSteps = Array.isArray(steps)
+            ? steps.map(s => String(s || '').trim()).filter(Boolean)
+            : (steps ? [String(steps).trim()].filter(Boolean) : []);
+
+        if (pendingSteps.length > 0) {
+            localStorage.setItem(STORAGE_ACTIVE_CMD_KEY, JSON.stringify(pendingSteps));
+            renderActiveCmdChips();
+            input.placeholder = customPlaceholder || `Введите текст для "${pendingSteps[pendingSteps.length - 1]}"...`;
         } else {
             localStorage.removeItem(STORAGE_ACTIVE_CMD_KEY);
-            if (barText) barText.textContent = '';
-            if (bar) bar.style.display = 'none';
+            renderActiveCmdChips();
             input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
         }
+
         if (textValue !== null && textValue !== undefined) {
             input.value = String(textValue);
             localStorage.setItem(STORAGE_DRAFT_KEY, input.value);
@@ -294,13 +374,25 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typeof syncViewportHeight === 'function') syncViewportHeight();
     }
 
+    function setPendingCommand(prefix, textValue = null, customPlaceholder = null) {
+        const clean = String(prefix || '').trim();
+        setPendingSteps(clean ? [clean] : [], textValue, customPlaceholder);
+    }
+
+    function removePendingStep(index) {
+        if (index <= 0 || pendingSteps.length <= 1) {
+            clearPendingCommand(true);
+            return;
+        }
+        const remaining = pendingSteps.slice(0, index);
+        setPendingSteps(remaining, '', 'Шаг 2/3: введите существующую команду...');
+        input.focus();
+    }
+
     function clearPendingCommand(clearText = true) {
-        pendingCommandPrefix = '';
+        pendingSteps = [];
         localStorage.removeItem(STORAGE_ACTIVE_CMD_KEY);
-        const bar = document.getElementById('active-cmd-bar');
-        const barText = document.getElementById('active-cmd-text');
-        if (barText) barText.textContent = '';
-        if (bar) bar.style.display = 'none';
+        renderActiveCmdChips();
         input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
         if (clearText) {
             input.value = '';
@@ -317,7 +409,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const savedActiveCmd = localStorage.getItem(STORAGE_ACTIVE_CMD_KEY);
     if (savedActiveCmd) {
-        setPendingCommand(savedActiveCmd, null, null);
+        try {
+            const parsedSteps = JSON.parse(savedActiveCmd);
+            if (Array.isArray(parsedSteps) && parsedSteps.length > 0) {
+                setPendingSteps(parsedSteps, null, null);
+            } else if (typeof savedActiveCmd === 'string') {
+                setPendingCommand(savedActiveCmd, null, null);
+            }
+        } catch (e) {
+            setPendingCommand(savedActiveCmd, null, null);
+        }
     }
 
     // Универсальная функция вывода с поддержкой HTML (isHtml) для таймеров
@@ -456,6 +557,13 @@ function restoreConsoleHistory() {
 
         printOutput(result);
 
+        if (result.commandSteps && result.commandSteps.length > 0) {
+            setPendingSteps(result.commandSteps, result.inputValue ?? '', result.inputPlaceholder || null);
+            input.focus();
+            input.setSelectionRange(input.value.length, input.value.length);
+            return;
+        }
+
         if (result.commandPrefix) {
             setPendingCommand(result.commandPrefix, result.inputValue ?? '', result.inputPlaceholder || null);
             input.focus();
@@ -506,15 +614,25 @@ function restoreConsoleHistory() {
         if (e && e.preventDefault) e.preventDefault();
         const rawText = input.value;
 
-        if (pendingCommandPrefix) {
+        if (pendingSteps && pendingSteps.length > 0) {
             const payloadText = rawText.trim();
             if (!payloadText) {
-                printOutput(`⚠️ Введите текст для "${pendingCommandPrefix}" или нажмите ✕ для отмены.`, 'output-error', false);
+                const activeLabel = pendingSteps[pendingSteps.length - 1];
+                printOutput(`⚠️ Введите значение для "${activeLabel}" или нажмите ✕ для отмены.`, 'output-error', false);
                 return;
             }
-            const combinedCommand = `${pendingCommandPrefix} ${payloadText}`;
+            const stepsSnapshot = [...pendingSteps];
+            const baseCommand = stepsSnapshot[0];
+            const combinedCommand = stepsSnapshot.length === 1
+                ? `${baseCommand} ${payloadText}`
+                : `${baseCommand}: ${stepsSnapshot.slice(1).join(' ➔ ')} ➔ ${payloadText}`;
+
             clearPendingCommand(true);
-            await executeCommand(combinedCommand);
+            await executeCommand(combinedCommand, {
+                fromTwoStepBar: true,
+                pendingSteps: stepsSnapshot,
+                stepPayload: payloadText
+            });
             return;
         }
 
@@ -523,7 +641,7 @@ function restoreConsoleHistory() {
         input.value = '';
         localStorage.removeItem(STORAGE_DRAFT_KEY);
         input.style.height = 'auto';
-        await executeCommand(rawText);
+        await executeCommand(rawText, { fromTwoStepBar: false });
     }
 </script>
 <script>
@@ -545,8 +663,19 @@ input.addEventListener('input', () => {
     }
 });
 
-function reloadTerminalPage() {
-    window.location.reload();
+async function reloadTerminalPage() {
+    try {
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k)));
+        }
+        if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map((r) => r.update().catch(() => {})));
+        }
+    } catch (e) {}
+    const sep = window.location.pathname || '/index.html';
+    window.location.replace(`${sep}?_fresh=${Date.now()}`);
 }
 
 function syncViewportHeight() {
@@ -591,7 +720,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 handleFormSubmit(e);
-            } else if (e.key === 'Escape' && pendingCommandPrefix) {
+            } else if (e.key === 'Escape' && pendingSteps && pendingSteps.length > 0) {
                 e.preventDefault();
                 clearPendingCommand(true);
             }
@@ -606,8 +735,14 @@ document.addEventListener('DOMContentLoaded', () => {
     
 <script>
 if ('serviceWorker' in navigator) {
+    let swRefreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (swRefreshing) return;
+        swRefreshing = true;
+        window.location.reload();
+    });
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/service-worker.js')
+        navigator.serviceWorker.register('/service-worker.js?v=20261121_2', { updateViaCache: 'none' })
             .then((reg) => {
                 if (reg && typeof reg.update === 'function') reg.update().catch(() => {});
             })

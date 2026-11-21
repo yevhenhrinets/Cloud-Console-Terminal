@@ -47,17 +47,29 @@ CommandRegistry.register({
                     .order('created_at', { ascending: false })
                     .limit(5);
 
-                if (!error && data && data.length > 0) {
-                    const row = data[0];
-                    const timeStr = row.updated_at ? `ред: ${formatDate(row.updated_at)}` : formatDate(row.created_at);
-                    const cmdDisplay = row.raw_text || `${row.command || ''}`;
-                    const statusMark = row.status === 'failure' ? ' ❌' : ' ✔️';
-                    const outputText = row.output ? `\n   └─ [Результат]: ${row.output}` : '';
-                    return {
-                        response: `📜 Запись истории [ID: ${row.inner_id || row.id}] [${timeStr}]:\n${cmdDisplay}${statusMark}${outputText}`,
-                        style: 'output-info',
-                        skipHistorySave: true
-                    };
+                if (!error && Array.isArray(data) && data.length > 0) {
+                    const visible = data.filter(r =>
+                        r.command !== '__house_layout__' &&
+                        !String(r.raw_text || '').startsWith('__house_layout__:') &&
+                        r.command !== '__support_report__' &&
+                        !String(r.raw_text || '').startsWith('__support_report__:') &&
+                        r.command !== '__command_alias__' &&
+                        !String(r.raw_text || '').startsWith('__command_alias__:') &&
+                        r.command !== '__task_cooldown__' &&
+                        !String(r.raw_text || '').startsWith('__task_cooldown__:')
+                    );
+                    if (visible.length > 0) {
+                        const row = visible[0];
+                        const timeStr = row.updated_at ? `ред: ${formatDate(row.updated_at)}` : formatDate(row.created_at);
+                        const cmdDisplay = row.raw_text || `${row.command || ''}`;
+                        const statusMark = row.status === 'failure' ? ' ❌' : ' ✔️';
+                        const outputText = row.output ? `\n   └─ [Результат]: ${row.output}` : '';
+                        return {
+                            response: `📜 Запись истории [ID: ${row.inner_id || row.id}] [${timeStr}]:\n${cmdDisplay}${statusMark}${outputText}`,
+                            style: 'output-info',
+                            skipHistorySave: true
+                        };
+                    }
                 }
             } catch (e) {
                 // fallback к общему списку
@@ -82,7 +94,13 @@ CommandRegistry.register({
                 if (!error && Array.isArray(data)) {
                     remoteActions = data.filter(r =>
                         r.command !== '__house_layout__' &&
-                        !String(r.raw_text || '').startsWith('__house_layout__:')
+                        !String(r.raw_text || '').startsWith('__house_layout__:') &&
+                        r.command !== '__support_report__' &&
+                        !String(r.raw_text || '').startsWith('__support_report__:') &&
+                        r.command !== '__command_alias__' &&
+                        !String(r.raw_text || '').startsWith('__command_alias__:') &&
+                        r.command !== '__task_cooldown__' &&
+                        !String(r.raw_text || '').startsWith('__task_cooldown__:')
                     );
                 }
             } catch (err) {
@@ -185,7 +203,7 @@ CommandRegistry.register({
         // чтобы при автопрокрутке консоли вниз пользователь видел САМЫЕ ПОСЛЕДНИЕ действия прямо перед строкой ввода!
         const displayList = [...recentRecords].reverse();
 
-        let outputText = `📜 ПОСЛЕДНИЕ ${recentRecords.length} ЗАПИСЕЙ ИСТОРИИ (из ${combined.length} сохраненных):\n`;
+        let outputText = `📜 ПОСЛЕДНИЕ ${recentRecords.length} ЗАПИСЕЙ ИСТОРИИ:\n`;
         outputText += `────────────────────────────────────────────────────────────\n`;
 
         displayList.forEach((row, idx) => {

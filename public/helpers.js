@@ -100,7 +100,8 @@ async function fetchCurrentUser(requireRealAuth = false) {
         }
 
         const authUser = session.user;
-        const fallbackRole = (authUser.email === 'e.grinec@gmail.com') ? 'root' : 'user';
+        const emailLower = String(authUser.email || '').toLowerCase();
+        const fallbackRole = (emailLower === 'e.grinec@gmail.com' || emailLower === 'yevhenhrinets@gmail.com') ? 'root' : 'user';
 
         let profile = null;
         if (navigator.onLine !== false) {
@@ -140,54 +141,43 @@ async function fetchCurrentUser(requireRealAuth = false) {
     }
 }
 
+function isAdminUser(user) {
+    if (!user) return false;
+    const role = String(user.role || '').toLowerCase();
+    const email = String(user.email || '').toLowerCase();
+    return ['root', 'support', 'admin'].includes(role) || email === 'e.grinec@gmail.com' || email === 'yevhenhrinets@gmail.com';
+}
+if (typeof window !== 'undefined') {
+    window.isAdminUser = isAdminUser;
+}
+
 function parseCommand(rawText) {
     if (!rawText) return { cmd: '', parameters: { args: [], raw_args: '' } };
 
     const parts = rawText.trim().split(/\s+/);
-    
+
     // Очищаем первые слова от двоеточий на конце (например, "note:", "add:")
-    if (parts.length > 0 && parts[0].endsWith(':')) {
-        parts[0] = parts[0].slice(0, -1);
-    }
-    if (parts.length > 1 && parts[1].endsWith(':')) {
-        parts[1] = parts[1].slice(0, -1);
-    }
-    if (parts.length > 2 && parts[2].endsWith(':')) {
-        parts[2] = parts[2].slice(0, -1);
+    for (let i = 0; i < Math.min(parts.length, 8); i++) {
+        if (parts[i].endsWith(':')) {
+            parts[i] = parts[i].slice(0, -1);
+        }
     }
 
-    if (parts.length > 3 && parts[3].endsWith(':')) {
-        parts[3] = parts[3].slice(0, -1);
-    }
-
-    const cmd = parts[0] ? parts[0].toLowerCase() : '';
+    const lowerParts = parts.map(p => p.toLowerCase());
+    const cmd = lowerParts[0] || '';
     let actualCmd = cmd;
     let prefixWordsCount = 1;
 
-    // Проверяем четырехсловные команды (например, "make last note fixed")
-    if (parts.length > 3 && window.CommandRegistry) {
-        const potentialFourWord = cmd + ' ' + parts[1].toLowerCase() + ' ' + parts[2].toLowerCase() + ' ' + parts[3].toLowerCase();
-        if (window.CommandRegistry.getHandler(potentialFourWord)) {
-            actualCmd = potentialFourWord;
-            prefixWordsCount = 4;
-        }
-    }
-
-    // Проверяем трехсловные команды (например, "go to missions", "go to hall", "go to kitchen")
-    if (prefixWordsCount === 1 && parts.length > 2 && window.CommandRegistry) {
-        const potentialThreeWord = cmd + ' ' + parts[1].toLowerCase() + ' ' + parts[2].toLowerCase();
-        if (window.CommandRegistry.getHandler(potentialThreeWord)) {
-            actualCmd = potentialThreeWord;
-            prefixWordsCount = 3;
-        }
-    }
-
-    // Проверяем двухсловные команды (например, "add note", "show notes", "make fixed")
-    if (prefixWordsCount === 1 && parts.length > 1 && window.CommandRegistry) {
-        const potentialTwoWord = cmd + ' ' + parts[1].toLowerCase();
-        if (window.CommandRegistry.getHandler(potentialTwoWord)) {
-            actualCmd = potentialTwoWord;
-            prefixWordsCount = 2;
+    // Самое длинное совпадение (до 8 слов включительно)
+    if (parts.length > 1 && window.CommandRegistry) {
+        const maxWords = Math.min(parts.length, 8);
+        for (let wordCount = maxWords; wordCount >= 2; wordCount--) {
+            const candidate = lowerParts.slice(0, wordCount).join(' ');
+            if (window.CommandRegistry.getHandler(candidate)) {
+                actualCmd = candidate;
+                prefixWordsCount = wordCount;
+                break;
+            }
         }
     }
 
@@ -367,19 +357,38 @@ function getCanonicalNavKey(rawText) {
         return 'nav:dashboard';
     }
     if ([
-        'go to house 2 kitchen', 'go to house2 kitchen', 'go to kitchen 2', 'go to kitchen2',
+        'go to house 3 kitchen', 'go to house3 kitchen', 'go to home 3 kitchen', 'go to kitchen 3', 'go to kitchen3',
+        'kitchen 3', 'kitchen3', 'кухня 3', 'кухня3', 'go kitchen 3', 'open kitchen 3', 'go to кухня 3'
+    ].includes(lower)) {
+        return 'nav:house3_kitchen';
+    }
+    if ([
+        'go to house 3 hall', 'go to house3 hall', 'go to home 3 hall', 'go to hall 3', 'go to hall3',
+        'hall 3', 'hall3', 'зал 3', 'зала 3', 'зал3', 'go hall 3', 'open hall 3', 'go to зал 3'
+    ].includes(lower)) {
+        return 'nav:house3_hall';
+    }
+    if ([
+        'go to home 3', 'go to home3', 'go to house 3', 'go to house3', 'home 3', 'home3', 'house 3', 'house3',
+        'дом 3', 'дом3', 'дім 3', 'дім3', 'будинок 3', 'go home 3', 'go house 3', 'open home 3', 'open house 3', 'go to дом 3'
+    ].includes(lower)) {
+        return 'nav:house3';
+    }
+    if ([
+        'go to house 2 kitchen', 'go to house2 kitchen', 'go to home 2 kitchen', 'go to kitchen 2', 'go to kitchen2',
         'kitchen 2', 'kitchen2', 'кухня 2', 'кухня2', 'go kitchen 2', 'open kitchen 2', 'go to кухня 2'
     ].includes(lower)) {
         return 'nav:house2_kitchen';
     }
     if ([
-        'go to house 2 hall', 'go to house2 hall', 'go to hall 2', 'go to hall2',
+        'go to house 2 hall', 'go to house2 hall', 'go to home 2 hall', 'go to hall 2', 'go to hall2',
         'hall 2', 'hall2', 'зал 2', 'зала 2', 'зал2', 'go hall 2', 'open hall 2', 'go to зал 2'
     ].includes(lower)) {
         return 'nav:house2_hall';
     }
     if ([
-        'go to house 2', 'go to house2', 'house 2', 'house2', 'дом 2', 'дом2', 'будинок 2', 'go house 2', 'open house 2', 'go to дом 2'
+        'go to home 2', 'go to home2', 'go to house 2', 'go to house2', 'home 2', 'home2', 'house 2', 'house2',
+        'дом 2', 'дом2', 'дім 2', 'дім2', 'будинок 2', 'go home 2', 'go house 2', 'open home 2', 'open house 2', 'go to дом 2'
     ].includes(lower)) {
         return 'nav:house2';
     }
@@ -395,7 +404,8 @@ function getCanonicalNavKey(rawText) {
         return 'nav:hall';
     }
     if ([
-        'go to house', 'go to house 1', 'house', 'house 1', 'дом', 'дом 1', 'будинок', 'go house', 'open house', 'go to дом'
+        'go to home', 'go to home 1', 'go to house', 'go to house 1', 'home', 'home 1', 'house', 'house 1',
+        'дом', 'дом 1', 'дім', 'дім 1', 'будинок', 'будинок 1', 'go home', 'go house', 'open home', 'open house', 'go to дом'
     ].includes(lower)) {
         return 'nav:house';
     }
@@ -1128,6 +1138,1030 @@ window.HouseLayoutSync = {
     fetchRoomLayoutFromDb
 };
 
+// =========================================================================
+// Обращения в поддержку (Support / Issue Reports + уведомления админа)
+// =========================================================================
+const SUPPORT_REPORTS_LOCAL_KEY = 'terminal_support_reports_v1';
+const SUPPORT_REPORTS_PENDING_KEY = 'terminal_pending_support_reports_v1';
+const SUPPORT_ADMIN_SEEN_KEY = 'terminal_admin_seen_support_ids_v1';
+let supportReportsFlushPromise = null;
+let supportReportsTableMissing = false;
+let supportRealtimeChannel = null;
+
+function getLocalSupportReports() {
+    try {
+        const raw = localStorage.getItem(SUPPORT_REPORTS_LOCAL_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveLocalSupportReports(list) {
+    try {
+        localStorage.setItem(SUPPORT_REPORTS_LOCAL_KEY, JSON.stringify(list || []));
+    } catch (e) {}
+}
+
+function getPendingSupportReports() {
+    try {
+        const raw = localStorage.getItem(SUPPORT_REPORTS_PENDING_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function savePendingSupportReports(list) {
+    try {
+        localStorage.setItem(SUPPORT_REPORTS_PENDING_KEY, JSON.stringify(list || []));
+    } catch (e) {}
+}
+
+function getAdminSeenSupportIds() {
+    try {
+        const raw = localStorage.getItem(SUPPORT_ADMIN_SEEN_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function markAdminSeenSupportIds(ids) {
+    try {
+        const set = new Set([...getAdminSeenSupportIds(), ...(ids || []).map(String)]);
+        localStorage.setItem(SUPPORT_ADMIN_SEEN_KEY, JSON.stringify(Array.from(set)));
+    } catch (e) {}
+}
+
+function normalizeSupportReportRow(row) {
+    if (!row) return null;
+    const p = (row.parameters && typeof row.parameters === 'object') ? row.parameters : null;
+    if (p && p.type === 'support_report') {
+        const reportId = String(p.report_id || row.id || p.inner_id || '');
+        return {
+            id: reportId,
+            inner_id: Number(p.inner_id || row.inner_id || 0) || null,
+            user_id: p.user_id || row.created_by || 'guest',
+            user_email: p.user_email || row.output || 'unknown@local',
+            user_name: p.user_name || '',
+            message: p.message || '',
+            status: p.status || 'open',
+            created_at: p.created_at || row.created_at || new Date().toISOString()
+        };
+    }
+    return {
+        id: String(row.id || row.report_id || row.inner_id || ''),
+        inner_id: Number(row.inner_id || 0) || null,
+        user_id: row.user_id || row.created_by || 'guest',
+        user_email: row.user_email || 'unknown@local',
+        user_name: row.user_name || '',
+        message: row.message || '',
+        status: row.status || 'open',
+        created_at: row.created_at || new Date().toISOString()
+    };
+}
+
+async function flushPendingSupportReports() {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return 0;
+    if (!window.supabaseClient) return 0;
+    if (supportReportsFlushPromise) return supportReportsFlushPromise;
+
+    supportReportsFlushPromise = (async () => {
+        try {
+            const pending = getPendingSupportReports();
+            if (!pending || pending.length === 0) return 0;
+
+            const user = await fetchCurrentUser(true);
+            if (!user || user.isGuest || !user.id || user.id === 'guest') return 0;
+
+            let flushedCount = 0;
+            const remaining = [];
+            let networkFailed = false;
+
+            for (const entry of pending) {
+                if (networkFailed) {
+                    remaining.push(entry);
+                    continue;
+                }
+                let savedOk = false;
+
+                if (!supportReportsTableMissing) {
+                    try {
+                        const { error } = await window.supabaseClient
+                            .from('support_reports')
+                            .insert([{
+                                id: entry.id,
+                                user_id: entry.user_id && entry.user_id !== 'guest' ? entry.user_id : user.id,
+                                user_email: entry.user_email || user.email,
+                                user_name: entry.user_name || user.name || '',
+                                message: entry.message,
+                                status: entry.status || 'open',
+                                created_at: entry.created_at
+                            }]);
+                        if (!error) {
+                            savedOk = true;
+                        } else if (isMissingTableError(error)) {
+                            supportReportsTableMissing = true;
+                        } else if (isOfflineNetworkError(error)) {
+                            networkFailed = true;
+                            remaining.push(entry);
+                            continue;
+                        }
+                    } catch (e) {
+                        if (isOfflineNetworkError(e)) {
+                            networkFailed = true;
+                            remaining.push(entry);
+                            continue;
+                        }
+                    }
+                }
+
+                if (!savedOk) {
+                    try {
+                        const { error: histErr } = await window.supabaseClient
+                            .from('commands_history')
+                            .insert([{
+                                raw_text: `__support_report__:${entry.id}`,
+                                command: '__support_report__',
+                                parameters: {
+                                    type: 'support_report',
+                                    report_id: entry.id,
+                                    inner_id: entry.inner_id,
+                                    user_id: entry.user_id && entry.user_id !== 'guest' ? entry.user_id : user.id,
+                                    user_email: entry.user_email || user.email,
+                                    user_name: entry.user_name || user.name || '',
+                                    message: entry.message,
+                                    status: entry.status || 'open',
+                                    created_at: entry.created_at
+                                },
+                                output: entry.user_email || user.email,
+                                result: 'SUPPORT_REPORT',
+                                status: 'success',
+                                created_at: entry.created_at,
+                                created_by: user.id
+                            }]);
+                        if (!histErr) {
+                            savedOk = true;
+                        } else if (isOfflineNetworkError(histErr)) {
+                            networkFailed = true;
+                            remaining.push(entry);
+                            continue;
+                        } else {
+                            console.warn('Support report DB save error:', histErr.message);
+                        }
+                    } catch (e) {
+                        if (isOfflineNetworkError(e)) {
+                            networkFailed = true;
+                            remaining.push(entry);
+                            continue;
+                        }
+                    }
+                }
+
+                if (savedOk) flushedCount++;
+            }
+
+            const currentPending = getPendingSupportReports();
+            const processedIds = new Set(pending.map(p => p.id));
+            const newlyAdded = currentPending.filter(p => !processedIds.has(p.id));
+            savePendingSupportReports([...remaining, ...newlyAdded]);
+            return flushedCount;
+        } catch (err) {
+            if (!isOfflineNetworkError(err)) {
+                console.warn('flushPendingSupportReports error:', err);
+            }
+            return 0;
+        } finally {
+            supportReportsFlushPromise = null;
+        }
+    })();
+
+    return supportReportsFlushPromise;
+}
+
+async function submitSupportReport(message, currentUser) {
+    const cleanMsg = String(message || '').trim();
+    const localList = getLocalSupportReports();
+    const maxInner = localList.reduce((m, r) => Math.max(m, Number(r.inner_id || 0)), 0);
+    const reportId = 'rep_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const nowIso = new Date().toISOString();
+    const userEmail = (currentUser && currentUser.email) ? currentUser.email : 'guest@local';
+    const userId = (currentUser && currentUser.id) ? currentUser.id : 'guest';
+    const userName = (currentUser && currentUser.name) ? currentUser.name : '';
+
+    const report = {
+        id: reportId,
+        inner_id: maxInner + 1,
+        user_id: userId,
+        user_email: userEmail,
+        user_name: userName,
+        message: cleanMsg,
+        status: 'open',
+        created_at: nowIso
+    };
+
+    localList.unshift(report);
+    saveLocalSupportReports(localList);
+
+    const pending = getPendingSupportReports();
+    pending.push(report);
+    savePendingSupportReports(pending);
+
+    let synced = false;
+    const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
+    if (isOnline && window.supabaseClient && currentUser && !currentUser.isGuest && currentUser.id !== 'guest') {
+        const count = await flushPendingSupportReports();
+        const stillPending = getPendingSupportReports().some(r => r.id === reportId);
+        synced = !stillPending && count >= 0;
+    }
+
+    return { report, synced };
+}
+
+async function fetchSupportReportsForAdmin(currentUser) {
+    if (!isAdminUser(currentUser)) return [];
+
+    const byId = new Map();
+    const mergeReport = (r) => {
+        if (!r) return;
+        const key = String(r.id || `${r.user_email}_${r.created_at}`);
+        if (!byId.has(key)) {
+            byId.set(key, r);
+        }
+    };
+
+    const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
+    if (isOnline && window.supabaseClient) {
+        try {
+            await flushPendingSupportReports();
+        } catch (e) {}
+
+        if (!supportReportsTableMissing) {
+            try {
+                const { data, error } = await window.supabaseClient
+                    .from('support_reports')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .limit(100);
+                if (!error && Array.isArray(data)) {
+                    data.map(normalizeSupportReportRow).forEach(mergeReport);
+                } else if (error && isMissingTableError(error)) {
+                    supportReportsTableMissing = true;
+                }
+            } catch (e) {}
+        }
+
+        try {
+            const { data: histRows, error: histErr } = await window.supabaseClient
+                .from('commands_history')
+                .select('*')
+                .eq('command', '__support_report__')
+                .is('deleted_at', null)
+                .order('created_at', { ascending: false })
+                .limit(100);
+            if (!histErr && Array.isArray(histRows)) {
+                histRows.map(normalizeSupportReportRow).forEach(mergeReport);
+            }
+        } catch (e) {}
+    }
+
+    getLocalSupportReports().map(normalizeSupportReportRow).forEach(mergeReport);
+
+    const list = Array.from(byId.values());
+    list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    list.forEach((item, idx) => {
+        if (!item.inner_id) item.inner_id = list.length - idx;
+    });
+    return list;
+}
+
+async function checkAndNotifyAdmin(currentUser, notifyFn) {
+    if (!isAdminUser(currentUser) || typeof notifyFn !== 'function') return [];
+    const reports = await fetchSupportReportsForAdmin(currentUser);
+    if (!reports || reports.length === 0) return [];
+
+    const seenSet = new Set(getAdminSeenSupportIds().map(String));
+    const unseen = reports.filter(r => r.status !== 'resolved' && !seenSet.has(String(r.id)));
+    if (unseen.length > 0) {
+        markAdminSeenSupportIds(unseen.map(r => String(r.id)));
+        notifyFn(unseen, reports);
+    }
+    return unseen;
+}
+
+function subscribeRealtimeAdminNotifications(currentUser, onNewReport) {
+    if (!isAdminUser(currentUser) || !window.supabaseClient || typeof window.supabaseClient.channel !== 'function') return;
+    if (supportRealtimeChannel) return;
+
+    try {
+        supportRealtimeChannel = window.supabaseClient
+            .channel('support-reports-admin-alerts')
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'commands_history',
+                filter: 'command=eq.__support_report__'
+            }, (payload) => {
+                const row = normalizeSupportReportRow(payload && payload.new);
+                if (!row) return;
+                const seenSet = new Set(getAdminSeenSupportIds().map(String));
+                if (!seenSet.has(String(row.id))) {
+                    markAdminSeenSupportIds([String(row.id)]);
+                    if (typeof onNewReport === 'function') onNewReport(row);
+                }
+            })
+            .subscribe();
+    } catch (e) {
+        console.warn('Realtime support notifications unavailable:', e);
+    }
+}
+
+window.SupportReportsSync = {
+    submitSupportReport,
+    flushPendingSupportReports,
+    fetchSupportReportsForAdmin,
+    checkAndNotifyAdmin,
+    markAdminSeenSupportIds,
+    subscribeRealtimeAdminNotifications
+};
+
+// =========================================================================
+// Пользовательские псевдонимы команд (Add alias / Add aliases + синхронизация БД)
+// =========================================================================
+const CUSTOM_ALIASES_KEY = 'terminal_custom_aliases_v1';
+const CUSTOM_ALIASES_PENDING_KEY = 'terminal_pending_custom_aliases_v1';
+let customAliasesTableMissing = false;
+let customAliasesFlushPromise = null;
+
+function getDefaultSeedAliases() {
+    return [
+        { alias: 'Report about a problem', target: 'help', user_email: 'e.grinec@gmail.com', seeded: true },
+        { alias: 'Change directory', target: 'cd', user_email: 'e.grinec@gmail.com', seeded: true },
+        { alias: 'Export file system', target: 'fs export', user_email: 'e.grinec@gmail.com', seeded: true },
+        { alias: 'Download all files', target: 'fs export', user_email: 'e.grinec@gmail.com', seeded: true },
+        { alias: 'Save project', target: 'fs export', user_email: 'e.grinec@gmail.com', seeded: true }
+    ];
+}
+
+function getLocalCustomAliases() {
+    try {
+        const raw = localStorage.getItem(CUSTOM_ALIASES_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveLocalCustomAliases(list) {
+    try {
+        localStorage.setItem(CUSTOM_ALIASES_KEY, JSON.stringify(list || []));
+    } catch (e) {}
+}
+
+function getPendingCustomAliases() {
+    try {
+        const raw = localStorage.getItem(CUSTOM_ALIASES_PENDING_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function savePendingCustomAliases(list) {
+    try {
+        localStorage.setItem(CUSTOM_ALIASES_PENDING_KEY, JSON.stringify(list || []));
+    } catch (e) {}
+}
+
+function applyStoredCustomAliases() {
+    if (!window.CommandRegistry || typeof window.CommandRegistry.addAliases !== 'function') return 0;
+    const combined = [...getDefaultSeedAliases(), ...getLocalCustomAliases()];
+    let count = 0;
+    combined.forEach(entry => {
+        if (!entry || !entry.alias || !entry.target) return;
+        const res = window.CommandRegistry.addAliases(entry.target, [entry.alias]);
+        if (res && res.ok && res.added.length > 0) count += res.added.length;
+    });
+    return count;
+}
+
+async function flushPendingCustomAliases() {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return 0;
+    if (!window.supabaseClient) return 0;
+    if (customAliasesFlushPromise) return customAliasesFlushPromise;
+
+    customAliasesFlushPromise = (async () => {
+        try {
+            const pending = getPendingCustomAliases();
+            if (!pending || pending.length === 0) return 0;
+
+            const user = await fetchCurrentUser(true);
+            if (!user || user.isGuest || !user.id || user.id === 'guest') return 0;
+
+            let flushedCount = 0;
+            const remaining = [];
+            let networkFailed = false;
+
+            for (const entry of pending) {
+                if (networkFailed) {
+                    remaining.push(entry);
+                    continue;
+                }
+                const aliasLower = String(entry.alias || '').trim().toLowerCase();
+                if (!aliasLower || !entry.target) continue;
+
+                let savedOk = false;
+                if (!customAliasesTableMissing) {
+                    try {
+                        const { error } = await window.supabaseClient
+                            .from('command_aliases')
+                            .upsert([{
+                                id: `${user.id}_${aliasLower}`,
+                                user_id: user.id,
+                                user_email: user.email || '',
+                                alias: entry.alias,
+                                alias_lower: aliasLower,
+                                target_command: entry.target,
+                                created_at: entry.created_at || new Date().toISOString()
+                            }], { onConflict: 'id' });
+                        if (!error) {
+                            savedOk = true;
+                        } else if (isMissingTableError(error)) {
+                            customAliasesTableMissing = true;
+                        } else if (isOfflineNetworkError(error)) {
+                            networkFailed = true;
+                            remaining.push(entry);
+                            continue;
+                        }
+                    } catch (e) {
+                        if (isOfflineNetworkError(e)) {
+                            networkFailed = true;
+                            remaining.push(entry);
+                            continue;
+                        }
+                    }
+                }
+
+                if (!savedOk) {
+                    try {
+                        const { error: histErr } = await window.supabaseClient
+                            .from('commands_history')
+                            .insert([{
+                                raw_text: `__command_alias__:${aliasLower}`,
+                                command: '__command_alias__',
+                                parameters: {
+                                    type: 'command_alias',
+                                    alias: entry.alias,
+                                    alias_lower: aliasLower,
+                                    target: entry.target,
+                                    user_email: user.email || entry.user_email || '',
+                                    created_at: entry.created_at || new Date().toISOString()
+                                },
+                                output: `${entry.alias} -> ${entry.target}`,
+                                result: 'COMMAND_ALIAS',
+                                status: 'success',
+                                created_at: entry.created_at || new Date().toISOString(),
+                                created_by: user.id
+                            }]);
+                        if (!histErr) {
+                            savedOk = true;
+                        } else if (isOfflineNetworkError(histErr)) {
+                            networkFailed = true;
+                            remaining.push(entry);
+                            continue;
+                        }
+                    } catch (e) {
+                        if (isOfflineNetworkError(e)) {
+                            networkFailed = true;
+                            remaining.push(entry);
+                            continue;
+                        }
+                    }
+                }
+
+                if (savedOk) flushedCount++;
+            }
+
+            const latestPending = getPendingCustomAliases();
+            const processedKeys = new Set(pending.map(p => `${String(p.alias || '').toLowerCase()}|${p.created_at || ''}`));
+            const newlyAdded = latestPending.filter(p => !processedKeys.has(`${String(p.alias || '').toLowerCase()}|${p.created_at || ''}`));
+            savePendingCustomAliases([...remaining, ...newlyAdded]);
+            return flushedCount;
+        } catch (err) {
+            if (!isOfflineNetworkError(err)) {
+                console.warn('flushPendingCustomAliases error:', err);
+            }
+            return 0;
+        } finally {
+            customAliasesFlushPromise = null;
+        }
+    })();
+
+    return customAliasesFlushPromise;
+}
+
+async function saveCustomAliases(targetCanonical, aliasList, currentUser) {
+    const cleanTarget = String(targetCanonical || '').trim().toLowerCase();
+    const list = Array.isArray(aliasList) ? aliasList : [aliasList];
+    const nowIso = new Date().toISOString();
+    const userId = (currentUser && currentUser.id) ? currentUser.id : 'guest';
+    const userEmail = (currentUser && currentUser.email) ? currentUser.email : 'guest@local';
+
+    const localList = getLocalCustomAliases();
+    const pendingList = getPendingCustomAliases();
+
+    list.forEach(rawAlias => {
+        const cleanAlias = String(rawAlias || '').trim().replace(/\s+/g, ' ');
+        const aliasLower = cleanAlias.toLowerCase();
+        if (!aliasLower) return;
+
+        const existingIdx = localList.findIndex(item => String(item.alias || '').toLowerCase() === aliasLower);
+        const record = {
+            alias: cleanAlias,
+            target: cleanTarget,
+            user_id: userId,
+            user_email: userEmail,
+            created_at: nowIso
+        };
+        if (existingIdx !== -1) {
+            localList[existingIdx] = record;
+        } else {
+            localList.push(record);
+        }
+        pendingList.push(record);
+    });
+
+    saveLocalCustomAliases(localList);
+    savePendingCustomAliases(pendingList);
+    applyStoredCustomAliases();
+
+    let synced = false;
+    const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
+    if (isOnline && window.supabaseClient && currentUser && !currentUser.isGuest && currentUser.id !== 'guest') {
+        await flushPendingCustomAliases();
+        const stillPending = getPendingCustomAliases().some(p =>
+            list.some(a => String(a).trim().toLowerCase() === String(p.alias || '').toLowerCase())
+        );
+        synced = !stillPending;
+    }
+
+    return { synced };
+}
+
+async function syncCustomAliasesFromCloud(currentUser) {
+    applyStoredCustomAliases();
+    const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
+    if (!isOnline || !window.supabaseClient) return;
+
+    const user = currentUser || await fetchCurrentUser(true);
+    if (!user || user.isGuest || !user.id || user.id === 'guest') return;
+
+    try {
+        await flushPendingCustomAliases();
+    } catch (e) {}
+
+    const mergedMap = new Map();
+    getLocalCustomAliases().forEach(item => {
+        if (item && item.alias && item.target) {
+            mergedMap.set(String(item.alias).toLowerCase(), item);
+        }
+    });
+
+    if (!customAliasesTableMissing) {
+        try {
+            const { data, error } = await window.supabaseClient
+                .from('command_aliases')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: true });
+            if (!error && Array.isArray(data)) {
+                data.forEach(r => {
+                    if (r.alias && r.target_command) {
+                        mergedMap.set(String(r.alias).toLowerCase(), {
+                            alias: r.alias,
+                            target: r.target_command,
+                            user_id: r.user_id || user.id,
+                            user_email: r.user_email || user.email,
+                            created_at: r.created_at
+                        });
+                    }
+                });
+            } else if (error && isMissingTableError(error)) {
+                customAliasesTableMissing = true;
+            }
+        } catch (e) {}
+    }
+
+    try {
+        const { data: histRows, error: histErr } = await window.supabaseClient
+            .from('commands_history')
+            .select('parameters, created_at')
+            .eq('created_by', user.id)
+            .eq('command', '__command_alias__')
+            .is('deleted_at', null)
+            .order('created_at', { ascending: true })
+            .limit(200);
+        if (!histErr && Array.isArray(histRows)) {
+            histRows.forEach(r => {
+                const p = r.parameters;
+                if (p && p.alias && p.target) {
+                    mergedMap.set(String(p.alias).toLowerCase(), {
+                        alias: p.alias,
+                        target: p.target,
+                        user_id: user.id,
+                        user_email: p.user_email || user.email,
+                        created_at: p.created_at || r.created_at
+                    });
+                }
+            });
+        }
+    } catch (e) {}
+
+    saveLocalCustomAliases(Array.from(mergedMap.values()));
+    applyStoredCustomAliases();
+}
+
+window.CustomAliasesSync = {
+    getDefaultSeedAliases,
+    getLocalCustomAliases,
+    applyStoredAliases: applyStoredCustomAliases,
+    applyStoredCustomAliases,
+    saveCustomAliases,
+    flushPendingCustomAliases,
+    syncAndApply: syncCustomAliasesFromCloud
+};
+
+// ==========================================
+// Кулдауны задач Дашборда (Памперс — 3ч, Кипяток — 1ч) + синхронизация с Supabase
+// ==========================================
+const TASK_COOLDOWN_RULES = {
+    памперс: {
+        key: 'памперс',
+        label: 'Памперс',
+        durationSec: 3 * 3600, // 3 часа
+        readyText: '👶 Пора менять памперс! Прошло 3 часа — можно запускать снова.'
+    },
+    кипяток: {
+        key: 'кипяток',
+        label: 'Кипяток',
+        durationSec: 1 * 3600, // 1 час
+        readyText: '🔥 Кипяток снова доступен! Прошёл 1 час.'
+    }
+};
+
+function getCooldownRule(taskName) {
+    const clean = String(taskName || '').trim().toLowerCase();
+    if (!clean) return null;
+    if (clean === 'памперс' || clean.includes('памперс')) return TASK_COOLDOWN_RULES.памперс;
+    if (clean === 'кипяток' || clean.includes('кипяток')) return TASK_COOLDOWN_RULES.кипяток;
+    return null;
+}
+
+function getCooldownStorageKeys(userIdOverride = null) {
+    const uid = userIdOverride || (typeof currentUser !== 'undefined' && currentUser && currentUser.id) || 'guest';
+    return {
+        uid,
+        cache: `terminal_task_cooldowns_${uid}`,
+        pending: `terminal_task_cooldowns_pending_${uid}`
+    };
+}
+
+function loadLocalTaskCooldowns(userIdOverride = null) {
+    try {
+        const { cache } = getCooldownStorageKeys(userIdOverride);
+        const raw = localStorage.getItem(cache);
+        const parsed = raw ? JSON.parse(raw) : {};
+        return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function saveLocalTaskCooldowns(map, userIdOverride = null) {
+    try {
+        const { cache } = getCooldownStorageKeys(userIdOverride);
+        localStorage.setItem(cache, JSON.stringify(map || {}));
+    } catch (e) {}
+}
+
+function getPendingTaskCooldowns(userIdOverride = null) {
+    try {
+        const { pending } = getCooldownStorageKeys(userIdOverride);
+        const raw = localStorage.getItem(pending);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function savePendingTaskCooldowns(list, userIdOverride = null) {
+    try {
+        const { pending } = getCooldownStorageKeys(userIdOverride);
+        if (!list || list.length === 0) {
+            localStorage.removeItem(pending);
+        } else {
+            localStorage.setItem(pending, JSON.stringify(list));
+        }
+    } catch (e) {}
+}
+
+function formatCooldownDurationMs(ms) {
+    const totalSec = Math.max(0, Math.ceil(Number(ms || 0) / 1000));
+    if (totalSec <= 0) return '0с';
+    const hours = Math.floor(totalSec / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    const secs = totalSec % 60;
+    const secStr = `${secs < 10 ? '0' : ''}${secs}с`;
+    if (hours > 0) {
+        const minStr = `${mins < 10 ? '0' : ''}${mins}м`;
+        return `${hours}ч ${minStr} ${secStr}`;
+    }
+    if (mins > 0) {
+        return `${mins}м ${secStr}`;
+    }
+    return `${secs}с`;
+}
+
+async function upsertTaskCooldownInSupabase(userId, item) {
+    if (!window.supabaseClient || !userId || userId === 'guest') return false;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+
+    const markerRawText = `__task_cooldown__:${item.key}`;
+    const payloadParams = {
+        task_key: item.key,
+        task_name: item.label,
+        completed_at_ms: Number(item.completedAtMs),
+        until_ms: Number(item.untilMs),
+        duration_seconds: Number(item.durationSec),
+        updated_at: new Date().toISOString()
+    };
+
+    try {
+        const { data: existingRows, error: findErr } = await window.supabaseClient
+            .from('commands_history')
+            .select('id, parameters')
+            .eq('created_by', userId)
+            .eq('command', '__task_cooldown__')
+            .eq('raw_text', markerRawText)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        if (findErr) return false;
+
+        if (existingRows && existingRows.length > 0) {
+            const remoteUntil = Number(existingRows[0].parameters && existingRows[0].parameters.until_ms) || 0;
+            if (remoteUntil > Number(item.untilMs)) {
+                return true;
+            }
+            const { error: updErr } = await window.supabaseClient
+                .from('commands_history')
+                .update({
+                    parameters: payloadParams,
+                    output: `Cooldown ${item.label}: ${new Date(item.untilMs).toISOString()}`,
+                    created_at: new Date(item.completedAtMs).toISOString()
+                })
+                .eq('id', existingRows[0].id);
+            return !updErr;
+        }
+
+        const { error: insErr } = await window.supabaseClient
+            .from('commands_history')
+            .insert([{
+                raw_text: markerRawText,
+                command: '__task_cooldown__',
+                parameters: payloadParams,
+                output: `Cooldown ${item.label}: ${new Date(item.untilMs).toISOString()}`,
+                status: 'success',
+                created_by: userId,
+                created_at: new Date(item.completedAtMs).toISOString()
+            }]);
+        return !insErr;
+    } catch (e) {
+        return false;
+    }
+}
+
+async function flushPendingTaskCooldowns(userIdOverride = null) {
+    const uid = userIdOverride || (typeof currentUser !== 'undefined' && currentUser && currentUser.id) || null;
+    if (!uid || uid === 'guest' || !window.supabaseClient) return 0;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return 0;
+
+    const pending = getPendingTaskCooldowns(uid);
+    if (!pending.length) return 0;
+
+    const remaining = [];
+    let flushed = 0;
+    for (const item of pending) {
+        const ok = await upsertTaskCooldownInSupabase(uid, item);
+        if (ok) flushed++;
+        else remaining.push(item);
+    }
+    savePendingTaskCooldowns(remaining, uid);
+    return flushed;
+}
+
+function recordTaskCompletion(taskName, completedAtInput = Date.now(), userIdOverride = null) {
+    const rule = getCooldownRule(taskName);
+    if (!rule) return null;
+
+    let completedAtMs = completedAtInput instanceof Date
+        ? completedAtInput.getTime()
+        : (typeof completedAtInput === 'number' ? completedAtInput : new Date(completedAtInput).getTime());
+    if (!Number.isFinite(completedAtMs) || completedAtMs <= 0) {
+        completedAtMs = Date.now();
+    }
+    // Если время завершения немного в будущем из-за рассинхрона часов — ограничиваем текущим моментом
+    if (completedAtMs > Date.now() + 5000) {
+        completedAtMs = Date.now();
+    }
+
+    const untilMs = completedAtMs + rule.durationSec * 1000;
+    const { uid } = getCooldownStorageKeys(userIdOverride);
+    const map = loadLocalTaskCooldowns(uid);
+    const prev = map[rule.key];
+
+    if (prev && Number(prev.untilMs) >= untilMs) {
+        return prev;
+    }
+
+    const entry = {
+        key: rule.key,
+        label: rule.label,
+        completedAtMs,
+        untilMs,
+        durationSec: rule.durationSec,
+        readyNotified: untilMs <= Date.now()
+    };
+    map[rule.key] = entry;
+    saveLocalTaskCooldowns(map, uid);
+
+    if (uid && uid !== 'guest') {
+        const pending = getPendingTaskCooldowns(uid).filter(p => p.key !== rule.key);
+        pending.push(entry);
+        savePendingTaskCooldowns(pending, uid);
+        flushPendingTaskCooldowns(uid).catch(() => {});
+    }
+
+    return entry;
+}
+
+function getTaskCooldownState(taskName, userIdOverride = null) {
+    const rule = getCooldownRule(taskName);
+    if (!rule) return null;
+
+    const { uid } = getCooldownStorageKeys(userIdOverride);
+    const map = loadLocalTaskCooldowns(uid);
+    const entry = map[rule.key];
+    if (!entry || !entry.untilMs) {
+        return {
+            rule,
+            active: false,
+            remainingMs: 0,
+            untilMs: 0,
+            formatted: ''
+        };
+    }
+
+    const remainingMs = Math.max(0, Number(entry.untilMs) - Date.now());
+    return {
+        rule,
+        active: remainingMs > 0,
+        remainingMs,
+        untilMs: Number(entry.untilMs),
+        completedAtMs: Number(entry.completedAtMs) || 0,
+        formatted: remainingMs > 0 ? formatCooldownDurationMs(remainingMs) : ''
+    };
+}
+
+function getAllActiveTaskCooldowns(userIdOverride = null) {
+    const { uid } = getCooldownStorageKeys(userIdOverride);
+    const map = loadLocalTaskCooldowns(uid);
+    const now = Date.now();
+    const active = [];
+    for (const key of Object.keys(TASK_COOLDOWN_RULES)) {
+        const rule = TASK_COOLDOWN_RULES[key];
+        const entry = map[key];
+        if (entry && Number(entry.untilMs) > now) {
+            const remainingMs = Number(entry.untilMs) - now;
+            active.push({
+                key,
+                label: rule.label,
+                remainingMs,
+                untilMs: Number(entry.untilMs),
+                completedAtMs: Number(entry.completedAtMs) || 0,
+                formatted: formatCooldownDurationMs(remainingMs)
+            });
+        }
+    }
+    return active;
+}
+
+function checkTaskCooldownTransitions(userIdOverride = null, onReadyCallback = null) {
+    const { uid } = getCooldownStorageKeys(userIdOverride);
+    const map = loadLocalTaskCooldowns(uid);
+    const now = Date.now();
+    let changed = false;
+    const readyList = [];
+
+    for (const [key, entry] of Object.entries(map)) {
+        if (!entry || !entry.untilMs) continue;
+        if (now >= Number(entry.untilMs) && !entry.readyNotified) {
+            entry.readyNotified = true;
+            changed = true;
+            const rule = TASK_COOLDOWN_RULES[key] || getCooldownRule(entry.label || key);
+            if (rule) {
+                readyList.push(rule);
+                if (typeof onReadyCallback === 'function') {
+                    try { onReadyCallback(rule, entry); } catch (e) {}
+                }
+            }
+        }
+    }
+
+    if (changed) {
+        saveLocalTaskCooldowns(map, uid);
+    }
+    return readyList;
+}
+
+async function syncTaskCooldownsFromSupabase(userIdOverride = null) {
+    const uid = userIdOverride || (typeof currentUser !== 'undefined' && currentUser && currentUser.id) || null;
+    if (!uid || uid === 'guest' || !window.supabaseClient) {
+        return loadLocalTaskCooldowns(uid || 'guest');
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        return loadLocalTaskCooldowns(uid);
+    }
+
+    try {
+        await flushPendingTaskCooldowns(uid);
+        const { data: rows, error } = await window.supabaseClient
+            .from('commands_history')
+            .select('parameters, created_at')
+            .eq('created_by', uid)
+            .eq('command', '__task_cooldown__')
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+        const localMap = loadLocalTaskCooldowns(uid);
+        let updated = false;
+        const now = Date.now();
+
+        if (!error && Array.isArray(rows)) {
+            rows.forEach(row => {
+                const p = row.parameters || {};
+                const rule = getCooldownRule(p.task_key || p.task_name);
+                if (!rule) return;
+                const remoteUntilMs = Number(p.until_ms) || 0;
+                const remoteCompletedMs = Number(p.completed_at_ms) || (remoteUntilMs - rule.durationSec * 1000);
+                if (remoteUntilMs <= 0) return;
+
+                const cur = localMap[rule.key];
+                if (!cur || remoteUntilMs > Number(cur.untilMs || 0)) {
+                    localMap[rule.key] = {
+                        key: rule.key,
+                        label: rule.label,
+                        completedAtMs: remoteCompletedMs,
+                        untilMs: remoteUntilMs,
+                        durationSec: rule.durationSec,
+                        // Не показываем опоздавшее уведомление при первичной подгрузке уже давно истёкшего кулдауна с другого устройства
+                        readyNotified: remoteUntilMs <= now
+                    };
+                    updated = true;
+                }
+            });
+        }
+
+        if (updated) {
+            saveLocalTaskCooldowns(localMap, uid);
+        }
+        return localMap;
+    } catch (e) {
+        return loadLocalTaskCooldowns(uid);
+    }
+}
+
+window.TaskCooldowns = {
+    RULES: TASK_COOLDOWN_RULES,
+    getRule: getCooldownRule,
+    formatDurationMs: formatCooldownDurationMs,
+    recordCompletion: recordTaskCompletion,
+    getState: getTaskCooldownState,
+    getAllActive: getAllActiveTaskCooldowns,
+    checkTransitions: checkTaskCooldownTransitions,
+    flushPending: flushPendingTaskCooldowns,
+    syncFromSupabase: syncTaskCooldownsFromSupabase
+};
+
 async function flushAllOfflineConsoleQueues() {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     try {
@@ -1138,6 +2172,15 @@ async function flushAllOfflineConsoleQueues() {
     } catch (e) {}
     try {
         await flushPendingHouseLayouts();
+    } catch (e) {}
+    try {
+        await flushPendingSupportReports();
+    } catch (e) {}
+    try {
+        await flushPendingCustomAliases();
+    } catch (e) {}
+    try {
+        await flushPendingTaskCooldowns();
     } catch (e) {}
     try {
         if (window.MissionsStore && typeof window.MissionsStore.trySyncSupabase === 'function') {
@@ -1157,6 +2200,9 @@ if (typeof window !== 'undefined') {
             flushPendingActionsToCloud().catch(() => {});
             flushPendingNotes().catch(() => {});
             flushPendingHouseLayouts().catch(() => {});
+            flushPendingSupportReports().catch(() => {});
+            flushPendingCustomAliases().catch(() => {});
+            flushPendingTaskCooldowns().catch(() => {});
         }
     });
     document.addEventListener('visibilitychange', () => {
@@ -1164,6 +2210,9 @@ if (typeof window !== 'undefined') {
             flushPendingActionsToCloud().catch(() => {});
             flushPendingNotes().catch(() => {});
             flushPendingHouseLayouts().catch(() => {});
+            flushPendingSupportReports().catch(() => {});
+            flushPendingCustomAliases().catch(() => {});
+            flushPendingTaskCooldowns().catch(() => {});
         }
     });
 }

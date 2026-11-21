@@ -42,13 +42,33 @@ CommandRegistry.register({
 CommandRegistry.register({
     names: ['echo', 'эхо', 'луна', 'print'],
     
-    description: 'Outputing',
+    description: 'Вывод текста (строго в 2 этапа)',
     category: 'System',
-    usage: 'Echo [text] | print [text]',
+    usage: 'echo | print',
     
-    handler: async (parameters) => {
+    handler: async (parameters, options = {}) => {
+        const text = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+        const prefix = (parameters && parameters.matchedCmd) ? parameters.matchedCmd : 'echo';
+
+        if (text && !(options && options.fromTwoStepBar)) {
+            return {
+                response: `⚠️ Команда \`${prefix}\` работает только в 2 этапа — текст нельзя вводить сразу в команде!\n1) Введите \`${prefix}\` без текста\n2) Введите текст после появления команды под строкой ввода.`,
+                style: 'output-error'
+            };
+        }
+
+        if (!text) {
+            return {
+                response: `📢 Режим \`${prefix}\` активирован. Введите текст в поле ввода и нажмите Enter (или ✕ для отмены).`,
+                style: 'output-info',
+                commandPrefix: prefix,
+                inputValue: '',
+                inputPlaceholder: `Введите текст для "${prefix}"...`
+            };
+        }
+
         return { 
-            response: `Текст: ${parameters.raw_args}\nJSON parameters: ${JSON.stringify(parameters, null, 2)}`, 
+            response: `Текст: ${text}`, 
             style: 'output-success' 
         };
     }
