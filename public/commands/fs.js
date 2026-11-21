@@ -141,9 +141,9 @@
     // 4. Команда create directory / mkdir / add directory / make directory (строго в 2 этапа)
     CommandRegistry.register({
         names: [
-            'create directory', 'mkdir',
-            'add directory', 'make directory',
-            'add folder', 'create folder', 'make folder',
+            'create directory', 'create a directory', 'create the directory', 'mkdir',
+            'add directory', 'add a directory', 'make directory', 'make a directory',
+            'add folder', 'create folder', 'create a folder', 'create the folder', 'make folder',
             'создать папку', 'добавить папку', 'новая папка'
         ],
         description: 'Создание новой папки (строго в 2 этапа, включая вложенные пути: a/b/c)',
@@ -339,7 +339,10 @@
     // 8. Команда find directory / search directory / search folder
     CommandRegistry.register({
         names: [
-            'find directory', 'search directory', 'search folder',
+            'find directory', 'find the directory', 'find a directory',
+            'find folder', 'find the folder', 'find a folder',
+            'search directory', 'search the directory', 'search a directory',
+            'search folder', 'search the folder',
             'найти папку', 'поиск папки', 'найти директорию'
         ],
         description: 'Поиск папки по началу названия (префиксу) или фрагменту',

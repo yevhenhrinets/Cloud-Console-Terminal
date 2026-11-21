@@ -1,4 +1,4 @@
-// commands/support.js — двухэтапная отправка обращений в поддержку (help / support / add an issue / report about a problem)
+// commands/support.js — отправка обращений в поддержку (2 этапа для авторизованных, 3 этапа для гостя guest@demo.terminal с запросом e-mail/телефона)
 // и список обращений для администратора (reports / show reports / show issues / problems)
 
 (function () {
@@ -11,6 +11,13 @@
             .replace(/'/g, '&#39;');
     }
 
+    function isGuestSupportUser(user) {
+        if (!user) return true;
+        if (user.isGuest || user.id === 'guest') return true;
+        const email = String(user.email || '').trim().toLowerCase();
+        return !email || email === 'guest@demo.terminal' || email === 'guest@local';
+    }
+
     CommandRegistry.register({
         names: [
             'help', 'support',
@@ -19,7 +26,7 @@
             'поддержка', 'помощь', 'допомога', 'помогите', 'допоможіть',
             'сообщить о проблеме', 'проблема', 'тикет', '?'
         ],
-        description: 'Отправить сообщение/проблему в службу поддержки (только в 2 этапа)',
+        description: 'Отправить сообщение/проблему в службу поддержки (2 этапа; для гостя — 3 этапа с контактом)',
         category: '🆘 Поддержка',
         usage: 'support | help | add an issue | report about a problem (без текста)',
         handler: async (parameters, options = {}) => {
@@ -31,41 +38,103 @@
             const rawText = (parameters && parameters.raw_args ? String(parameters.raw_args) : (parameters && Array.isArray(parameters.args) ? parameters.args.join(' ') : '')).trim();
             const matchedCmd = (parameters && parameters.matchedCmd ? String(parameters.matchedCmd).toLowerCase() : 'support').trim();
             const prefix = matchedCmd === '?' ? 'support' : (matchedCmd || 'support');
+            const isGuest = isGuestSupportUser(currentUser);
 
-            if (rawText && !options.fromTwoStepBar) {
-                return {
-                    response: `⚠️ Эта команда работает только в 2 этапа — нельзя вводить текст проблемы сразу в строке команды!\n1) Введите команду без текста (например: \`${prefix}\`)\n2) После появления команды под строкой ввода напишите описание проблемы.`,
-                    style: 'output-error'
-                };
-            }
+            // Шаг 1: запрещаем ввод текста в одной команде
+            if (!options || !options.fromTwoStepBar) {
+                if (rawText) {
+                    return {
+                        response: `⚠️ Эта команда работает только пошагово — нельзя вводить текст проблемы сразу в строке команды!\n1) Введите команду без текста (например: \`${prefix}\`)\n2) После появления команды под строкой ввода напишите описание проблемы${isGuest ? '\n3) Оставьте e-mail или телефон для ответа' : ''}.`,
+                        style: 'output-error'
+                    };
+                }
 
-            if (!rawText) {
                 return {
                     response: '🆘 Обращение в поддержку: опишите возникшую проблему в поле ввода и нажмите Enter (или ✕ для отмены).',
                     style: 'output-info',
-                    commandPrefix: prefix,
+                    commandSteps: [prefix],
                     inputValue: '',
                     inputPlaceholder: 'Опишите проблему для отправки администратору...'
                 };
             }
 
+            const steps = Array.isArray(options.pendingSteps) ? options.pendingSteps : [prefix];
+            const payload = String(options.stepPayload !== undefined ? options.stepPayload : rawText).trim();
+
             if (!window.SupportReportsSync) {
                 return { response: '❌ Модуль поддержки SupportReportsSync не загружен.', style: 'output-error' };
             }
 
+            // Шаг 2: получили описание проблемы
+            if (steps.length <= 1) {
+                if (!payload) {
+                    return {
+                        response: '⚠️ Введите описание проблемы (или нажмите ✕ для отмены).',
+                        style: 'output-error',
+                        commandSteps: [steps[0] || prefix],
+                        inputValue: '',
+                        inputPlaceholder: 'Опишите проблему для отправки администратору...'
+                    };
+                }
+
+                // Для гостя (guest@demo.terminal) включаем обязательный 3-й этап: e-mail, телефон или оба
+                if (isGuest) {
+                    return {
+                        response: '📞 Так как вы пишете как гость (guest@demo.terminal), укажите e-mail, телефон или оба контакта в одной строке, чтобы мы могли вам ответить:',
+                        style: 'output-info',
+                        commandSteps: [steps[0] || prefix, payload],
+                        inputValue: '',
+                        inputPlaceholder: 'Шаг 3/3: ваш e-mail, телефон или оба...'
+                    };
+                }
+
+                try {
+                    const { report, synced } = await window.SupportReportsSync.submitSupportReport(payload, currentUser);
+                    const senderEmail = report.user_email || currentUser.email || 'guest@local';
+                    const statusHint = synced
+                        ? '✅ Сообщение записано в БД и отправлено администратору!'
+                        : '📡 Сообщение сохранено локально и отправится в БД и администратору при появлении сети.';
+
+                    if (typeof window.isAdminUser === 'function' && window.isAdminUser(currentUser)) {
+                        window.SupportReportsSync.markAdminSeenSupportIds([String(report.id)]);
+                    }
+
+                    return {
+                        response: `🆘 Обращение #${report.inner_id} зарегистрировано!\n📧 Отправитель: ${senderEmail}\n📝 Текст: "${report.message}"\n${statusHint}`,
+                        style: 'output-success'
+                    };
+                } catch (err) {
+                    return { response: '❌ Ошибка отправки обращения: ' + (err.message || err), style: 'output-error' };
+                }
+            }
+
+            // Шаг 3 (для гостя): сохраняем контактную строку вместо guest@demo.terminal
+            const problemText = String(steps[1] || '').trim();
+            const contactText = payload;
+
+            if (!contactText) {
+                return {
+                    response: '⚠️ Укажите e-mail, телефон или оба контакта, чтобы мы могли вам ответить.',
+                    style: 'output-error',
+                    commandSteps: steps,
+                    inputValue: '',
+                    inputPlaceholder: 'Шаг 3/3: ваш e-mail, телефон или оба...'
+                };
+            }
+
             try {
-                const { report, synced } = await window.SupportReportsSync.submitSupportReport(rawText, currentUser);
-                const senderEmail = report.user_email || currentUser.email || 'guest@local';
+                const { report, synced } = await window.SupportReportsSync.submitSupportReport(problemText, currentUser, contactText);
+                const senderContact = report.user_email || contactText;
                 const statusHint = synced
                     ? '✅ Сообщение записано в БД и отправлено администратору!'
-                    : '📡 Сообщение сохранено локально и отправится в БД и администратору при появлении сети.';
+                    : '📡 Сообщение сохранено локально с вашими контактами и синхронизируется при входе/сети.';
 
                 if (typeof window.isAdminUser === 'function' && window.isAdminUser(currentUser)) {
                     window.SupportReportsSync.markAdminSeenSupportIds([String(report.id)]);
                 }
 
                 return {
-                    response: `🆘 Обращение #${report.inner_id} зарегистрировано!\n📧 Отправитель: ${senderEmail}\n📝 Текст: "${report.message}"\n${statusHint}`,
+                    response: `🆘 Обращение #${report.inner_id} зарегистрировано!\n📞 Контакт для ответа: ${senderContact}\n📝 Текст: "${report.message}"\n${statusHint}`,
                     style: 'output-success'
                 };
             } catch (err) {
@@ -115,12 +184,24 @@
             const lines = reports.map((r, idx) => {
                 const displayId = r.inner_id || (reports.length - idx);
                 const dateStr = typeof formatDate === 'function' ? formatDate(r.created_at) : (r.created_at || '');
-                const emailRaw = String(r.user_email || 'unknown@local');
-                const safeEmail = escapeHtmlSafe(emailRaw);
+                const contactRaw = String(r.user_email || 'unknown@local').trim();
+                const safeContact = escapeHtmlSafe(contactRaw);
                 const safeMsg = escapeHtmlSafe(r.message || '');
                 const statusBadge = r.status === 'resolved' ? '✅ Решено' : '🆕 Открыто';
-                const mailHref = `mailto:${encodeURIComponent(emailRaw)}?subject=${encodeURIComponent(`Re: Обращение #${displayId} (Cloud Terminal)`)}`;
-                return `[ID: ${displayId}] [${escapeHtmlSafe(dateStr)}] ${statusBadge} | От: <strong>${safeEmail}</strong>\n   📝 ${safeMsg}\n   <a href="${mailHref}" style="color:#38bdf8;text-decoration:underline;font-weight:bold;">✉️ Ответить на ${safeEmail}</a>`;
+
+                const emailMatch = contactRaw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+                const phoneDigits = contactRaw.replace(/[^+\d]/g, '');
+                let replyHtml = '';
+                if (emailMatch) {
+                    const mailHref = `mailto:${encodeURIComponent(emailMatch[0])}?subject=${encodeURIComponent(`Re: Обращение #${displayId} (Cloud Terminal)`)}`;
+                    replyHtml = `<a href="${mailHref}" style="color:#38bdf8;text-decoration:underline;font-weight:bold;">✉️ Ответить на ${escapeHtmlSafe(emailMatch[0])}</a>`;
+                } else if (phoneDigits.length >= 6) {
+                    replyHtml = `<a href="tel:${escapeHtmlSafe(phoneDigits)}" style="color:#38bdf8;text-decoration:underline;font-weight:bold;">📞 Позвонить: ${safeContact}</a>`;
+                } else {
+                    replyHtml = `<span style="color:#38bdf8;font-weight:bold;">📞 Контакт для ответа: ${safeContact}</span>`;
+                }
+
+                return `[ID: ${displayId}] [${escapeHtmlSafe(dateStr)}] ${statusBadge} | От: <strong>${safeContact}</strong>\n   📝 ${safeMsg}\n   ${replyHtml}`;
             });
 
             const header = `📬 <strong>Обращения в поддержку (${reports.length}):</strong>\n`;

@@ -1,11 +1,19 @@
 // commands/unpin.js — массовое открепление заметок по списку ID или 'last'
 
 CommandRegistry.register({
-    names: ['unpin', 'открепить', 'відкріпити'],
+    names: [
+        'unpin', 'unpin note', 'unpin the note', 'unpin notes', 'unpin the notes', 'unpin note number', 'unpin the note number',
+        'unfix', 'unfix note', 'unfix the note', 'unfix notes', 'unfix the notes', 'unfix note number', 'unfix the note number',
+        'make unfixed', 'make note unfixed', 'make the note unfixed', 'make last note unfixed',
+        'unfasten', 'unfasten note', 'unfasten the note', 'unfasten notes', 'unfasten the notes', 'unfasten note number', 'unfasten the note number',
+        'detach', 'detach note', 'detach the note', 'detach notes', 'detach the notes', 'detach note number', 'detach the note number',
+        'loosen', 'loosen note', 'loosen the note', 'loosen notes', 'loosen the notes', 'loosen note number', 'loosen the note number',
+        'открепить', 'відкріпити'
+    ],
     
-    description: 'Unpinning',
+    description: 'Unpin / unfasten / detach / loosen note (notes) by id (ids, including 1st/2nd/6th) or last',
     category: 'Notes',
-    usage: 'Unpin [note_id] | unpin note [id] | unpin [note_id1, note_id2...] | unpin notes number: [id1, id2...]',
+    usage: 'unpin [id] | unfasten the note number [id] | detach [6th] note | loosen the note [id] | unfix [id]',
     
     handler: async (parameters) => {
         const currentUser = await fetchCurrentUser();
@@ -19,7 +27,7 @@ CommandRegistry.register({
         const effectiveUserId = (isAdmin && targetUserId) ? targetUserId : currentUser.id;
         const isOfflineMode = !window.supabaseClient || (typeof navigator !== 'undefined' && navigator.onLine === false) || currentUser.isGuest;
 
-        const isLastKeyword = argsLower.some(w => ['last', 'последняя', 'последний', 'посл', 'остання', 'останній'].includes(w));
+        const isLastKeyword = (parameters.matchedCmd === 'make last note unfixed') || argsLower.some(w => ['last', 'последняя', 'последний', 'посл', 'остання', 'останній'].includes(w));
         
         let ids = [];
         if (isLastKeyword) {
@@ -47,13 +55,14 @@ CommandRegistry.register({
                 }
             }
         } else {
+            // Поддерживает числа и порядковые формы (6th, 1st, 2nd, 3rd и т.д.)
             const fullArgsStr = parameters.args.join(' ');
-            ids = [...new Set(fullArgsStr.match(/\d+/g)?.map(Number) || [])];
+            ids = [...new Set((fullArgsStr.match(/\d+/g) || []).map(Number).filter(n => Number.isFinite(n) && n > 0))];
         }
 
         if (ids.length === 0) {
             return { 
-                response: `❌ Укажите ID (можно списком) или слово "last" для открепления.\nПример: \`unpin 1 2, 3\` или \`unpin last\``, 
+                response: `❌ Укажите ID (можно списком или как 6th) или слово "last" для открепления.\nПример: \`unpin 6\`, \`unfasten the note number 6\`, \`detach 6th note\`, \`loosen the note 6\``, 
                 style: 'output-error' 
             };
         }

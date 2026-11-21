@@ -10,55 +10,55 @@
     
     <title>Cloud Terminal</title>
     
-    <link rel="manifest" href="/manifest.json?v=20261121_2">
+    <link rel="manifest" href="/manifest.json?v=20261121_4">
     <meta name="theme-color" content="#0f172a">
     
-    <link rel="stylesheet" href="/style.css?v=20261121_2">
+    <link rel="stylesheet" href="/style.css?v=20261121_4">
 
     <!-- 1. Библиотеки Supabase и JSZip для локального хранилища и ZIP-экспорта -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-    <script src="/local-fs.js?v=20261121_2"></script>
+    <script src="/local-fs.js?v=20261121_4"></script>
     <!-- 2. Ключи -->
-    <script src="/api.js?v=20261121_2"></script>
+    <script src="/api.js?v=20261121_4"></script>
     <!-- 3. Ядро и утилиты -->
-    <script src="/registry.js?v=20261121_2"></script>
-    <script src="/helpers.js?v=20261121_2"></script>
-    <script src="/localization.js?v=20261121_2"></script>
-    <script src="/missions-store.js?v=20261121_2"></script>
+    <script src="/registry.js?v=20261121_4"></script>
+    <script src="/helpers.js?v=20261121_4"></script>
+    <script src="/localization.js?v=20261121_4"></script>
+    <script src="/missions-store.js?v=20261121_4"></script>
     
     <!-- 4. Плагины команд (добавлен суффикс версии для принудительного сброса кэша) -->
-    <script src="/commands-actions.js?v=20261121_2"></script>
-    <script src="/commands/system.js?v=20261121_2"></script>
-    <script src="/commands/timers.js?v=20261121_2"></script>
-    <script src="/commands/inventory.js?v=20261121_2"></script>
-    <script src="/commands/add.js?v=20261121_2"></script>
-    <script src="/commands/missions.js?v=20261121_2"></script>
-    <script src="/commands/history.js?v=20261121_2"></script>
-    <script src="/commands/show.js?v=20261121_2"></script>
-    <script src="/commands/read.js?v=20261121_2"></script>
-    <script src="/commands/edit.js?v=20261121_2"></script>
-    <script src="/commands/del.js?v=20261121_2"></script>
-    <script src="/commands/pin.js?v=20261121_2"></script>
-    <script src="/commands/unpin.js?v=20261121_2"></script>
-    <script src="/commands/auth.js?v=20261121_2"></script>
-    <script src="/commands/lang.js?v=20261121_2"></script>
-    <script src="/commands/trash_notes.js?v=20261121_2"></script>
-    <script src="/commands/trash_history.js?v=20261121_2"></script>
-    <script src="/commands/restore.js?v=20261121_2"></script>
-    <script src="/commands/note_history.js?v=20261121_2"></script>
-    <script src="/commands/go_to.js?v=20261121_2"></script>
-    <script src="/commands/building.js?v=20261121_2"></script>
-    <script src="/commands/task.js?v=20261121_2"></script>
-    <script src="/commands/theme.js?v=20261121_2"></script>
-    <script src="/commands/fs.js?v=20261121_2"></script>
-    <script src="/commands/support.js?v=20261121_2"></script>
-    <script src="/commands/aliases.js?v=20261121_2"></script>
+    <script src="/commands-actions.js?v=20261121_4"></script>
+    <script src="/commands/system.js?v=20261121_4"></script>
+    <script src="/commands/timers.js?v=20261121_4"></script>
+    <script src="/commands/inventory.js?v=20261121_4"></script>
+    <script src="/commands/add.js?v=20261121_4"></script>
+    <script src="/commands/missions.js?v=20261121_4"></script>
+    <script src="/commands/history.js?v=20261121_4"></script>
+    <script src="/commands/show.js?v=20261121_4"></script>
+    <script src="/commands/read.js?v=20261121_4"></script>
+    <script src="/commands/edit.js?v=20261121_4"></script>
+    <script src="/commands/del.js?v=20261121_4"></script>
+    <script src="/commands/pin.js?v=20261121_4"></script>
+    <script src="/commands/unpin.js?v=20261121_4"></script>
+    <script src="/commands/auth.js?v=20261121_4"></script>
+    <script src="/commands/lang.js?v=20261121_4"></script>
+    <script src="/commands/trash_notes.js?v=20261121_4"></script>
+    <script src="/commands/trash_history.js?v=20261121_4"></script>
+    <script src="/commands/restore.js?v=20261121_4"></script>
+    <script src="/commands/note_history.js?v=20261121_4"></script>
+    <script src="/commands/go_to.js?v=20261121_4"></script>
+    <script src="/commands/building.js?v=20261121_4"></script>
+    <script src="/commands/task.js?v=20261121_4"></script>
+    <script src="/commands/theme.js?v=20261121_4"></script>
+    <script src="/commands/fs.js?v=20261121_4"></script>
+    <script src="/commands/support.js?v=20261121_4"></script>
+    <script src="/commands/aliases.js?v=20261121_4"></script>
     <script>if (window.CustomAliasesSync) window.CustomAliasesSync.applyStoredAliases();</script>
     
     <!-- 5. Справка и диспетчер должны подключаться ПОСЛЕ всех команд -->
-    <script src="/commands/help.js?v=20261121_2"></script>
-    <script src="/commands.js?v=20261121_2"></script>
+    <script src="/commands/help.js?v=20261121_4"></script>
+    <script src="/commands.js?v=20261121_4"></script>
 </head>
 <body>
     <div class="terminal-container">
@@ -385,7 +385,12 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         const remaining = pendingSteps.slice(0, index);
-        setPendingSteps(remaining, '', 'Шаг 2/3: введите существующую команду...');
+        const firstLower = String(remaining[0] || '').toLowerCase();
+        const isAliasFlow = firstLower.includes('alias') || firstLower.includes('алиас') || firstLower.includes('псевдоним');
+        const nextPlaceholder = isAliasFlow
+            ? 'Шаг 2/3: введите существующую команду...'
+            : `Введите текст для "${remaining[remaining.length - 1]}"...`;
+        setPendingSteps(remaining, '', nextPlaceholder);
         input.focus();
     }
 
@@ -595,7 +600,7 @@ function restoreConsoleHistory() {
         const isEditCommand = ['edit', 'ред', 'редактировать', 'ред.', 'редагувати', 'змінити'].includes(baseCmd) && result.style === 'output-success';
         const isDeleteCommand = ['del', 'delete', 'удалить', 'видалити', 'rm'].includes(baseCmd) && result.style === 'output-success';
         const isPinCommand = (
-            ['pin', 'unpin', 'fix', 'закріпити', 'закрепить', 'открепить', 'відкріпити', 'приколоть', 'приколоти'].includes(baseCmd) ||
+            ['pin', 'unpin', 'fix', 'unfix', 'unfasten', 'detach', 'loosen', 'закріпити', 'закрепить', 'открепить', 'відкріпити', 'приколоть', 'приколоти'].includes(baseCmd) ||
             fullCmdLower.startsWith('make fixed') ||
             fullCmdLower === 'make last note fixed'
         ) && result.style === 'output-success';
@@ -742,7 +747,7 @@ if ('serviceWorker' in navigator) {
         window.location.reload();
     });
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/service-worker.js?v=20261121_2', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('/service-worker.js?v=20261121_4', { updateViaCache: 'none' })
             .then((reg) => {
                 if (reg && typeof reg.update === 'function') reg.update().catch(() => {});
             })

@@ -3,8 +3,8 @@
 (function () {
     function formatBaseLabel(matchedCmd, isPlural) {
         const lower = String(matchedCmd || '').trim().toLowerCase();
-        if (lower === 'add alias') return 'Add alias';
-        if (lower === 'add aliases') return 'Add aliases';
+        if (lower.startsWith('add aliases') || lower === 'create aliases' || lower === 'new aliases') return 'Add aliases';
+        if (lower.startsWith('add alias') || lower.startsWith('add an alias') || lower === 'create alias' || lower === 'new alias') return 'Add alias';
         if (!lower) return isPlural ? 'Add aliases' : 'Add alias';
         return lower.charAt(0).toUpperCase() + lower.slice(1);
     }
@@ -156,7 +156,10 @@
     }
 
     CommandRegistry.register({
-        names: ['add alias', 'create alias', 'new alias', 'добавить псевдоним', 'добавить алиас'],
+        names: [
+            'add alias', 'add an alias', 'add alias for the command', 'add alias for command', 'add an alias for the command',
+            'create alias', 'new alias', 'добавить псевдоним', 'добавить алиас'
+        ],
         description: 'Добавить псевдоним к существующей команде (строго в 3 этапа)',
         category: '🌐 Системные',
         usage: 'Add alias -> <команда> -> <псевдоним>',
@@ -166,7 +169,10 @@
     });
 
     CommandRegistry.register({
-        names: ['add aliases', 'create aliases', 'new aliases', 'добавить псевдонимы', 'добавить алиасы'],
+        names: [
+            'add aliases', 'add aliases for the command', 'add aliases for command',
+            'create aliases', 'new aliases', 'добавить псевдонимы', 'добавить алиасы'
+        ],
         description: 'Добавить несколько псевдонимов через запятую к одной команде (строго в 3 этапа)',
         category: '🌐 Системные',
         usage: 'Add aliases -> <команда> -> <алиас 1, алиас 2, ...>',

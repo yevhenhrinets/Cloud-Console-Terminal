@@ -536,7 +536,7 @@
             window.location.reload();
         });
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/service-worker.js?v=20261121_2', { updateViaCache: 'none' })
+            navigator.serviceWorker.register('/service-worker.js?v=20261121_4', { updateViaCache: 'none' })
                 .then((reg) => {
                     if (reg && typeof reg.update === 'function') reg.update().catch(() => {});
                 })

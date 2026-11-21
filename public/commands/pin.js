@@ -1,11 +1,16 @@
 // commands/pin.js — массовое закрепление заметок по списку ID или 'last'
 
 CommandRegistry.register({
-    names: ['pin', 'fix', 'make fixed', 'make last note fixed', 'закрепить', 'закріпити', 'приколоть', 'приколоти'],
+    names: [
+        'pin', 'pin note', 'pin the note', 'pin notes', 'pin the notes', 'pin note number', 'pin the note number',
+        'fix', 'fix note', 'fix the note', 'fix notes', 'fix the notes', 'fix note number', 'fix the note number',
+        'make fixed', 'make note fixed', 'make the note fixed', 'make last note fixed',
+        'закрепить', 'закріпити', 'приколоть', 'приколоти'
+    ],
     
-    description: 'Pin note (notes) by id (ids)',
+    description: 'Pin / fix note (notes) by id (ids, including 1st/2nd/6th) or last',
     category: 'Notes',
-    usage: 'Pin [id] | fix [id|last] | make fixed [id|last] | make last note fixed',
+    usage: 'pin [id] | fix the note [id] | make fixed [id|last] | make last note fixed',
     
     handler: async (parameters) => {
         const currentUser = await fetchCurrentUser();
@@ -47,13 +52,14 @@ CommandRegistry.register({
                 }
             }
         } else {
+            // Поддерживает числа и порядковые формы (6th, 1st, 2nd, 3rd и т.д.)
             const fullArgsStr = parameters.args.join(' ');
-            ids = [...new Set(fullArgsStr.match(/\d+/g)?.map(Number) || [])];
+            ids = [...new Set((fullArgsStr.match(/\d+/g) || []).map(Number).filter(n => Number.isFinite(n) && n > 0))];
         }
 
         if (ids.length === 0) {
             return { 
-                response: `❌ Укажите ID (можно списком) или слово "last" для закрепления.\nПример: \`pin 1 2, 3\` или \`pin last\``, 
+                response: `❌ Укажите ID (можно списком или как 6th) или слово "last" для закрепления.\nПример: \`fix the note 6\`, \`detach 6th note\`, \`pin 1 2, 3\` или \`pin last\``, 
                 style: 'output-error' 
             };
         }

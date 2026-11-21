@@ -1343,15 +1343,16 @@ async function flushPendingSupportReports() {
     return supportReportsFlushPromise;
 }
 
-async function submitSupportReport(message, currentUser) {
+async function submitSupportReport(message, currentUser, contactOverride = null) {
     const cleanMsg = String(message || '').trim();
+    const cleanContact = contactOverride ? String(contactOverride).trim() : '';
     const localList = getLocalSupportReports();
     const maxInner = localList.reduce((m, r) => Math.max(m, Number(r.inner_id || 0)), 0);
     const reportId = 'rep_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const nowIso = new Date().toISOString();
-    const userEmail = (currentUser && currentUser.email) ? currentUser.email : 'guest@local';
+    const userEmail = cleanContact || ((currentUser && currentUser.email) ? currentUser.email : 'guest@local');
     const userId = (currentUser && currentUser.id) ? currentUser.id : 'guest';
-    const userName = (currentUser && currentUser.name) ? currentUser.name : '';
+    const userName = cleanContact ? '' : ((currentUser && currentUser.name) ? currentUser.name : '');
 
     const report = {
         id: reportId,

@@ -127,6 +127,24 @@ CommandRegistry.register({
             }
         }
 
+        // 2.5. Добавление псевдонимов (Add alias / Add aliases — 3 этапа)
+        if (['alias', 'aliases', 'алиас', 'алиасы', 'псевдоним', 'псевдонимы'].includes(subCmd) || (subCmd === 'an' && args[1] && args[1].toLowerCase() === 'alias')) {
+            const isPlural = ['aliases', 'алиасы', 'псевдонимы'].includes(subCmd);
+            const aliasHandler = window.CommandRegistry.getHandler(isPlural ? 'add aliases' : 'add alias');
+            if (aliasHandler) {
+                const startIdx = subCmd === 'an' ? 2 : 1;
+                const restArgs = args.slice(startIdx);
+                const restLower = restArgs.join(' ').toLowerCase().trim();
+                const filteredArgs = ['for the command', 'for command', 'for a command', 'для команды'].includes(restLower) ? [] : restArgs;
+                return await aliasHandler({
+                    ...parameters,
+                    args: filteredArgs,
+                    raw_args: filteredArgs.join(' '),
+                    matchedCmd: isPlural ? 'add aliases' : 'add alias'
+                }, options);
+            }
+        }
+
         // 3. Добавление таймера
         let timerNameIndex = 0;
         if (['timer', 'таймер', 'add'].includes(subCmd)) {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'terminal-v37';
+const CACHE_NAME = 'terminal-v39';
 
 const URLS_TO_CACHE = [
     '/',
