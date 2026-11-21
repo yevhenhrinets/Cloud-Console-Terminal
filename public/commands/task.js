@@ -1,4 +1,4 @@
-// commands/task.js — грамматически выверенный обработчик задач с поддержкой Add task, Show tasks, Del task
+// commands/task.js — обработчик задач (Add task, Del task, Filter tasks — строго в 2 этапа; Show tasks — без параметров)
 
 function parseTaskDuration(str) {
     if (!str) return 60;
@@ -16,19 +16,15 @@ async function handleAddTask(parameters, options = {}) {
     if (!currentUser) return { response: t('not_authorized'), style: 'output-error' };
 
     const rawArgs = parameters.args || [];
-    // Удаляем служебные слова команды (add, task, tasks, etc.)
     const cleanArgs = rawArgs.filter(w => !['add', 'create', 'task', 'tasks', 'задача', 'задачи', 'завдання', 'добавить', 'создать', 'додати', 'в', 'на'].includes(w.toLowerCase()));
 
     if (cleanArgs.length > 0 && !(options && options.fromTwoStepBar)) {
-        return {
-            response: '⚠️ Команда `add task` работает только в 2 этапа — текст задачи нельзя вводить сразу в команде!\n1) Введите `add task` без параметров\n2) После появления команды под строкой ввода напишите: `<Постройка> <Задача> <Время>`.',
-            style: 'output-error'
-        };
+        return rejectInlineParamsError('add task', 'Печь Пирог 10м');
     }
 
     if (cleanArgs.length === 0) {
         return {
-            response: '📋 Режим добавления задачи активирован. Введите `<Постройка> <Задача> <Время>` (например: `Печь Пирог 10м`) или нажмите ✕ для отмены.',
+            response: '📋 Режим добавления задачи активирован. Введите `<Постройка> <Задача> <Время>` (например: `Печь Пирог 10м`) и нажмите Enter (или ✕ для отмены).',
             style: 'output-info',
             commandPrefix: 'add task',
             inputValue: '',
@@ -37,9 +33,9 @@ async function handleAddTask(parameters, options = {}) {
     }
 
     if (cleanArgs.length < 3) {
-        return { 
-            response: '❓ Формат данных после `add task`:\n  • `<Постройка> <Задача> <Время>`\nПример: `Печь Макароны 10м`', 
-            style: 'output-error' 
+        return {
+            response: '❓ Формат данных после `add task`:\n  • `<Постройка> <Задача> <Время>`\nПример: `Печь Макароны 10м`',
+            style: 'output-error'
         };
     }
 
@@ -54,34 +50,66 @@ async function handleAddTask(parameters, options = {}) {
     return await modifyTaskInBuilding(currentUser.id, buildingQuery, taskName, durationStr, 'add');
 }
 
-// 2. Удаление задачи: Del task <Постройка> <Задача>
-async function handleDeleteTask(parameters) {
+// 2. Удаление задачи: Del task (строго в 2 этапа)
+async function handleDeleteTask(parameters, options = {}) {
     const currentUser = await fetchCurrentUser();
     if (!currentUser) return { response: t('not_authorized'), style: 'output-error' };
 
     const rawArgs = parameters.args || [];
     const cleanWords = rawArgs.filter(w => !['del', 'delete', 'remove', 'task', 'tasks', 'задача', 'задачи', 'завдання', 'удалить', 'удали', 'видалити', 'rm', 'из', 'в', 'з'].includes(w.toLowerCase()));
 
+    if (!(options && options.fromTwoStepBar)) {
+        if (cleanWords.length > 0) {
+            return rejectInlineParamsError('del task', 'Печь Жареные яйца');
+        }
+        return {
+            response: '🗑️ Режим удаления задачи активирован. Введите `<Постройка> <Задача>` (например: `Печь Жареные яйца`) и нажмите Enter (или ✕ для отмены).',
+            style: 'output-info',
+            commandPrefix: 'del task',
+            inputValue: '',
+            inputPlaceholder: 'Постройка Задача (напр: Печь Жареные яйца)...'
+        };
+    }
+
     const buildingQuery = cleanWords[0];
     const taskName = cleanWords.slice(1).join(' ');
 
     if (!buildingQuery || !taskName) {
-        return { 
-            response: '❌ Укажите постройку и задачу для удаления.\nПример: `Del task Печь Жареные яйца`', 
-            style: 'output-error' 
+        return {
+            response: '❌ Укажите постройку и задачу для удаления (например: `Печь Жареные яйца`).',
+            style: 'output-error'
         };
     }
 
     return await modifyTaskInBuilding(currentUser.id, buildingQuery, taskName, null, 'del');
 }
 
-// 3. Список задач: Show tasks [Постройка]
-async function handleShowTasks(parameters) {
+// 3. Список задач: Show tasks (0 параметров) или Show building tasks (2 этапа)
+async function handleShowTasks(parameters, options = {}, forceFilterMode = false) {
     const currentUser = await fetchCurrentUser();
     if (!currentUser) return { response: t('not_authorized'), style: 'output-error' };
 
     const rawArgs = parameters.args || [];
-    const filterBuilding = rawArgs.filter(w => !['show', 'list', 'task', 'tasks', 'задачи', 'задача', 'завдання', 'показать'].includes(w.toLowerCase())).join(' ').trim();
+    const filterBuilding = rawArgs.filter(w => !['show', 'list', 'task', 'tasks', 'building', 'for', 'задачи', 'задача', 'завдання', 'показать', 'filter', 'find'].includes(w.toLowerCase())).join(' ').trim();
+
+    if (!(options && options.fromTwoStepBar)) {
+        if (filterBuilding) {
+            return rejectInlineParamsError('show building tasks', 'Печь', '💡 Для просмотра всех задач без фильтра введите просто `show tasks`.');
+        }
+        if (forceFilterMode) {
+            return {
+                response: '📋 Фильтр задач по постройке: введите название постройки (например: `Печь`) и нажмите Enter (или ✕ для отмены).',
+                style: 'output-info',
+                commandPrefix: 'show building tasks',
+                inputValue: '',
+                inputPlaceholder: 'Название постройки (напр: Печь)...'
+            };
+        }
+    }
+
+    if (forceFilterMode && !filterBuilding) {
+        return { response: '❌ Укажите название постройки для фильтрации (например: `Печь`).', style: 'output-error' };
+    }
 
     if (currentUser.isGuest) {
         const buildings = typeof getDemoBuildings === 'function' ? getDemoBuildings() : [];
@@ -102,7 +130,7 @@ async function handleShowTasks(parameters) {
                     resp += `  • ${t.name} (${t.duration} сек)\n`;
                 });
             } else {
-                resp += `  • (нет задач — добавьте: \`Add task ${b.building_name} Имя Время\`)\n`;
+                resp += `  • (нет задач — добавьте через \`add task\` в 2 этапа)\n`;
             }
         });
         return { response: resp, style: 'output-info', isHtml: true };
@@ -123,7 +151,7 @@ async function handleShowTasks(parameters) {
         if (error) throw error;
 
         if (!data || data.length === 0) {
-            return { response: '📋 Задачи не найдены. Создайте первую: `Add task Кухня Кипяток 5м`', style: 'output-info' };
+            return { response: '📋 Задачи не найдены. Создайте первую: `add task` (в 2 этапа).', style: 'output-info' };
         }
 
         let resp = '📋 Задачи в ваших постройках:\n';
@@ -134,7 +162,7 @@ async function handleShowTasks(parameters) {
                     resp += `  • ${t.name} (${t.duration} сек)\n`;
                 });
             } else {
-                resp += `  • (нет задач — добавьте: \`Add task ${b.building_name} Имя Время\`)\n`;
+                resp += `  • (нет задач — добавьте через \`add task\` в 2 этапа)\n`;
             }
         });
         return { response: resp, style: 'output-info', isHtml: true };
@@ -143,7 +171,6 @@ async function handleShowTasks(parameters) {
     }
 }
 
-// Безопасная функция привязки задач к конкретной постройке
 async function modifyTaskInBuilding(userId, buildingQuery, taskName, durationStr, action) {
     try {
         if (userId === 'guest') {
@@ -177,11 +204,11 @@ async function modifyTaskInBuilding(userId, buildingQuery, taskName, durationStr
             .ilike('building_name', buildingQuery.trim());
 
         if (fetchErr) throw fetchErr;
-        
+
         if (!buildings || buildings.length === 0) {
-            return { 
-                response: `❌ Ошибка: Постройка с именем "${buildingQuery}" не найдена в базе!\nПроверьте точное название через команду \`Show buildings\`.`, 
-                style: 'output-error' 
+            return {
+                response: `❌ Ошибка: Постройка с именем "${buildingQuery}" не найдена в базе!\nПроверьте точное название через команду \`show buildings\`.`,
+                style: 'output-error'
             };
         }
 
@@ -191,7 +218,7 @@ async function modifyTaskInBuilding(userId, buildingQuery, taskName, durationStr
             for (const building of buildings) {
                 let tasks = building.tasks || [];
                 const existingIdx = tasks.findIndex(t => t.name.toLowerCase() === taskName.toLowerCase());
-                
+
                 if (existingIdx !== -1) {
                     tasks[existingIdx].duration = durationSeconds;
                 } else {
@@ -205,13 +232,12 @@ async function modifyTaskInBuilding(userId, buildingQuery, taskName, durationStr
 
                 if (updateErr) throw updateErr;
 
-                // Автоматически создаем шаблон таймера
                 await window.supabaseClient
                     .from('timer_templates')
-                    .upsert([{ 
-                        name: taskName, 
-                        duration_seconds: durationSeconds, 
-                        created_by: userId 
+                    .upsert([{
+                        name: taskName,
+                        duration_seconds: durationSeconds,
+                        created_by: userId
                     }], { onConflict: 'name,created_by' });
             }
 
@@ -236,20 +262,18 @@ async function modifyTaskInBuilding(userId, buildingQuery, taskName, durationStr
     }
 }
 
-// Регистрация команды Add task
 CommandRegistry.register({
     names: ['add task', 'create task', 'task add', 'tasks add', 'добавить задачу', 'создать задачу', 'додати завдання', 'створити завдання'],
-    description: 'Закрепить задачу за постройкой с указанием времени',
-    usage: 'Add task <Постройка> <Задача> <Время>',
+    description: 'Закрепить задачу за постройкой с указанием времени (строго в 2 этапа)',
+    usage: 'add task -> <Постройка> <Задача> <Время>',
     category: '🏭 Постройки',
     handler: handleAddTask
 });
 
-// Регистрация команды Show tasks
 CommandRegistry.register({
     names: ['show tasks', 'list tasks', 'tasks', 'task', 'task show', 'tasks show', 'задачи', 'задача', 'завдання', 'показать задачи', 'список задач'],
-    description: 'Список задач в постройках',
-    usage: 'Show tasks [Постройка]',
+    description: 'Список задач во всех постройках',
+    usage: 'show tasks | show building tasks -> <Постройка>',
     category: '🏭 Постройки',
     handler: async (parameters, options = {}) => {
         const fullText = (parameters.args || []).join(' ').toLowerCase();
@@ -257,17 +281,26 @@ CommandRegistry.register({
             return await handleAddTask(parameters, options);
         }
         if (fullText.includes('del') || fullText.includes('delete') || fullText.includes('удалить') || fullText.includes('rm')) {
-            return await handleDeleteTask(parameters);
+            return await handleDeleteTask(parameters, options);
         }
-        return await handleShowTasks(parameters);
+        return await handleShowTasks(parameters, options, false);
     }
 });
 
-// Регистрация команды Del task
+CommandRegistry.register({
+    names: ['show building tasks', 'filter tasks', 'find tasks', 'задачи постройки'],
+    description: 'Задачи конкретной постройки (строго в 2 этапа)',
+    usage: 'show building tasks -> <Постройка>',
+    category: '🏭 Постройки',
+    handler: async (parameters, options = {}) => {
+        return await handleShowTasks(parameters, options, true);
+    }
+});
+
 CommandRegistry.register({
     names: ['del task', 'delete task', 'remove task', 'task del', 'tasks del', 'task delete', 'удалить задачу', 'видалити завдання'],
-    description: 'Удалить задачу из постройки',
-    usage: 'Del task <Постройка> <Задача>',
+    description: 'Удалить задачу из постройки (строго в 2 этапа)',
+    usage: 'del task -> <Постройка> <Задача>',
     category: '🏭 Постройки',
     handler: handleDeleteTask
 });

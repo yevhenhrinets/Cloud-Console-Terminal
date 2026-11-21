@@ -30,12 +30,10 @@ async function handleAddBuilding(parameters, options = {}) {
     const rawArgs = parameters.args || [];
     const cleanWords = rawArgs.filter(w => !['add', 'create', 'building', 'buildings', 'здание', 'постройка', 'постройки', 'будівля', 'споруда', 'добавить', 'создай', 'создать', 'створи', 'створити', 'додай', 'додати'].includes(w.toLowerCase()));
     const buildingName = cleanWords.join(' ').trim();
+    const prefix = (parameters && parameters.matchedCmd) ? parameters.matchedCmd : 'add building';
 
     if (buildingName && !(options && options.fromTwoStepBar)) {
-        return {
-            response: '⚠️ Команда `add building` работает только в 2 этапа — название нельзя вводить сразу в команде!\n1) Введите `add building` без текста\n2) После появления команды под строкой ввода напишите название постройки.',
-            style: 'output-error'
-        };
+        return rejectInlineParamsError(prefix, 'Печь');
     }
 
     if (!buildingName) {
@@ -73,7 +71,7 @@ async function handleAddBuilding(parameters, options = {}) {
             .eq('created_by', currentUser.id);
 
         if (fetchErr) throw fetchErr;
-        
+
         const usedIds = existing ? existing.map(e => e.queue_group_id) : [];
         let nextId = 1;
         while (usedIds.includes(nextId)) {
@@ -98,9 +96,14 @@ async function handleAddBuilding(parameters, options = {}) {
 }
 
 // 2. Список построек (Show buildings)
-async function handleShowBuildings(parameters) {
+async function handleShowBuildings(parameters, options = {}) {
     const currentUser = await fetchCurrentUser();
     if (!currentUser) return { response: 'Помилка: користувач не визначений.', style: 'output-error' };
+
+    const rawArgsStr = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+    if (!(options && options.fromTwoStepBar) && rawArgsStr) {
+        return rejectInlineParamsError(parameters.matchedCmd || 'show buildings', '');
+    }
 
     if (currentUser.isGuest) {
         const buildings = getDemoBuildings();
@@ -112,7 +115,7 @@ async function handleShowBuildings(parameters) {
                     response += `  └─ ${t.name} (${t.duration} сек)\n`;
                 });
             } else {
-                response += `  └─ (нет задач — добавьте: \`Add task ${b.building_name} Имя Время\`)\n`;
+                response += `  └─ (нет задач — добавьте через \`add task\` в 2 этапа)\n`;
             }
         });
         return { response, style: 'output-info', isHtml: true };
@@ -127,7 +130,7 @@ async function handleShowBuildings(parameters) {
 
         if (error) throw error;
         if (!data || data.length === 0) {
-            return { response: '🏭 У вас пока нет построек. Создайте первую: `Add building Печь`', style: 'output-info' };
+            return { response: '🏭 У вас пока нет построек. Создайте первую: `add building` (в 2 этапа).', style: 'output-info' };
         }
 
         let response = '🏭 Ваши постройки:\n';
@@ -138,7 +141,7 @@ async function handleShowBuildings(parameters) {
                     response += `  └─ ${t.name} (${t.duration} сек)\n`;
                 });
             } else {
-                response += `  └─ (нет задач — добавьте: \`Add task ${b.building_name} Имя Время\`)\n`;
+                response += `  └─ (нет задач — добавьте через \`add task\` в 2 этапа)\n`;
             }
         });
 
@@ -148,17 +151,34 @@ async function handleShowBuildings(parameters) {
     }
 }
 
-// 3. Удаление постройки (Del building <Название>)
-async function handleDeleteBuilding(parameters) {
+// 3. Удаление постройки (Del building — строго в 2 этапа)
+async function handleDeleteBuilding(parameters, options = {}) {
     const currentUser = await fetchCurrentUser();
     if (!currentUser) return { response: 'Помилка: користувач не визначений.', style: 'output-error' };
 
     const rawArgs = parameters.args || [];
     const cleanWords = rawArgs.filter(w => !['del', 'delete', 'remove', 'building', 'buildings', 'здание', 'постройка', 'постройки', 'будівля', 'споруда', 'удалить', 'удали', 'видалити', 'rm'].includes(w.toLowerCase()));
     const buildingName = cleanWords.join(' ').trim();
+    const prefix = (parameters && parameters.matchedCmd) ? parameters.matchedCmd : 'del building';
+
+    if (!(options && options.fromTwoStepBar)) {
+        if (buildingName) {
+            return rejectInlineParamsError('del building', 'Печь');
+        }
+        return {
+            response: `🗑️ Режим удаления постройки (\`${prefix}\`) активирован. Введите название постройки и нажмите Enter (или ✕ для отмены).`,
+            style: 'output-info',
+            commandPrefix: 'del building',
+            inputValue: '',
+            inputPlaceholder: 'Введите название постройки для удаления...'
+        };
+    }
 
     if (!buildingName) {
-        return { response: '❌ Укажите название постройки для удаления.\nПример: `Del building Печь`', style: 'output-error' };
+        return {
+            response: '❌ Укажите название постройки для удаления (например: `Печь`).',
+            style: 'output-error'
+        };
     }
 
     if (currentUser.isGuest) {
@@ -186,57 +206,72 @@ async function handleDeleteBuilding(parameters) {
     }
 }
 
-// Регистрация команды Add building
 CommandRegistry.register({
     names: ['add building', 'create building', 'building add', 'buildings add', 'добавить постройку', 'создать постройку', 'додати будівлю', 'створити споруду'],
-    description: 'Создать новую постройку (очередь процессов)',
+    description: 'Создать новую постройку (строго в 2 этапа)',
     category: '🏭 Постройки',
-    usage: 'Add building <Название>',
+    usage: 'add building -> <Название>',
     handler: handleAddBuilding
 });
 
-// Регистрация команды Show buildings
 CommandRegistry.register({
     names: ['show buildings', 'list buildings', 'building show', 'buildings show', 'buildings', 'building', 'постройки', 'постройка', 'здания', 'споруди', 'будівлі', 'показать постройки', 'список построек', 'показати споруди'],
     description: 'Список построек и закрепленных за ними задач',
     category: '🏭 Постройки',
-    usage: 'Show buildings | list buildings',
+    usage: 'show buildings | list buildings',
     handler: async (parameters, options = {}) => {
         const fullText = (parameters.args || []).join(' ').toLowerCase();
-        // Поддержка обратной грамматики: building add / building del
         if (fullText.includes('add') || fullText.includes('добавить') || fullText.includes('создай')) {
             return await handleAddBuilding(parameters, options);
         }
         if (fullText.includes('del') || fullText.includes('delete') || fullText.includes('удалить') || fullText.includes('rm')) {
-            return await handleDeleteBuilding(parameters);
+            return await handleDeleteBuilding(parameters, options);
         }
-        return await handleShowBuildings(parameters);
+        return await handleShowBuildings(parameters, options);
     }
 });
 
-// Регистрация команды Del building
 CommandRegistry.register({
     names: ['del building', 'delete building', 'remove building', 'building del', 'buildings del', 'building delete', 'удалить постройку', 'видалити будівлю'],
-    description: 'Удалить постройку',
+    description: 'Удалить постройку (строго в 2 этапа)',
     category: '🏭 Постройки',
-    usage: 'Del building <Название>',
+    usage: 'del building -> <Название>',
     handler: handleDeleteBuilding
 });
 
-// 4. Команда выбора постройки / техники (select Печь 1, select building 7, select 1)
+// 4. Команда выбора постройки / техники (строго в 2 этапа: select -> 1 | Печь)
 CommandRegistry.register({
     names: ['select', 'выбрать', 'обрати', 'select building', 'выбрать постройку'],
-    description: 'Выбор постройки и переход к ней на дашборде',
+    description: 'Выбор постройки и переход к ней на дашборде (строго в 2 этапа)',
     category: '🏭 Постройки',
-    usage: 'select Печь 1 | select building 7 | select 3',
-    handler: async (parameters) => {
-        const rawArgs = parameters.args ? parameters.args.join(' ') : '';
-        const numbers = rawArgs.match(/\d+/g);
+    usage: 'select -> <номер или название>',
+    handler: async (parameters, options = {}) => {
+        const matchedCmd = String((parameters && parameters.matchedCmd) || 'select').trim().toLowerCase();
+        const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+
+        if (!(options && options.fromTwoStepBar)) {
+            if (rawArgs) {
+                return rejectInlineParamsError(matchedCmd, '1');
+            }
+            return {
+                response: `🏭 Режим выбора постройки (\`${matchedCmd}\`) активирован. Введите номер очереди (напр: 1, 7) или название (напр: Печь) и нажмите Enter (или ✕ для отмены).`,
+                style: 'output-info',
+                commandPrefix: matchedCmd,
+                inputValue: '',
+                inputPlaceholder: 'Номер очереди или название (напр: 1 или Печь)...'
+            };
+        }
+
+        const argsStr = (parameters.args || []).join(' ').trim();
+        if (!argsStr) {
+            return { response: '❌ Укажите номер очереди (напр: `1`) или название постройки (напр: `Печь`).', style: 'output-error' };
+        }
+
+        const numbers = argsStr.match(/\d+/g);
         let queueId = numbers ? parseInt(numbers[numbers.length - 1], 10) : null;
 
-        // Именованное сопоставление
         if (!queueId) {
-            const lower = rawArgs.toLowerCase();
+            const lower = argsStr.toLowerCase();
             if (lower.includes('печь') || lower.includes('плит')) queueId = 1;
             else if (lower.includes('лесопил')) queueId = 2;
             else if (lower.includes('стирал') || lower.includes('машин')) queueId = 3;
@@ -248,6 +283,13 @@ CommandRegistry.register({
         }
 
         if (!queueId) queueId = 1;
+
+        if (options && options.skipRedirect) {
+            return {
+                response: `🆕 Открываю постройку [Очередь #${queueId}] в дашборде (/dashboard.html?queue=${queueId}).`,
+                style: 'output-info'
+            };
+        }
 
         setTimeout(() => {
             window.location.href = `/dashboard.html?queue=${queueId}`;

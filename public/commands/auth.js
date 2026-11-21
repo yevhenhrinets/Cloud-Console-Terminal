@@ -57,7 +57,10 @@ CommandRegistry.register({
     category: 'Auth',
     usage: 'login | switch account',
 
-    handler: async () => {
+    handler: async (parameters, options = {}) => {
+        if (!(options && options.fromTwoStepBar) && parameters && parameters.raw_args && parameters.raw_args.trim()) {
+            return rejectInlineParamsError(parameters.matchedCmd || 'login', '');
+        }
         try {
             // Если уже авторизованы, сбрасываем текущую локальную сессию перед входом, чтобы можно было выбрать любой аккаунт
             const current = typeof fetchCurrentUser === 'function' ? await fetchCurrentUser() : null;
@@ -79,7 +82,10 @@ CommandRegistry.register({
     category: 'Auth',
     usage: 'switch account',
 
-    handler: async () => {
+    handler: async (parameters, options = {}) => {
+        if (!(options && options.fromTwoStepBar) && parameters && parameters.raw_args && parameters.raw_args.trim()) {
+            return rejectInlineParamsError(parameters.matchedCmd || 'switch account', '');
+        }
         try {
             const current = typeof fetchCurrentUser === 'function' ? await fetchCurrentUser() : null;
             if (current && !current.isGuest) {
@@ -100,7 +106,10 @@ CommandRegistry.register({
     category: 'Auth',
     usage: 'logout',
 
-    handler: async () => {
+    handler: async (parameters, options = {}) => {
+        if (!(options && options.fromTwoStepBar) && parameters && parameters.raw_args && parameters.raw_args.trim()) {
+            return rejectInlineParamsError(parameters.matchedCmd || 'logout', '');
+        }
         try {
             await performLogout();
             currentUserCache = null;
@@ -121,7 +130,10 @@ CommandRegistry.register({
     category: 'User',
     usage: 'whoami',
 
-    handler: async () => {
+    handler: async (parameters, options = {}) => {
+        if (!(options && options.fromTwoStepBar) && parameters && parameters.raw_args && parameters.raw_args.trim()) {
+            return rejectInlineParamsError(parameters.matchedCmd || 'whoami', '');
+        }
         const user = await fetchCurrentUser();
         if (!user) {
             return { response: 'Вы не авторизованы. Введите команду "login" для входа через Google.', style: 'output-error' };

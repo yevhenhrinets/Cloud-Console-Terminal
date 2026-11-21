@@ -7,9 +7,14 @@ CommandRegistry.register({
     category: 'Tasks',
     usage: 'Timers | show timers',
     
-    handler: async (parameters) => {
+    handler: async (parameters, options = {}) => {
         const currentUser = await fetchCurrentUser();
         if (!currentUser) return { response: 'Помилка: користувач не визначений.', style: 'output-error' };
+
+        const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+        if (!(options && options.fromTwoStepBar) && rawArgs) {
+            return rejectInlineParamsError('add timer', 'Сосиска 1', '💡 Для списка активных таймеров введите просто `timers`.');
+        }
 
         if (currentUser.isGuest) {
             const response = "⏱️ Активні черги таймерів (Демо-режим):\n\n" +

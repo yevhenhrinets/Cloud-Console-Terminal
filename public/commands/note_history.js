@@ -1,21 +1,37 @@
-// commands/note_history.js — просмотр истории версий (логов) конкретной заметки
+// commands/note_history.js — просмотр истории версий (логов) конкретной заметки (строго в 2 этапа)
 
 CommandRegistry.register({
-    names: ['note history', 'история заметки', 'історія нотатки', 'logs'],
-    
-    description: 'Show edition history of 1 note by id',
+    names: ['note history', 'история заметки', 'історія нотатки', 'logs', 'note logs'],
+
+    description: 'История версий заметки по ID (строго в 2 этапа)',
     category: 'CRUD',
-    usage: 'Note history [id] | logs [id]',
-    
-    handler: async (parameters) => {
+    usage: 'note history -> <id> | logs -> <id>',
+
+    handler: async (parameters, options = {}) => {
         const currentUser = await fetchCurrentUser();
         if (!currentUser) {
             return { response: t('not_authorized'), style: 'output-error' };
         }
 
-        const ids = extractNumericIds(parameters.args);
+        const matchedCmd = String((parameters && parameters.matchedCmd) || 'note history').trim().toLowerCase();
+        const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+
+        if (!(options && options.fromTwoStepBar)) {
+            if (rawArgs) {
+                return rejectInlineParamsError(matchedCmd, '2');
+            }
+            return {
+                response: `📜 История версий заметки (\`${matchedCmd}\`): введите ID заметки (например: 2) и нажмите Enter (или ✕ для отмены).`,
+                style: 'output-info',
+                commandPrefix: matchedCmd,
+                inputValue: '',
+                inputPlaceholder: 'Введите ID заметки (напр: 2)...'
+            };
+        }
+
+        const ids = extractNumericIds(parameters.args || []);
         if (ids.length === 0) {
-            return { response: '❌ Укажите ID заметки для просмотра истории (например: `note history 2` или `logs 2`)', style: 'output-error' };
+            return { response: '❌ Укажите ID заметки для просмотра истории (например: `2`)', style: 'output-error' };
         }
 
         const targetInnerId = ids[0];
@@ -30,7 +46,7 @@ CommandRegistry.register({
                 .from('notes')
                 .select('*')
                 .eq('inner_id', targetInnerId)
-                .order('version', { ascending: true }); // От первой версии к последней
+                .order('version', { ascending: true });
 
             if (!isAdmin) {
                 query = query.eq('created_by', currentUser.id);
@@ -56,5 +72,3 @@ CommandRegistry.register({
         }
     }
 });
-
-

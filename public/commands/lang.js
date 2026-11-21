@@ -1,22 +1,35 @@
-// commands/lang.js — управление языком интерфейса терминала
+// commands/lang.js — управление языком интерфейса терминала (строго в 2 этапа)
 
 CommandRegistry.register({
     names: ['lang', 'language', 'мова', 'язык'],
-    
-    description: 'Multi-language',
+
+    description: 'Смена языка интерфейса (строго в 2 этапа: lang -> en | ru | uk)',
     category: 'Language',
-    usage: 'Lang en | lang ru | lang uk',
-    
-    handler: async (parameters) => {
-        const args = parameters.args.map(a => a.toLowerCase());
+    usage: 'lang -> <ru | uk | en>',
+
+    handler: async (parameters, options = {}) => {
+        const matchedCmd = String((parameters && parameters.matchedCmd) || 'lang').trim().toLowerCase();
+        const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+
+        if (!(options && options.fromTwoStepBar)) {
+            if (rawArgs) {
+                return rejectInlineParamsError(matchedCmd, 'en');
+            }
+            const current = getCurrentLanguage();
+            return {
+                response: `${t('current_lang', { lang: current })}\nДоступные языки: ru, uk, en. Введите код языка и нажмите Enter (или ✕ для отмены).`,
+                style: 'output-info',
+                commandPrefix: matchedCmd,
+                inputValue: '',
+                inputPlaceholder: 'Код языка (ru, uk или en)...'
+            };
+        }
+
+        const args = (parameters.args || []).map(a => String(a).toLowerCase());
         const targetLang = args[0];
 
         if (!targetLang) {
-            const current = getCurrentLanguage();
-            return { 
-                response: t('current_lang', { lang: current }) + '\nДоступные языки: ru, uk, en.\nПример: lang en или мова uk', 
-                style: 'output-info' 
-            };
+            return { response: '❌ Укажите язык: `ru`, `uk` или `en`.', style: 'output-error' };
         }
 
         const supported = {
@@ -34,5 +47,3 @@ CommandRegistry.register({
         return { response: t('lang_changed'), style: 'output-success' };
     }
 });
-
-

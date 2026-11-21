@@ -3,7 +3,7 @@
 CommandRegistry.register({
     names: [
         'toggle theme', 'change the topic', 'change topic', 'toggle topic',
-        'theme', 'тема', 
+        'theme', 'тема',
         'theme light', 'theme dark', 'theme toggle',
         'select light theme', 'select dark theme',
         'choose light theme', 'choose dark theme',
@@ -14,17 +14,33 @@ CommandRegistry.register({
     ],
     description: 'Переключение темы оформления (светлая / тёмная)',
     category: 'UI',
-    usage: 'toggle theme | change the topic | theme light | theme dark',
-    
-    handler: async (parameters) => {
-        const rawText = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').toLowerCase();
-        const fullCmd = (parameters && (parameters.matchedCmd || parameters.cmd) ? String(parameters.matchedCmd || parameters.cmd) : '').toLowerCase();
-        const combined = `${fullCmd} ${rawText}`.trim();
+    usage: 'toggle theme | change the topic | theme light | theme dark | theme -> <light|dark|toggle>',
 
-        const currentTheme = (typeof window.getCurrentTheme === 'function') 
-            ? window.getCurrentTheme() 
+    handler: async (parameters, options = {}) => {
+        const rawText = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim().toLowerCase();
+        const fullCmd = (parameters && (parameters.matchedCmd || parameters.cmd) ? String(parameters.matchedCmd || parameters.cmd) : '').trim().toLowerCase();
+
+        if (!(options && options.fromTwoStepBar) && rawText) {
+            return rejectInlineParamsError(fullCmd === 'тема' ? 'тема' : 'theme', 'light');
+        }
+
+        const currentTheme = (typeof window.getCurrentTheme === 'function')
+            ? window.getCurrentTheme()
             : (localStorage.getItem('terminal_theme') || 'dark');
 
+        const isBareGeneric = (fullCmd === 'theme' || fullCmd === 'тема') && !rawText;
+        if (isBareGeneric) {
+            const themeNameStr = currentTheme === 'light' ? '☀️ Светлая (Light)' : '🌙 Тёмная (Dark Blue)';
+            return {
+                response: `🎨 Текущая тема оформления: ${themeNameStr}\nВведите \`light\`, \`dark\` или \`toggle\` и нажмите Enter (или ✕ для отмены).`,
+                style: 'output-info',
+                commandPrefix: fullCmd,
+                inputValue: '',
+                inputPlaceholder: 'light, dark или toggle...'
+            };
+        }
+
+        const combined = `${fullCmd} ${rawText}`.trim();
         let targetTheme = null;
 
         if (combined.includes('light') || combined.includes('светл') || combined.includes('бел')) {
@@ -33,19 +49,13 @@ CommandRegistry.register({
             targetTheme = 'dark';
         } else if (combined.includes('toggle') || combined.includes('переключ') || combined.includes('смен') || combined.includes('topic')) {
             targetTheme = (currentTheme === 'light') ? 'dark' : 'light';
-        } else if (!rawText) {
-            // Без параметров — показать текущую тему и справку
-            const themeNameStr = currentTheme === 'light' ? '☀️ Светлая (Light)' : '🌙 Тёмная (Dark Blue)';
-            return {
-                response: `🎨 Текущая тема оформления: ${themeNameStr}\n\nКоманды для смены темы:\n  • toggle theme — быстрое переключение\n  • theme light — включить светлую тему\n  • theme dark — включить тёмную тему`,
-                style: 'output-info'
-            };
         } else {
-            // Если передан неизвестный аргумент
-            targetTheme = (currentTheme === 'light') ? 'dark' : 'light';
+            return {
+                response: `❌ Неизвестная тема "${rawText}". Введите \`light\`, \`dark\` или \`toggle\`.`,
+                style: 'output-error'
+            };
         }
 
-        // Применяем тему через глобальный хелпер
         if (typeof window.applyTheme === 'function') {
             await window.applyTheme(targetTheme);
         } else {
@@ -55,8 +65,8 @@ CommandRegistry.register({
         }
 
         const isLight = targetTheme === 'light';
-        const msg = isLight 
-            ? '☀️ Включена СВЕТЛАЯ тема оформления (Light).' 
+        const msg = isLight
+            ? '☀️ Включена СВЕТЛАЯ тема оформления (Light).'
             : '🌙 Включена ТЁМНАЯ тема оформления (Dark Blue).';
 
         return {

@@ -1,31 +1,51 @@
-// commands/pin.js — массовое закрепление заметок по списку ID или 'last'
+// commands/pin.js — массовое закрепление заметок (строго в 2 этапа для числовых/ID параметров)
 
 CommandRegistry.register({
     names: [
         'pin', 'pin note', 'pin the note', 'pin notes', 'pin the notes', 'pin note number', 'pin the note number',
         'fix', 'fix note', 'fix the note', 'fix notes', 'fix the notes', 'fix note number', 'fix the note number',
-        'make fixed', 'make note fixed', 'make the note fixed', 'make last note fixed',
+        'make fixed', 'make note fixed', 'make the note fixed', 'make notes fixed', 'make the notes fixed', 'make last note fixed',
         'закрепить', 'закріпити', 'приколоть', 'приколоти'
     ],
-    
-    description: 'Pin / fix note (notes) by id (ids, including 1st/2nd/6th) or last',
+
+    description: 'Закрепить заметку(и) по ID (строго в 2 этапа)',
     category: 'Notes',
-    usage: 'pin [id] | fix the note [id] | make fixed [id|last] | make last note fixed',
-    
-    handler: async (parameters) => {
+    usage: 'pin -> <id> | fix the note -> <id> | make last note fixed',
+
+    handler: async (parameters, options = {}) => {
         const currentUser = await fetchCurrentUser();
         if (!currentUser) {
             return { response: t('not_authorized'), style: 'output-error' };
         }
 
-        const argsLower = parameters.args.map(a => String(a).toLowerCase());
-        const targetUserId = parseTargetUser(parameters.args);
+        const matchedCmd = String((parameters && parameters.matchedCmd) || 'pin').trim().toLowerCase();
+        const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+        const argsLower = (parameters.args || []).map(a => String(a).toLowerCase());
+        const isPureLastCmd = matchedCmd === 'make last note fixed';
+
+        // Этап 1: запрещаем любые параметры (включая числа и last) прямо в строке команды
+        if (!(options && options.fromTwoStepBar)) {
+            if (rawArgs) {
+                return rejectInlineParamsError(matchedCmd, '6');
+            }
+            if (!isPureLastCmd) {
+                return {
+                    response: `📌 Режим закрепления заметок (\`${matchedCmd}\`) активирован. Введите ID заметки (например: 6, 1 2, 6th или last) и нажмите Enter (или ✕ для отмены).`,
+                    style: 'output-info',
+                    commandPrefix: matchedCmd,
+                    inputValue: '',
+                    inputPlaceholder: 'Введите ID заметки (напр: 6, 1 2, 6th или last)...'
+                };
+            }
+        }
+
+        const targetUserId = parseTargetUser(parameters.args || []);
         const isAdmin = ['root', 'support'].includes(currentUser.role);
         const effectiveUserId = (isAdmin && targetUserId) ? targetUserId : currentUser.id;
         const isOfflineMode = !window.supabaseClient || (typeof navigator !== 'undefined' && navigator.onLine === false) || currentUser.isGuest;
 
-        const isLastKeyword = (parameters.matchedCmd === 'make last note fixed') || argsLower.some(w => ['last', 'последняя', 'последний', 'посл', 'остання', 'останній'].includes(w));
-        
+        const isLastKeyword = isPureLastCmd || argsLower.some(w => ['last', 'последняя', 'последний', 'посл', 'остання', 'останній'].includes(w));
+
         let ids = [];
         if (isLastKeyword) {
             if (!isOfflineMode) {
@@ -37,7 +57,7 @@ CommandRegistry.register({
                         .is('deleted_at', null)
                         .order('inner_id', { ascending: false })
                         .limit(1);
-                        
+
                     if (error) throw error;
                     if (data && data.length > 0) ids = [data[0].inner_id];
                 } catch (err) {
@@ -52,15 +72,14 @@ CommandRegistry.register({
                 }
             }
         } else {
-            // Поддерживает числа и порядковые формы (6th, 1st, 2nd, 3rd и т.д.)
-            const fullArgsStr = parameters.args.join(' ');
+            const fullArgsStr = (parameters.args || []).join(' ');
             ids = [...new Set((fullArgsStr.match(/\d+/g) || []).map(Number).filter(n => Number.isFinite(n) && n > 0))];
         }
 
         if (ids.length === 0) {
-            return { 
-                response: `❌ Укажите ID (можно списком или как 6th) или слово "last" для закрепления.\nПример: \`fix the note 6\`, \`detach 6th note\`, \`pin 1 2, 3\` или \`pin last\``, 
-                style: 'output-error' 
+            return {
+                response: `❌ Укажите ID (напр: \`6\`, \`1 2\`, \`6th\`) или \`last\`.`,
+                style: 'output-error'
             };
         }
 
@@ -101,12 +120,11 @@ CommandRegistry.register({
             }
 
             const idsStr = ids.join(', ');
-            return { 
-                response: `📌 Заметки [ID: ${idsStr}] успешно закреплены.`, 
+            return {
+                response: `📌 Заметки [ID: ${idsStr}] успешно закреплены.`,
                 style: 'output-success',
                 editedEntity: 'note'
             };
-
         } catch (err) {
             if (window.OfflineNotesSync && window.OfflineNotesSync.isOfflineError(err)) {
                 const offlineRes = pinOffline();

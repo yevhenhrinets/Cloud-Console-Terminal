@@ -1,23 +1,39 @@
-// commands/read.js — чтение конкретных объектов по ID (note [ID], history [ID])
+// commands/read.js — чтение конкретных объектов по ID (строго в 2 этапа)
 
 CommandRegistry.register({
-    names: ['read note', 'note', 'заметка', 'нотатка'],
-    
-    description: 'Reading notes or history',
+    names: ['read note', 'read the note', 'read note number', 'note', 'заметка', 'нотатка'],
+
+    description: 'Чтение заметки по ID (строго в 2 этапа)',
     category: 'CRUD',
-    usage: 'Read note [id] | read history [id]',
-    
-    handler: async (parameters) => {
+    usage: 'read note -> <id> | note -> <id>',
+
+    handler: async (parameters, options = {}) => {
         const currentUser = await fetchCurrentUser();
         if (!currentUser) return { response: t('not_authorized'), style: 'output-error' };
 
-        const targetUserId = parseTargetUser(parameters.args);
+        const matchedCmd = String((parameters && parameters.matchedCmd) || 'read note').trim().toLowerCase();
+        const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+
+        if (!(options && options.fromTwoStepBar)) {
+            if (rawArgs) {
+                return rejectInlineParamsError(matchedCmd, '3');
+            }
+            return {
+                response: `📄 Режим чтения заметки (\`${matchedCmd}\`) активирован. Введите ID заметки (например: 3 или last) и нажмите Enter (или ✕ для отмены).`,
+                style: 'output-info',
+                commandPrefix: matchedCmd,
+                inputValue: '',
+                inputPlaceholder: 'Введите ID заметки (напр: 3 или last)...'
+            };
+        }
+
+        const targetUserId = parseTargetUser(parameters.args || []);
         const isAdmin = ['root', 'support'].includes(currentUser.role);
         const effectiveUserId = (isAdmin && targetUserId) ? targetUserId : currentUser.id;
 
-        const targetId = await resolveTargetId(parameters.args, 'notes', effectiveUserId);
+        const targetId = await resolveTargetId(parameters.args || [], 'notes', effectiveUserId);
         if (!targetId) {
-            return { response: '❌ Укажите ID заметки (например: `note 3` или `note last`)', style: 'output-error' };
+            return { response: '❌ Укажите ID заметки (например: `3` или `last`)', style: 'output-error' };
         }
 
         const readCachedNote = () => {
@@ -26,7 +42,7 @@ CommandRegistry.register({
             return cached.find(n => Number(n.inner_id) === Number(targetId)) || null;
         };
 
-        if (!window.supabaseClient || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+        if (!window.supabaseClient || (typeof navigator !== 'undefined' && navigator.onLine === false) || currentUser.isGuest) {
             const note = readCachedNote();
             if (!note) return { response: `❌ Заметка с ID [${targetId}] не найдена в оффлайн-кэше.`, style: 'output-error' };
             const pinMark = note.is_pinned ? ' 📌 (закреплена)' : '';
@@ -81,15 +97,14 @@ CommandRegistry.register({
     }
 });
 
-// Вспомогательный обработчик детального чтения истории (вызывается из show.js при наличии ID)
 async function readHistoryHandler(parameters, currentUser) {
-    const targetUserId = parseTargetUser(parameters.args);
+    const targetUserId = parseTargetUser(parameters.args || []);
     const isAdmin = ['root', 'support'].includes(currentUser.role);
     const effectiveUserId = (isAdmin && targetUserId) ? targetUserId : currentUser.id;
 
-    const targetId = await resolveTargetId(parameters.args, 'commands_history', effectiveUserId);
+    const targetId = await resolveTargetId(parameters.args || [], 'commands_history', effectiveUserId);
     if (!targetId) {
-        return { response: '❌ Укажите ID истории (например: `history 5` или `history last`)', style: 'output-error' };
+        return { response: '❌ Укажите ID истории (например: `5` или `last`)', style: 'output-error' };
     }
 
     if (!window.supabaseClient || (typeof navigator !== 'undefined' && navigator.onLine === false) || currentUser.isGuest) {
@@ -139,17 +154,33 @@ async function readHistoryHandler(parameters, currentUser) {
     }
 }
 
-// Регистрируем альтернативные синонимы чтения истории
 CommandRegistry.register({
-    names: ['read history', 'читать историю', 'читати історію'],
-    
-    description: 'Reading (for ex. note(s) or history)',
+    names: ['read history', 'read the history', 'read history number', 'читать историю', 'читати історію'],
+
+    description: 'Чтение записи истории по ID (строго в 2 этапа)',
     category: 'CRUD',
-    usage: 'Read history',
-    
-    handler: async (parameters) => {
+    usage: 'read history -> <id>',
+
+    handler: async (parameters, options = {}) => {
         const currentUser = await fetchCurrentUser();
         if (!currentUser) return { response: t('not_authorized'), style: 'output-error' };
+
+        const matchedCmd = String((parameters && parameters.matchedCmd) || 'read history').trim().toLowerCase();
+        const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+
+        if (!(options && options.fromTwoStepBar)) {
+            if (rawArgs) {
+                return rejectInlineParamsError(matchedCmd, '5');
+            }
+            return {
+                response: `📜 Режим чтения истории (\`${matchedCmd}\`) активирован. Введите ID записи истории (например: 5 или last) и нажмите Enter (или ✕ для отмены).`,
+                style: 'output-info',
+                commandPrefix: matchedCmd,
+                inputValue: '',
+                inputPlaceholder: 'Введите ID записи истории (напр: 5 или last)...'
+            };
+        }
+
         return await readHistoryHandler(parameters, currentUser);
     }
 });

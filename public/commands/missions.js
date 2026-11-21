@@ -8,6 +8,9 @@
         category: '📋 Задания',
         usage: 'go to missions | missions.html | todo',
         handler: async (parameters, options = {}) => {
+            if (!(options && options.fromTwoStepBar) && parameters && parameters.raw_args && parameters.raw_args.trim()) {
+                return rejectInlineParamsError(parameters.matchedCmd || 'go to missions', '');
+            }
             if (options && options.skipRedirect) {
                 return {
                     response: '🆕 Открываю страницу поручений в новой вкладке: /missions.html',
@@ -27,25 +30,17 @@
     // 1. Команда просмотра активных поручений
     CommandRegistry.register({
         names: ['missions', 'show missions', 'поручения', 'поручення', 'задания', 'завдання'],
-        description: 'Список активных поручений из таблицы или переход на страницу',
+        description: 'Список активных поручений из таблицы',
         category: '📋 Задания',
-        usage: 'missions | go to missions | show missions | Add mission ТЕКСТ',
+        usage: 'missions | show missions | add mission | done mission',
         handler: async (parameters, options = {}) => {
-            const rawArgs = parameters && parameters.args ? parameters.args.join(' ').toLowerCase() : '';
-            if (rawArgs.includes('go') || rawArgs.includes('open') || rawArgs.includes('page') || rawArgs.includes('html') || rawArgs.includes('страниц')) {
-                if (options && options.skipRedirect) {
-                    return {
-                        response: '🆕 Открываю страницу поручений в новой вкладке: /missions.html',
-                        style: 'output-info'
-                    };
-                }
-                setTimeout(() => {
-                    window.location.href = '/missions.html';
-                }, 250);
-                return {
-                    response: '🚀 Открываю страницу поручений: missions.html...',
-                    style: 'output-info'
-                };
+            const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+            if (!(options && options.fromTwoStepBar) && rawArgs) {
+                return rejectInlineParamsError(
+                    'done mission',
+                    '1',
+                    '💡 Для списка поручений введите просто `missions`, для добавления — `add mission`, для перехода — `go to missions`.'
+                );
             }
 
             if (!window.MissionsStore) {
@@ -58,7 +53,7 @@
 
             if (!activeMissions || activeMissions.length === 0) {
                 return {
-                    response: `📋 В активном списке нет невыполненных поручений.${pendingNote}\n💡 Добавьте новое дело: \`Add mission Развесить стирку\`\n🔗 Открыть страницу: введите \`go to missions\` или \`missions.html\``,
+                    response: `📋 В активном списке нет невыполненных поручений.${pendingNote}\n💡 Добавьте новое дело: \`add mission\` (в 2 этапа)\n🔗 Открыть страницу: введите \`go to missions\` или \`missions.html\``,
                     style: 'output-info'
                 };
             }
@@ -73,7 +68,7 @@
 
             text += `-----------------------------------------\n`;
             text += `💡 Быстрый переход на страницу: введите \`go to missions\` или \`missions.html\`\n`;
-            text += `💡 Выполнить из консоли: \`done mission 1\` или \`Add mission <текст>\``;
+            text += `💡 Выполнить из консоли (2 этапа): \`done mission\` ➔ номер | \`add mission\` ➔ текст`;
 
             return { response: text, style: 'output-info' };
         }
@@ -84,7 +79,7 @@
         names: ['add mission', 'добавить задание', 'додати завдання', 'добавить поручение', 'додати доручення', 'add task mission'],
         description: 'Добавление поручения в список дел (строго в 2 этапа)',
         category: '📋 Задания',
-        usage: 'Add mission (затем ввести текст в поле)',
+        usage: 'add mission -> <текст>',
         handler: async (parameters, options = {}) => {
             if (!window.MissionsStore) {
                 return { response: '❌ Ошибка: модуль MissionsStore не загружен.', style: 'output-error' };
@@ -94,17 +89,14 @@
             const prefix = (parameters && parameters.matchedCmd) ? parameters.matchedCmd : 'add mission';
 
             if (cleanText && !(options && options.fromTwoStepBar)) {
-                return {
-                    response: `⚠️ Команда \`${prefix}\` работает только в 2 этапа — текст нельзя вводить сразу в команде!\n1) Введите \`add mission\` без текста\n2) После появления команды под строкой ввода напишите текст поручения.`,
-                    style: 'output-error'
-                };
+                return rejectInlineParamsError(prefix, 'Развесить стирку');
             }
 
             if (!cleanText) {
                 return {
                     response: '📋 Режим создания поручения активирован. Введите текст поручения и нажмите Enter (или ✕ для отмены).',
                     style: 'output-info',
-                    commandPrefix: 'add mission',
+                    commandPrefix: prefix,
                     inputValue: '',
                     inputPlaceholder: 'Введите текст нового поручения...'
                 };
@@ -132,21 +124,37 @@
         }
     });
 
-    // 3. Команда выполнения поручения из консоли (done mission 1)
+    // 3. Команда выполнения поручения из консоли (строго в 2 этапа: done mission -> 1)
     CommandRegistry.register({
         names: ['done mission', 'complete mission', 'выполнить поручение', 'виконати завдання'],
-        description: 'Отметить поручение как выполненное с сохранением времени и таймзоны',
+        description: 'Отметить поручение как выполненное (строго в 2 этапа)',
         category: '📋 Задания',
-        usage: 'done mission [номер_в_списке]',
-        handler: async (parameters) => {
+        usage: 'done mission -> <номер>',
+        handler: async (parameters, options = {}) => {
             if (!window.MissionsStore) {
                 return { response: '❌ Ошибка: модуль MissionsStore не загружен.', style: 'output-error' };
             }
 
-            const target = parameters.args[0];
+            const matchedCmd = String((parameters && parameters.matchedCmd) || 'done mission').trim().toLowerCase();
+            const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+
+            if (!(options && options.fromTwoStepBar)) {
+                if (rawArgs) {
+                    return rejectInlineParamsError(matchedCmd, '1');
+                }
+                return {
+                    response: `✅ Режим завершения поручения (\`${matchedCmd}\`) активирован. Введите номер поручения (например: 1) и нажмите Enter (или ✕ для отмены).`,
+                    style: 'output-info',
+                    commandPrefix: matchedCmd,
+                    inputValue: '',
+                    inputPlaceholder: 'Введите номер поручения (напр: 1)...'
+                };
+            }
+
+            const target = parameters.args && parameters.args[0];
             if (!target) {
                 return {
-                    response: '❌ Укажите номер поручения для завершения.\nПример: `done mission 1`',
+                    response: '❌ Укажите номер поручения для завершения (например: `1`).',
                     style: 'output-error'
                 };
             }

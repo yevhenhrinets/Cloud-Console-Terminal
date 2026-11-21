@@ -7,10 +7,19 @@ CommandRegistry.register({
     category: 'History',
     usage: 'History trash | Show trash of history',
     
-    handler: async (parameters) => {
+    handler: async (parameters, options = {}) => {
         const currentUser = await fetchCurrentUser();
         if (!currentUser) {
             return { response: t('not_authorized'), style: 'output-error' };
+        }
+
+        const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+        if (!(options && options.fromTwoStepBar) && rawArgs) {
+            return rejectInlineParamsError(parameters.matchedCmd || 'trash history', '');
+        }
+
+        if (!window.supabaseClient || (typeof navigator !== 'undefined' && navigator.onLine === false) || currentUser.isGuest) {
+            return { response: '🗑️ Корзина истории команд (облачная история удалений) доступна при входе и подключении к интернету.', style: 'output-info' };
         }
 
         const targetUserId = parseTargetUser(parameters.args);

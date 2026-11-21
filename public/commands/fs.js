@@ -1,42 +1,51 @@
-// commands/fs.js — команды локальной файловой системы Android / PWA (OPFS)
-// 100% бесплатно, без биллинга, без Google Cloud, работает оффлайн
+// commands/fs.js — команды локальной файловой системы Android / PWA (OPFS), все параметры строго в 2 этапа
 
 (function() {
-    // Вспомогательная функция очистки аргументов (убирает 'to', 'в', лишние кавычки)
     function cleanArgString(str) {
         if (!str) return '';
         let s = String(str).trim();
-        // убираем кавычки по краям
         s = s.replace(/^["']|["']$/g, '');
         return s;
     }
 
-    // 1. Команда cd / change directory
+    // 1. Команда cd / change directory (строго в 2 этапа)
     CommandRegistry.register({
         names: [
-            'cd', 'chdir', 
+            'cd', 'chdir',
             'change directory', 'change directory to',
-            'перейти в папку', 'сменить директорию', 'перейти'
+            'перейти в папку', 'сменить директорию'
         ],
-        description: 'Переход в директорию (cd .., cd ~, cd /путь, change directory to /path)',
+        description: 'Переход в директорию (строго в 2 этапа: cd -> путь)',
         category: 'FileSystem',
-        usage: 'cd <путь> | cd .. | cd ~ | change directory to /terminal/organization/project/Test1',
+        usage: 'cd -> <путь | .. | ~>',
 
-        handler: async (parameters) => {
+        handler: async (parameters, options = {}) => {
             if (!window.LocalFS) {
                 return { response: '❌ Файловая система LocalFS не инициализирована.', style: 'output-error' };
             }
 
+            const matchedCmd = String((parameters && parameters.matchedCmd) || 'cd').trim().toLowerCase();
             let raw = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
-            
-            // Если команда была 'change directory' и аргументы начинаются с 'to' или 'в'
+
+            if (!(options && options.fromTwoStepBar)) {
+                if (raw) {
+                    return rejectInlineParamsError(matchedCmd, '..');
+                }
+                return {
+                    response: `📁 Переход в директорию (\`${matchedCmd}\`): введите путь или имя папки (напр: \`..\`, \`~\`, \`Test1\`) и нажмите Enter (или ✕ для отмены).`,
+                    style: 'output-info',
+                    commandPrefix: matchedCmd,
+                    inputValue: '',
+                    inputPlaceholder: 'Путь или имя папки (напр: Test1, .., ~)...'
+                };
+            }
+
             if (raw.toLowerCase().startsWith('to ')) {
                 raw = raw.slice(3).trim();
             } else if (raw.toLowerCase().startsWith('в ')) {
                 raw = raw.slice(2).trim();
             }
 
-            // Если параметров нет — перейти в корень (~)
             const targetPath = cleanArgString(raw) || '~';
 
             try {
@@ -65,9 +74,14 @@
         category: 'FileSystem',
         usage: 'ls | dir | list directory',
 
-        handler: async () => {
+        handler: async (parameters, options = {}) => {
             if (!window.LocalFS) {
                 return { response: '❌ Файловая система LocalFS не инициализирована.', style: 'output-error' };
+            }
+
+            const raw = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+            if (!(options && options.fromTwoStepBar) && raw) {
+                return rejectInlineParamsError(parameters.matchedCmd || 'ls', '');
             }
 
             try {
@@ -99,10 +113,10 @@
                 }
 
                 lines.push(`\n📊 Всего: ${totalFolders} папок, ${totalFiles} файлов.`);
-                lines.push(`💡 Подсказки:`);
-                lines.push(`  • Создать папку: create directory (двухэтапная команда)`);
-                lines.push(`  • Перейти: cd <имя> | cd ..`);
-                lines.push(`  • Найти папку: find directory <начало имени>`);
+                lines.push(`💡 Подсказки (все параметры на 2-м этапе):`);
+                lines.push(`  • Создать папку: create directory ➔ имя`);
+                lines.push(`  • Перейти: cd ➔ имя / .. / ~`);
+                lines.push(`  • Найти папку: find directory ➔ запрос`);
                 lines.push(`  • Скачать zip: fs export`);
 
                 return {
@@ -118,16 +132,21 @@
         }
     });
 
-    // 3. Команда pwd / cwd (текущий путь)
+    // 3. Команда pwd / cwd
     CommandRegistry.register({
         names: ['pwd', 'cwd', 'путь'],
         description: 'Показать текущий рабочий путь в хранилище',
         category: 'FileSystem',
         usage: 'pwd',
 
-        handler: async () => {
+        handler: async (parameters, options = {}) => {
             if (!window.LocalFS) {
                 return { response: '❌ Файловая система LocalFS не инициализирована.', style: 'output-error' };
+            }
+
+            const raw = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+            if (!(options && options.fromTwoStepBar) && raw) {
+                return rejectInlineParamsError(parameters.matchedCmd || 'pwd', '');
             }
 
             const status = window.LocalFS.getStatus();
@@ -138,7 +157,7 @@
         }
     });
 
-    // 4. Команда create directory / mkdir / add directory / make directory (строго в 2 этапа)
+    // 4. Команда create directory / mkdir (строго в 2 этапа)
     CommandRegistry.register({
         names: [
             'create directory', 'create a directory', 'create the directory', 'mkdir',
@@ -146,9 +165,9 @@
             'add folder', 'create folder', 'create a folder', 'create the folder', 'make folder',
             'создать папку', 'добавить папку', 'новая папка'
         ],
-        description: 'Создание новой папки (строго в 2 этапа, включая вложенные пути: a/b/c)',
+        description: 'Создание новой папки (строго в 2 этапа)',
         category: 'FileSystem',
-        usage: 'create directory (затем ввести название в поле)',
+        usage: 'create directory -> <название>',
 
         handler: async (parameters, options = {}) => {
             if (!window.LocalFS) {
@@ -160,10 +179,7 @@
             const prefix = (parameters && parameters.matchedCmd) ? parameters.matchedCmd : 'create directory';
 
             if (folderName && !(options && options.fromTwoStepBar)) {
-                return {
-                    response: `⚠️ Команда \`${prefix}\` работает только в 2 этапа — нельзя указывать название папки сразу в команде!\n1) Введите \`${prefix}\` без названия\n2) После появления команды под строкой ввода напишите имя новой папки.`,
-                    style: 'output-error'
-                };
+                return rejectInlineParamsError(prefix, 'Test1');
             }
 
             if (!folderName) {
@@ -179,7 +195,7 @@
             try {
                 const res = await window.LocalFS.mkdir(folderName);
                 return {
-                    response: `🟢 Папка "${res.name}" успешно создана!\n📂 Путь: ${res.path}\n💡 Для перехода: cd ${res.name}`,
+                    response: `🟢 Папка "${res.name}" успешно создана!\n📂 Путь: ${res.path}\n💡 Для перехода: \`cd\` ➔ \`${res.name}\``,
                     style: 'output-success'
                 };
             } catch (err) {
@@ -191,30 +207,45 @@
         }
     });
 
-    // 5. Команда del directory / delete directory / remove directory / rmdir
+    // 5. Команда del directory / rmdir (строго в 2 этапа)
     CommandRegistry.register({
         names: [
             'del directory', 'delete directory', 'remove directory', 'rmdir',
             'del folder', 'delete folder', 'remove folder',
             'удалить папку', 'удалить директорию'
         ],
-        description: 'Удаление папки (с перемещением в корзину для восстановления)',
+        description: 'Удаление папки (строго в 2 этапа)',
         category: 'FileSystem',
-        usage: 'del directory <название> | rmdir <название>',
+        usage: 'del directory -> <название>',
 
-        handler: async (parameters) => {
+        handler: async (parameters, options = {}) => {
             if (!window.LocalFS) {
                 return { response: '❌ Файловая система LocalFS не инициализирована.', style: 'output-error' };
             }
 
+            const matchedCmd = String((parameters && parameters.matchedCmd) || 'del directory').trim().toLowerCase();
             let raw = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+
+            if (!(options && options.fromTwoStepBar)) {
+                if (raw) {
+                    return rejectInlineParamsError(matchedCmd, 'Test1');
+                }
+                return {
+                    response: `🗑️ Удаление папки (\`${matchedCmd}\`): введите название папки и нажмите Enter (или ✕ для отмены).`,
+                    style: 'output-info',
+                    commandPrefix: matchedCmd,
+                    inputValue: '',
+                    inputPlaceholder: 'Название папки для удаления (напр: Test1)...'
+                };
+            }
+
             const confirmed = raw.includes('--yes') || raw.includes('-y');
             raw = raw.replace(/--yes|-y/g, '').trim();
             const folderName = cleanArgString(raw);
 
             if (!folderName) {
                 return {
-                    response: '❌ Укажите название папки для удаления.\nПример: `del directory Test1`',
+                    response: '❌ Укажите название папки для удаления.',
                     style: 'output-error'
                 };
             }
@@ -226,7 +257,7 @@
                 }
 
                 return {
-                    response: `🗑️ Папка "${res.name}" удалена (перемещена в корзину).\n💡 Для восстановления введите: \`undel directory ${res.name}\``,
+                    response: `🗑️ Папка "${res.name}" удалена (перемещена в корзину).\n💡 Для восстановления: \`undel directory\` ➔ \`${res.name}\``,
                     style: 'output-success'
                 };
             } catch (err) {
@@ -238,28 +269,42 @@
         }
     });
 
-    // 6. Команда undel directory / restore directory / undel
+    // 6. Команда undel directory / restore directory (строго в 2 этапа)
     CommandRegistry.register({
         names: [
             'undel directory', 'restore directory',
             'undel folder', 'restore folder',
             'undel', 'восстановить папку'
         ],
-        description: 'Восстановление папки из корзины файловой системы',
+        description: 'Восстановление папки из корзины (строго в 2 этапа)',
         category: 'FileSystem',
-        usage: 'undel directory <название> | restore directory <название>',
+        usage: 'undel directory -> <название>',
 
-        handler: async (parameters) => {
+        handler: async (parameters, options = {}) => {
             if (!window.LocalFS) {
                 return { response: '❌ Файловая система LocalFS не инициализирована.', style: 'output-error' };
             }
 
+            const matchedCmd = String((parameters && parameters.matchedCmd) || 'undel directory').trim().toLowerCase();
             const raw = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
-            const folderName = cleanArgString(raw);
 
+            if (!(options && options.fromTwoStepBar)) {
+                if (raw) {
+                    return rejectInlineParamsError(matchedCmd, 'Test1');
+                }
+                return {
+                    response: `♻️ Восстановление папки (\`${matchedCmd}\`): введите название папки и нажмите Enter (или ✕ для отмены).`,
+                    style: 'output-info',
+                    commandPrefix: matchedCmd,
+                    inputValue: '',
+                    inputPlaceholder: 'Название папки для восстановления (напр: Test1)...'
+                };
+            }
+
+            const folderName = cleanArgString(raw);
             if (!folderName) {
                 return {
-                    response: '❌ Укажите название папки для восстановления.\nПример: `undel directory Test1`',
+                    response: '❌ Укажите название папки для восстановления.',
                     style: 'output-error'
                 };
             }
@@ -279,25 +324,38 @@
         }
     });
 
-    // 7. Команда edit directory / rename directory / rename
+    // 7. Команда edit directory / rename directory (строго в 2 этапа)
     CommandRegistry.register({
         names: [
             'edit directory', 'rename directory',
             'edit folder', 'rename folder',
             'rename', 'переименовать папку'
         ],
-        description: 'Переименование папки',
+        description: 'Переименование папки (строго в 2 этапа)',
         category: 'FileSystem',
-        usage: 'rename directory <старое_имя> to <новое_имя> | edit directory Old New',
+        usage: 'rename directory -> <старое> to <новое>',
 
-        handler: async (parameters) => {
+        handler: async (parameters, options = {}) => {
             if (!window.LocalFS) {
                 return { response: '❌ Файловая система LocalFS не инициализирована.', style: 'output-error' };
             }
 
+            const matchedCmd = String((parameters && parameters.matchedCmd) || 'rename directory').trim().toLowerCase();
             const raw = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
-            
-            // Разбор: "Old to New" или "Old New" или "Old" "New"
+
+            if (!(options && options.fromTwoStepBar)) {
+                if (raw) {
+                    return rejectInlineParamsError(matchedCmd, 'Test1 to Test2');
+                }
+                return {
+                    response: `✏️ Переименование папки (\`${matchedCmd}\`): введите \`<старое имя> to <новое имя>\` и нажмите Enter (или ✕ для отмены).`,
+                    style: 'output-info',
+                    commandPrefix: matchedCmd,
+                    inputValue: '',
+                    inputPlaceholder: 'Старое и новое имя (напр: Test1 to Test2)...'
+                };
+            }
+
             let oldName = '';
             let newName = '';
 
@@ -316,7 +374,7 @@
 
             if (!oldName || !newName) {
                 return {
-                    response: '❌ Укажите старое и новое название папки.\nПример:\n  • `rename directory Test1 to Test2`\n  • `edit directory "Старая папка" to "Новая папка"`',
+                    response: '❌ Укажите старое и новое название папки (например: `Test1 to Test2`).',
                     style: 'output-error'
                 };
             }
@@ -336,7 +394,7 @@
         }
     });
 
-    // 8. Команда find directory / search directory / search folder
+    // 8. Команда find directory / search directory (строго в 2 этапа)
     CommandRegistry.register({
         names: [
             'find directory', 'find the directory', 'find a directory',
@@ -345,21 +403,35 @@
             'search folder', 'search the folder',
             'найти папку', 'поиск папки', 'найти директорию'
         ],
-        description: 'Поиск папки по началу названия (префиксу) или фрагменту',
+        description: 'Поиск папки по началу названия или фрагменту (строго в 2 этапа)',
         category: 'FileSystem',
-        usage: 'find directory <начало_имени> | search folder "TestContent TestValue1"',
+        usage: 'find directory -> <запрос>',
 
-        handler: async (parameters) => {
+        handler: async (parameters, options = {}) => {
             if (!window.LocalFS) {
                 return { response: '❌ Файловая система LocalFS не инициализирована.', style: 'output-error' };
             }
 
+            const matchedCmd = String((parameters && parameters.matchedCmd) || 'find directory').trim().toLowerCase();
             const raw = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
-            const query = cleanArgString(raw);
 
+            if (!(options && options.fromTwoStepBar)) {
+                if (raw) {
+                    return rejectInlineParamsError(matchedCmd, 'Test');
+                }
+                return {
+                    response: `🔍 Поиск папки (\`${matchedCmd}\`): введите поисковый запрос и нажмите Enter (или ✕ для отмены).`,
+                    style: 'output-info',
+                    commandPrefix: matchedCmd,
+                    inputValue: '',
+                    inputPlaceholder: 'Название или начало названия папки...'
+                };
+            }
+
+            const query = cleanArgString(raw);
             if (!query) {
                 return {
-                    response: '❌ Укажите поисковый запрос (например: `find directory TestContent TestValue1`)',
+                    response: '❌ Укажите поисковый запрос.',
                     style: 'output-error'
                 };
             }
@@ -379,7 +451,7 @@
                     const badge = r.isPrefixMatch ? '⭐ [Начинается с]' : '🔎 [Содержит]';
                     lines.push(`${idx + 1}. 📁 ${r.name} ${badge}`);
                     lines.push(`   📍 Путь: ${r.path}`);
-                    lines.push(`   👉 Перейти: cd ${r.path}\n`);
+                    lines.push(`   👉 Перейти: \`cd\` ➔ \`${r.path}\`\n`);
                 });
 
                 return {
@@ -395,7 +467,7 @@
         }
     });
 
-    // 9.1. Отдельная команда fs export (чтобы любые пользовательские алиасы работали напрямую)
+    // 9.1. fs export
     CommandRegistry.register({
         names: [
             'fs export', 'export zip',
@@ -406,9 +478,12 @@
         category: 'FileSystem',
         usage: 'fs export | export file system | download all files | save project',
 
-        handler: async () => {
+        handler: async (parameters, options = {}) => {
             if (!window.LocalFS) {
                 return { response: '❌ Файловая система LocalFS не инициализирована.', style: 'output-error' };
+            }
+            if (!(options && options.fromTwoStepBar) && parameters && parameters.raw_args && parameters.raw_args.trim()) {
+                return rejectInlineParamsError(parameters.matchedCmd || 'fs export', '');
             }
             try {
                 const zipRes = await window.LocalFS.exportZip();
@@ -426,16 +501,19 @@
         }
     });
 
-    // 9.2. Отдельная команда fs pick
+    // 9.2. fs pick
     CommandRegistry.register({
         names: ['fs pick', 'pick directory', 'выбрать папку'],
         description: 'Выбрать реальную системную папку на устройстве (File System Access API)',
         category: 'FileSystem',
         usage: 'fs pick | pick directory',
 
-        handler: async () => {
+        handler: async (parameters, options = {}) => {
             if (!window.LocalFS) {
                 return { response: '❌ Файловая система LocalFS не инициализирована.', style: 'output-error' };
+            }
+            if (!(options && options.fromTwoStepBar) && parameters && parameters.raw_args && parameters.raw_args.trim()) {
+                return rejectInlineParamsError(parameters.matchedCmd || 'fs pick', '');
             }
             try {
                 const pickRes = await window.LocalFS.pick();
@@ -455,7 +533,7 @@
         }
     });
 
-    // 9.3. Отдельная команда fs status
+    // 9.3. fs status
     CommandRegistry.register({
         names: ['fs status', 'статус хранилища'],
         description: 'Показать статус локального файлового хранилища',
@@ -492,14 +570,14 @@
                           `──────────────────────────────────────────────\n` +
                           `📍 Текущий путь: ${st.path}\n` +
                           `💾 Хранилище: ${st.storageType}\n\n` +
-                          `📌 Доступные команды:\n` +
+                          `📌 Доступные команды (все параметры вводятся на 2-м этапе):\n` +
                           `  • ls | list | directories | dir | vdir — просмотр текущей папки\n` +
-                          `  • cd <путь> | change directory <путь> | cd .. | cd ~ — переход по папкам\n` +
-                          `  • create directory (в 2 этапа) — создание папки\n` +
-                          `  • find directory <имя> — поиск папки по началу названия (префиксу)\n` +
-                          `  • edit directory <старое> to <новое> — переименование папки\n` +
-                          `  • del directory <имя> — удаление папки (в корзину)\n` +
-                          `  • undel directory <имя> — восстановление удаленной папки\n` +
+                          `  • cd | change directory ➔ путь — переход по папкам\n` +
+                          `  • create directory ➔ имя — создание папки\n` +
+                          `  • find directory ➔ запрос — поиск папки\n` +
+                          `  • edit directory | rename directory ➔ старое to новое — переименование\n` +
+                          `  • del directory ➔ имя — удаление папки (в корзину)\n` +
+                          `  • undel directory ➔ имя — восстановление удаленной папки\n` +
                           `  • fs export | Save project | Download all files — скачать в .ZIP архив\n` +
                           `  • fs pick — выбрать реальную папку на устройстве\n` +
                           `  • pwd — показать текущий рабочий каталог\n` +
@@ -510,7 +588,7 @@
         }
     });
 
-    // 10. Команда скачивания полного кода проекта (ZIP для Cloudflare Pages)
+    // 10. Команда скачивания полного кода проекта
     CommandRegistry.register({
         names: [
             'download project', 'downoad project', 'download code', 'export project',
@@ -546,5 +624,4 @@
             }
         }
     });
-
 })();

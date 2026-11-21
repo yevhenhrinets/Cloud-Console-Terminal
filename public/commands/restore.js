@@ -1,24 +1,47 @@
-// commands/restore.js — массовое восстановление из корзины по списку ID или 'last'
+// commands/restore.js — массовое восстановление из корзины по ID (строго в 2 этапа)
 
 CommandRegistry.register({
-    names: ['restore', 'восстановить', 'відновити'],
-    
-    description: 'Restoration',
+    names: [
+        'restore', 'восстановить', 'відновити',
+        'restore note', 'restore the note', 'restore notes', 'restore the notes', 'restore note number',
+        'восстановить заметку', 'відновити нотатку',
+        'restore history', 'restore the history', 'восстановить историю', 'відновити історію'
+    ],
+
+    description: 'Восстановление из корзины по ID (строго в 2 этапа)',
     category: 'CRUD',
-    usage: 'Restore [id] | restore [id1, id2...]',
-    
-    handler: async (parameters) => {
+    usage: 'restore -> <id> | restore note -> <id> | restore history -> <id>',
+
+    handler: async (parameters, options = {}) => {
         const currentUser = await fetchCurrentUser();
         if (!currentUser) {
             return { response: t('not_authorized'), style: 'output-error' };
         }
 
-        const argsLower = parameters.args.map(a => String(a).toLowerCase());
-        const targetUserId = parseTargetUser(parameters.args);
+        const matchedCmd = String((parameters && parameters.matchedCmd) || 'restore').trim().toLowerCase();
+        const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+
+        if (!(options && options.fromTwoStepBar)) {
+            if (rawArgs) {
+                return rejectInlineParamsError(matchedCmd, '6');
+            }
+            const isHistPrompt = matchedCmd.includes('history') || matchedCmd.includes('истор') || matchedCmd.includes('істор');
+            return {
+                response: `♻️ Режим восстановления (${isHistPrompt ? 'истории' : 'заметок'}) активирован. Введите ID (напр: 6, 1 2 или last) и нажмите Enter (или ✕ для отмены).`,
+                style: 'output-info',
+                commandPrefix: matchedCmd,
+                inputValue: '',
+                inputPlaceholder: isHistPrompt ? 'ID истории для восстановления (напр: 5 или last)...' : 'ID заметки (напр: 6, 1 2 или last)...'
+            };
+        }
+
+        const argsLower = (parameters.args || []).map(a => String(a).toLowerCase());
+        const targetUserId = parseTargetUser(parameters.args || []);
         const isAdmin = ['root', 'support'].includes(currentUser.role);
         const effectiveUserId = (isAdmin && targetUserId) ? targetUserId : currentUser.id;
 
-        const isHistory = argsLower.includes('history') || argsLower.includes('история') || argsLower.includes('історія');
+        const isHistory = matchedCmd.includes('history') || matchedCmd.includes('истор') || matchedCmd.includes('істор') ||
+            argsLower.includes('history') || argsLower.includes('история') || argsLower.includes('історія');
         const tableName = isHistory ? 'commands_history' : 'notes';
         const entityLabel = isHistory ? 'истории' : 'заметки';
         const isOfflineMode = !window.supabaseClient || (typeof navigator !== 'undefined' && navigator.onLine === false) || currentUser.isGuest;
@@ -28,7 +51,7 @@ CommandRegistry.register({
         }
 
         const isLastKeyword = argsLower.some(w => ['last', 'последняя', 'последний', 'посл', 'остання', 'останній'].includes(w));
-        
+
         let ids = [];
         if (isLastKeyword) {
             if (!isOfflineMode) {
@@ -40,7 +63,7 @@ CommandRegistry.register({
                         .not('deleted_at', 'is', null)
                         .order('inner_id', { ascending: false })
                         .limit(1);
-                        
+
                     if (error) throw error;
                     if (data && data.length > 0) ids = [data[0].inner_id];
                 } catch (err) {
@@ -55,14 +78,14 @@ CommandRegistry.register({
                 }
             }
         } else {
-            const fullArgsStr = parameters.args.join(' ');
-            ids = [...new Set(fullArgsStr.match(/\d+/g)?.map(Number) || [])];
+            const fullArgsStr = (parameters.args || []).join(' ');
+            ids = [...new Set(fullArgsStr.match(/\d+/g)?.map(Number).filter(n => Number.isFinite(n) && n > 0) || [])];
         }
 
         if (ids.length === 0) {
-            return { 
-                response: `❌ Укажите ID (можно списком) или слово "last" для восстановления.\nПример: \`restore 1 2, 3\` или \`restore last\``, 
-                style: 'output-error' 
+            return {
+                response: `❌ Укажите ID (можно списком) или слово "last" для восстановления.`,
+                style: 'output-error'
             };
         }
 
@@ -102,12 +125,11 @@ CommandRegistry.register({
             }
 
             const idsStr = ids.join(', ');
-            return { 
-                response: `🟢 ${entityLabel === 'истории' ? 'Записи истории' : 'Заметки'} [ID: ${idsStr}] успешно восстановлены.`, 
+            return {
+                response: `🟢 ${entityLabel === 'истории' ? 'Записи истории' : 'Заметки'} [ID: ${idsStr}] успешно восстановлены.`,
                 style: 'output-success',
                 editedEntity: isHistory ? 'history' : 'note'
             };
-
         } catch (err) {
             if (!isHistory && window.OfflineNotesSync && window.OfflineNotesSync.isOfflineError(err)) {
                 const offlineRes = restoreOffline();

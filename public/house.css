@@ -217,7 +217,7 @@ body.theme-light .room-connector-wall {
 .room-board {
     position: relative;
     box-sizing: content-box;
-    background-image: url('/floor.svg?v=20261121_4');
+    background-image: url('/floor.svg?v=20261121_5');
     background-repeat: repeat;
     background-position: 0 0;
     border: 2px solid rgba(148, 163, 184, 0.55);

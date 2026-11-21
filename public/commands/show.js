@@ -2,14 +2,21 @@
 
 CommandRegistry.register({
     names: ['show notes', 'notes', 'заметки', 'нотатки'],
-    
-    description: 'Notes showing',
+
+    description: 'Показать список активных заметок',
     category: 'CRUD',
-    usage: 'Show note [note_id] | show notes',
-    
-    handler: async (parameters) => {
+    usage: 'show notes | show notes of user -> <UUID>',
+
+    handler: async (parameters, options = {}) => {
         const currentUser = await fetchCurrentUser();
         if (!currentUser) return { response: t('not_authorized'), style: 'output-error' };
+
+        const matchedCmd = String((parameters && parameters.matchedCmd) || 'show notes').trim().toLowerCase();
+        const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+
+        if (!(options && options.fromTwoStepBar) && rawArgs) {
+            return rejectInlineParamsError('read note', '3', '💡 Для списка всех заметок введите просто `show notes`.');
+        }
 
         const formatCachedNotes = (notesList, labelSuffix = '') => {
             const active = (notesList || []).filter(n => !n.deleted_at);
@@ -42,7 +49,7 @@ CommandRegistry.register({
             };
         }
 
-        const targetUserId = parseTargetUser(parameters.args);
+        const targetUserId = parseTargetUser(parameters.args || []);
         const isAdmin = ['root', 'support'].includes(currentUser.role);
         const effectiveUserId = (isAdmin && targetUserId) ? targetUserId : currentUser.id;
 
@@ -52,7 +59,6 @@ CommandRegistry.register({
         }
 
         try {
-            // Сначала досылаем возможные оффлайн-операции по заметкам
             if (window.OfflineNotesSync) {
                 await window.OfflineNotesSync.flushPendingNotes();
             }
@@ -71,20 +77,19 @@ CommandRegistry.register({
                 return { response: 'Список заметок пуст.', style: 'output-info' };
             }
 
-            // Группируем по inner_id и оставляем только самую последнюю версию
             const latestNotesMap = new Map();
             data.forEach(note => {
                 if (!latestNotesMap.has(note.inner_id) || note.version > latestNotesMap.get(note.inner_id).version) {
                     latestNotesMap.set(note.inner_id, note);
                 }
             });
-            
+
             const activeNotes = Array.from(latestNotesMap.values()).sort((a, b) => b.inner_id - a.inner_id);
             if (window.OfflineNotesSync) {
                 window.OfflineNotesSync.saveNotesCache(effectiveUserId, activeNotes);
             }
-            
-            const response = "Ваши активные заметки:\n" + 
+
+            const response = "Ваши активные заметки:\n" +
                 activeNotes.map(row => {
                     const pinMark = row.is_pinned ? ' 📌' : '';
                     const timeStr = formatDate(row.updated_at || row.created_at);
@@ -105,15 +110,15 @@ CommandRegistry.register({
 
 CommandRegistry.register({
     names: ['show history', 'show commands history'],
-    
-    description: 'Showing history (50-100 entries)',
+
+    description: 'Показать историю команд (50 последних или через history limit)',
     category: 'CRUD',
-    usage: 'Show history | history 100',
-    
-    handler: async (parameters) => {
+    usage: 'show history | history limit -> <100>',
+
+    handler: async (parameters, options = {}) => {
         const historyHandler = window.CommandRegistry.getHandler('history');
         if (historyHandler) {
-            return await historyHandler(parameters);
+            return await historyHandler(parameters, options);
         }
         return { response: 'Модуль history не найден.', style: 'output-error' };
     }

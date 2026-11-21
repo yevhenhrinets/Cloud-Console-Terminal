@@ -153,7 +153,11 @@
         description: 'Список обращений пользователей в поддержку (для администратора)',
         category: '🆘 Поддержка',
         usage: 'reports | show reports list | show issues',
-        handler: async () => {
+        handler: async (parameters, options = {}) => {
+            const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+            if (!(options && options.fromTwoStepBar) && rawArgs) {
+                return rejectInlineParamsError(parameters.matchedCmd || 'reports', '');
+            }
             const currentUser = typeof fetchCurrentUser === 'function' ? await fetchCurrentUser() : null;
             if (!currentUser) {
                 return { response: typeof t === 'function' ? t('not_authorized') : 'Ошибка авторизации.', style: 'output-error' };

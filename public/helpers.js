@@ -304,6 +304,19 @@ function checkPlurality(argsArray) {
     return 'neutral';
 }
 
+function rejectInlineParamsError(cmdPrefix, step2Example = '6', extraHint = '') {
+    const cleanPrefix = String(cmdPrefix || '').trim() || 'команда';
+    const examplePart = step2Example ? ` (например: \`${step2Example}\`)` : '';
+    const extraPart = extraHint ? `\n${extraHint}` : '';
+    return {
+        response: `⚠️ Все параметры (включая числа и текст) вводятся строго на 2-м этапе!\n1) Введите сначала только словесную команду: \`${cleanPrefix}\`\n2) После появления команды под строкой ввода введите параметр${examplePart}.${extraPart}`,
+        style: 'output-error'
+    };
+}
+if (typeof window !== 'undefined') {
+    window.rejectInlineParamsError = rejectInlineParamsError;
+}
+
 const LOCAL_ACTIONS_KEY = 'terminal_actions_history';
 const PENDING_CLOUD_ACTIONS_KEY = 'terminal_pending_cloud_actions';
 const MAX_LOCAL_ACTIONS = 200;

@@ -1,11 +1,45 @@
-// commands/edit.js — разделение логики для быстрого 'edit last' и прямого редактирования по ID с текстом
+// commands/edit.js — редактирование заметок и истории: Шаг 1 словесная команда -> Шаг 2 ID -> Шаг 3 текст
 
 CommandRegistry.register({
-    names: ['edit', 'ред', 'редактировать', 'ред.', 'редагувати', 'змінити'],
+    names: [
+        'edit', 'ред', 'редактировать', 'ред.', 'редагувати', 'змінити',
+        'edit note', 'edit the note', 'edit note number', 'edit the note number',
+        'редактировать заметку', 'редагувати нотатку',
+        'edit history', 'edit the history', 'edit history number',
+        'редактировать историю', 'редагувати історію',
+        'edit last', 'edit last note', 'edit last history',
+        'ред последнюю', 'редактировать последнюю'
+    ],
+
+    description: 'Редактирование заметок или истории (поэтапно: команда -> ID -> текст)',
+    category: 'CRUD',
+    usage: 'edit -> <id> -> <текст> | edit last note',
+
     handler: async (parameters, options = {}) => {
         const currentUser = await fetchCurrentUser();
         if (!currentUser) {
             return { response: t('not_authorized'), style: 'output-error' };
+        }
+
+        const matchedCmd = String((parameters && parameters.matchedCmd) || 'edit').trim().toLowerCase();
+        const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+        const isMatchedLast = ['edit last', 'edit last note', 'edit last history', 'ред последнюю', 'редактировать последнюю'].includes(matchedCmd);
+        const isMatchedHistory = matchedCmd.includes('history') || matchedCmd.includes('истор') || matchedCmd.includes('істор');
+
+        // Этап 1: запрещаем любые параметры (включая ID/числа и текст) прямо в команде
+        if (!(options && options.fromTwoStepBar)) {
+            if (rawArgs) {
+                return rejectInlineParamsError(matchedCmd, isMatchedLast ? '' : '6');
+            }
+            if (!isMatchedLast) {
+                return {
+                    response: `✏️ Режим редактирования (${isMatchedHistory ? 'истории' : 'заметок'}) активирован. Введите ID (например: 6) или \`last\` и нажмите Enter (или ✕ для отмены).`,
+                    style: 'output-info',
+                    commandPrefix: matchedCmd,
+                    inputValue: '',
+                    inputPlaceholder: isMatchedHistory ? 'ID записи истории (напр: 5) или last...' : 'ID заметки (напр: 6) или last...'
+                };
+            }
         }
 
         const args = parameters.args || [];
@@ -28,14 +62,14 @@ CommandRegistry.register({
             'number', 'номер', '№', 'id', 'ид'
         ]);
 
-        // Находим первый числовой ID в заголовке команды (до начала нового текста)
         let firstNumericIdx = -1;
         let parsedNumericId = null;
         for (let i = 0; i < args.length; i++) {
-            const cleaned = String(args[i]).replace(/[,#:№]/g, '').trim();
-            if (/^\d+$/.test(cleaned) && Number(cleaned) > 0) {
+            const rawTok = String(args[i]).replace(/[,#:№]/g, '').trim();
+            const ordMatch = rawTok.match(/^(\d+)(?:st|nd|rd|th)?$/i);
+            if (ordMatch && Number(ordMatch[1]) > 0) {
                 firstNumericIdx = i;
-                parsedNumericId = Number(cleaned);
+                parsedNumericId = Number(ordMatch[1]);
                 break;
             }
             if (!headerPrefixWords.has(argsLower[i]) && !lastKeywords.includes(argsLower[i])) {
@@ -43,18 +77,18 @@ CommandRegistry.register({
             }
         }
 
-        // Проверяем "history" и "last" ТОЛЬКО в заголовке до ID, а не внутри текста самой заметки
         const headerTokens = firstNumericIdx !== -1 ? argsLower.slice(0, firstNumericIdx) : argsLower.slice(0, 2);
-        const isHistory = headerTokens.some(w => historyKeywords.includes(w));
+        const isHistory = isMatchedHistory || headerTokens.some(w => historyKeywords.includes(w));
         const tableName = isHistory ? 'commands_history' : 'notes';
         const entityLabel = isHistory ? 'истории' : 'заметки';
         const entitySuccessTitle = isHistory ? 'Запись истории' : 'Заметка';
         const textField = isHistory ? 'raw_text' : 'content';
 
-        // 💡 1. Четко проверяем, является ли команда чистым вызовом "edit last" на одном из языков
         let isPureEditLast = false;
         if (firstNumericIdx === -1) {
-            if (args.length === 1 && lastKeywords.includes(argsLower[0])) {
+            if (isMatchedLast) {
+                isPureEditLast = true;
+            } else if (args.length === 1 && lastKeywords.includes(argsLower[0])) {
                 isPureEditLast = true;
             } else if (args.length === 2) {
                 if ((lastKeywords.includes(argsLower[0]) && entityKeywords.includes(argsLower[1])) ||
@@ -67,26 +101,27 @@ CommandRegistry.register({
         let targetInnerId = null;
 
         if (isPureEditLast) {
-            // Для "edit last" автоматически находим ID самой последней записи в таблице
-            try {
-                let query = window.supabaseClient
-                    .from(tableName)
-                    .select('inner_id')
-                    .eq('created_by', effectiveUserId)
-                    .order('inner_id', { ascending: false })
-                    .limit(1);
+            if (window.supabaseClient && (typeof navigator === 'undefined' || navigator.onLine !== false) && !currentUser.isGuest) {
+                try {
+                    let query = window.supabaseClient
+                        .from(tableName)
+                        .select('inner_id')
+                        .eq('created_by', effectiveUserId)
+                        .order('inner_id', { ascending: false })
+                        .limit(1);
 
-                if (!isHistory) {
-                    query = query.is('deleted_at', null);
-                }
+                    if (!isHistory) {
+                        query = query.is('deleted_at', null);
+                    }
 
-                const { data, error } = await query;
-                if (error) throw error;
-                if (data && data.length > 0) {
-                    targetInnerId = data[0].inner_id;
+                    const { data, error } = await query;
+                    if (error) throw error;
+                    if (data && data.length > 0) {
+                        targetInnerId = data[0].inner_id;
+                    }
+                } catch (err) {
+                    console.error('Ошибка поиска последнего ID:', err);
                 }
-            } catch (err) {
-                console.error('Ошибка поиска последнего ID:', err);
             }
             if (!targetInnerId && !isHistory && window.OfflineNotesSync) {
                 const cached = window.OfflineNotesSync.getNotesCache(effectiveUserId).filter(n => !n.deleted_at);
@@ -102,13 +137,12 @@ CommandRegistry.register({
         }
 
         if (!targetInnerId) {
-            return { 
-                response: `❌ Укажите ID или используйте \`edit last\` для редактирования.\nПример: \`edit last note\` или \`edit 80 Новый текст\``, 
-                style: 'output-error' 
+            return {
+                response: `❌ Укажите ID (напр: \`6\`) или \`last\`.`,
+                style: 'output-error'
             };
         }
 
-        // Извлекаем новый текст (сохраняя точное форматирование из raw_args после ID)
         let newContent = '';
         if (isPureEditLast) {
             newContent = '';
@@ -154,14 +188,9 @@ CommandRegistry.register({
         }
 
         if (newContent && !(options && options.fromTwoStepBar)) {
-            const cmdHint = isHistory ? `edit history ${targetInnerId}` : `edit ${targetInnerId}`;
-            return {
-                response: `⚠️ Редактирование текста работает только в 2 этапа — нельзя указывать новый текст прямо в команде!\n1) Введите \`${cmdHint}\` (или \`edit last\`)\n2) Отредактируйте загруженный текст в поле ввода.`,
-                style: 'output-error'
-            };
+            return rejectInlineParamsError(matchedCmd, String(targetInnerId));
         }
 
-        // Оффлайн-ветка для заметок (загрузка в инпут и сохранение в очередь синхронизации)
         const handleOfflineEdit = () => {
             if (isHistory || !window.OfflineNotesSync) return null;
             const cached = window.OfflineNotesSync.getNotesCache(effectiveUserId).filter(n => !n.deleted_at);
@@ -193,7 +222,6 @@ CommandRegistry.register({
         }
 
         try {
-            // 2. Находим версию объекта по inner_id
             let query = window.supabaseClient
                 .from(tableName)
                 .select('*')
@@ -216,7 +244,6 @@ CommandRegistry.register({
             const latestItem = items[0];
             const currentText = latestItem[textField] || '';
 
-            // 3. ЭТАП 1: Если текст не передан (или это чистый edit last) — команда крепится под prompt, а в поле ТОЛЬКО текст!
             if (!newContent) {
                 const prefix = isHistory ? 'edit history' : 'edit note';
                 return {
@@ -228,7 +255,6 @@ CommandRegistry.register({
                 };
             }
 
-            // 4. ЭТАП 2: Если текст передан — сохраняем новую версию (INSERT)
             let insertPayload = {
                 inner_id: latestItem.inner_id,
                 version: (latestItem.version || 1) + 1,
@@ -254,12 +280,11 @@ CommandRegistry.register({
 
             if (insertError) throw insertError;
 
-            return { 
-                response: `🟢 ${entitySuccessTitle} [${targetInnerId}] успешно отредактирована (версия v${insertPayload.version}).`, 
+            return {
+                response: `🟢 ${entitySuccessTitle} [${targetInnerId}] успешно отредактирована (версия v${insertPayload.version}).`,
                 style: 'output-success',
                 editedEntity: isHistory ? 'history' : 'note'
             };
-
         } catch (err) {
             if (!isHistory && window.OfflineNotesSync && window.OfflineNotesSync.isOfflineError(err)) {
                 const offRes = handleOfflineEdit();

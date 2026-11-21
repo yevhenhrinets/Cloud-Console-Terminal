@@ -5,7 +5,10 @@ CommandRegistry.register({
     category: 'Datetime',
     usage: 'Date | show date',
     
-    handler: async (parameters) => {
+    handler: async (parameters, options = {}) => {
+        if (!(options && options.fromTwoStepBar) && parameters && parameters.raw_args && parameters.raw_args.trim()) {
+            return rejectInlineParamsError(parameters.matchedCmd || 'date', '');
+        }
         const now = new Date();
         const timeStr = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
         const days = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
@@ -21,7 +24,10 @@ CommandRegistry.register({
     category: 'Datetime',
     usage: 'Time',
     
-    handler: async (parameters) => {
+    handler: async (parameters, options = {}) => {
+        if (!(options && options.fromTwoStepBar) && parameters && parameters.raw_args && parameters.raw_args.trim()) {
+            return rejectInlineParamsError(parameters.matchedCmd || 'time', '');
+        }
         const now = new Date();
         return { response: now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }), style: 'output-success' };
     }
@@ -34,7 +40,10 @@ CommandRegistry.register({
     category: 'Datetime',
     usage: 'Datetime',
     
-    handler: async (parameters) => {
+    handler: async (parameters, options = {}) => {
+        if (!(options && options.fromTwoStepBar) && parameters && parameters.raw_args && parameters.raw_args.trim()) {
+            return rejectInlineParamsError(parameters.matchedCmd || 'datetime', '');
+        }
         return { response: formatDate(new Date().toISOString()), style: 'output-success' };
     }
 });
@@ -81,7 +90,10 @@ CommandRegistry.register({
     category: 'System',
     usage: 'Clear | чистка | почистити',
     
-    handler: async (parameters) => {
+    handler: async (parameters, options = {}) => {
+        if (!(options && options.fromTwoStepBar) && parameters && parameters.raw_args && parameters.raw_args.trim()) {
+            return rejectInlineParamsError(parameters.matchedCmd || 'clear', '');
+        }
         await saveToCloud('clear', parameters, 'Screen cleared', 'Screen cleared [OK]', 'success');
         return { response: '', style: '', action: 'clear', skipHistorySave: true };
     }
@@ -94,7 +106,10 @@ CommandRegistry.register({
     category: 'System',
     usage: 'reload | refresh',
     
-    handler: async () => {
+    handler: async (parameters, options = {}) => {
+        if (!(options && options.fromTwoStepBar) && parameters && parameters.raw_args && parameters.raw_args.trim()) {
+            return rejectInlineParamsError(parameters.matchedCmd || 'reload', '');
+        }
         setTimeout(() => {
             window.location.reload();
         }, 150);

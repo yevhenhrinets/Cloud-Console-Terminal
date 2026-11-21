@@ -7,10 +7,19 @@ CommandRegistry.register({
     category: 'Notes',
     usage: 'Show trash | Show trash of notes | Notes trash',
     
-    handler: async (parameters) => {
+    handler: async (parameters, options = {}) => {
         const currentUser = await fetchCurrentUser();
         if (!currentUser) {
             return { response: t('not_authorized'), style: 'output-error' };
+        }
+
+        const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+        if (!(options && options.fromTwoStepBar) && rawArgs) {
+            return rejectInlineParamsError(parameters.matchedCmd || 'trash', '');
+        }
+
+        if (!window.supabaseClient || (typeof navigator !== 'undefined' && navigator.onLine === false) || currentUser.isGuest) {
+            return { response: '🗑️ Корзина заметок (облачная история удалений) доступна при входе и подключении к интернету.', style: 'output-info' };
         }
 
         const targetUserId = parseTargetUser(parameters.args);

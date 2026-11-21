@@ -9,8 +9,12 @@ CommandRegistry.register({
     description: 'Выводит список всех доступных команд',
     usage: 'commands list | show commands list',
     category: '🌐 Системные',
-    handler: async (parameters) => {
+    handler: async (parameters, options = {}) => {
         try {
+            const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+            if (!(options && options.fromTwoStepBar) && rawArgs) {
+                return rejectInlineParamsError(parameters.matchedCmd || 'commands list', '');
+            }
             const currentUser = await fetchCurrentUser();
             const isAdmin = typeof window.isAdminUser === 'function'
                 ? window.isAdminUser(currentUser)

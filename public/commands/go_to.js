@@ -1,5 +1,13 @@
 // commands/go_to.js — единый модуль навигации (home 1 / home 2 / home 3, go to house 1/2/3, kitchen/hall, dashboard, terminal)
 
+function guardNoInlineRouteArgs(parameters, options, defaultCmd) {
+    if (options && options.fromTwoStepBar) return null;
+    const raw = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+    if (!raw) return null;
+    const cmd = (parameters && (parameters.matchedCmd || parameters.cmd)) ? String(parameters.matchedCmd || parameters.cmd).trim() : defaultCmd;
+    return rejectInlineParamsError(cmd, '', `💡 Команда \`${cmd}\` выполняется без параметров, либо используйте пошаговый переход: \`go to\`.`);
+}
+
 CommandRegistry.register({
     names: [
         'go to home', 'go to home 1', 'go to house', 'go to house 1',
@@ -11,6 +19,8 @@ CommandRegistry.register({
     category: 'House',
     usage: 'go to home 1 | home 1 | house 1',
     handler: async (parameters, options = {}) => {
+        const err = guardNoInlineRouteArgs(parameters, options, 'go to home 1');
+        if (err) return err;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 1 в новой вкладке: /house/index.html', style: 'output-info' };
         }
@@ -27,6 +37,8 @@ CommandRegistry.register({
     category: 'House',
     usage: 'go to kitchen | kitchen',
     handler: async (parameters, options = {}) => {
+        const err = guardNoInlineRouteArgs(parameters, options, 'go to kitchen');
+        if (err) return err;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 1 (Кухня) в новой вкладке: /house/index.html#kitchen', style: 'output-info' };
         }
@@ -43,6 +55,8 @@ CommandRegistry.register({
     category: 'House',
     usage: 'go to hall | hall',
     handler: async (parameters, options = {}) => {
+        const err = guardNoInlineRouteArgs(parameters, options, 'go to hall');
+        if (err) return err;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 1 (Зал) в новой вкладке: /house/index.html#hall', style: 'output-info' };
         }
@@ -64,6 +78,8 @@ CommandRegistry.register({
     category: 'House',
     usage: 'go to home 2 | home 2 | house 2',
     handler: async (parameters, options = {}) => {
+        const err = guardNoInlineRouteArgs(parameters, options, 'go to home 2');
+        if (err) return err;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 2 в новой вкладке: /house2/index.html', style: 'output-info' };
         }
@@ -80,6 +96,8 @@ CommandRegistry.register({
     category: 'House',
     usage: 'go to kitchen 2 | kitchen 2',
     handler: async (parameters, options = {}) => {
+        const err = guardNoInlineRouteArgs(parameters, options, 'go to kitchen 2');
+        if (err) return err;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 2 (Кухня) в новой вкладке: /house2/index.html#kitchen', style: 'output-info' };
         }
@@ -96,6 +114,8 @@ CommandRegistry.register({
     category: 'House',
     usage: 'go to hall 2 | hall 2',
     handler: async (parameters, options = {}) => {
+        const err = guardNoInlineRouteArgs(parameters, options, 'go to hall 2');
+        if (err) return err;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 2 (Зал) в новой вкладке: /house2/index.html#hall', style: 'output-info' };
         }
@@ -117,6 +137,8 @@ CommandRegistry.register({
     category: 'House',
     usage: 'go to home 3 | home 3 | house 3',
     handler: async (parameters, options = {}) => {
+        const err = guardNoInlineRouteArgs(parameters, options, 'go to home 3');
+        if (err) return err;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 3 в новой вкладке: /house3/index.html', style: 'output-info' };
         }
@@ -133,6 +155,8 @@ CommandRegistry.register({
     category: 'House',
     usage: 'go to kitchen 3 | kitchen 3',
     handler: async (parameters, options = {}) => {
+        const err = guardNoInlineRouteArgs(parameters, options, 'go to kitchen 3');
+        if (err) return err;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 3 (Кухня) в новой вкладке: /house3/index.html#kitchen', style: 'output-info' };
         }
@@ -149,6 +173,8 @@ CommandRegistry.register({
     category: 'House',
     usage: 'go to hall 3 | hall 3',
     handler: async (parameters, options = {}) => {
+        const err = guardNoInlineRouteArgs(parameters, options, 'go to hall 3');
+        if (err) return err;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 3 (Зал) в новой вкладке: /house3/index.html#hall', style: 'output-info' };
         }
@@ -165,6 +191,8 @@ CommandRegistry.register({
     category: 'Dashboard',
     usage: 'go to dashboard | dashboard',
     handler: async (parameters, options = {}) => {
+        const err = guardNoInlineRouteArgs(parameters, options, 'go to dashboard');
+        if (err) return err;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Dashboard в новой вкладке: /dashboard.html', style: 'output-info' };
         }
@@ -181,6 +209,8 @@ CommandRegistry.register({
     category: 'House',
     usage: 'go to terminal | go to console',
     handler: async (parameters, options = {}) => {
+        const err = guardNoInlineRouteArgs(parameters, options, 'go to terminal');
+        if (err) return err;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю консоль в новой вкладке: /terminal.html', style: 'output-info' };
         }
@@ -198,11 +228,30 @@ CommandRegistry.register({
     category: 'House',
     usage: 'go to <home 1 | home 2 | home 3 | house 1 | house 2 | house 3 | missions | dashboard | terminal>',
     handler: async (parameters, options = {}) => {
-        const rawTarget = (parameters && Array.isArray(parameters.args) ? parameters.args.join(' ') : '').trim().toLowerCase();
+        const matchedCmd = String((parameters && parameters.matchedCmd) || 'go to').trim().toLowerCase();
+        const rawTarget = (parameters && parameters.raw_args ? String(parameters.raw_args) : (parameters && Array.isArray(parameters.args) ? parameters.args.join(' ') : '')).trim().toLowerCase();
+
+        if (!(options && options.fromTwoStepBar)) {
+            if (rawTarget) {
+                return rejectInlineParamsError(
+                    matchedCmd,
+                    'notes',
+                    '💡 Либо введите готовую словесную команду: `go to home 1`, `go to home 2`, `go to home 3`, `go to missions`, `go to dashboard`, `go to terminal`.'
+                );
+            }
+            return {
+                response: `🧭 Режим перехода (\`${matchedCmd}\`): введите раздел (напр: \`home 1\`, \`home 2\`, \`missions\`, \`dashboard\`, \`notes\`, \`history\`) и нажмите Enter (или ✕ для отмены).`,
+                style: 'output-info',
+                commandPrefix: matchedCmd,
+                inputValue: '',
+                inputPlaceholder: 'Раздел (home 1, home 2, missions, dashboard, notes)...'
+            };
+        }
+
         if (!rawTarget) {
             return {
-                response: '🧭 Укажите куда перейти.\nПримеры: `go to home 1`, `go to home 2`, `go to home 3`, `go to missions`, `go to dashboard`, `go to notes`',
-                style: 'output-info'
+                response: '🧭 Укажите раздел для перехода.',
+                style: 'output-error'
             };
         }
 

@@ -5,9 +5,14 @@ CommandRegistry.register({
     category: 'Dashboard',
     usage: 'Show inventory | inventory',
     
-    handler: async (parameters) => {
+    handler: async (parameters, options = {}) => {
         const currentUser = await fetchCurrentUser();
         if (!currentUser) return { response: 'Помилка: користувач не визначений.', style: 'output-error' };
+
+        const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+        if (!(options && options.fromTwoStepBar) && rawArgs) {
+            return rejectInlineParamsError(parameters.matchedCmd || 'inventory', '');
+        }
 
         if (currentUser.isGuest) {
             const response = "📦 Склад готових виробів (Демо/Offline):\n" +

@@ -1,15 +1,11 @@
-// commands/add.js — добавление заметок, задач в постройки и таймеров
+// commands/add.js — добавление заметок, задач в постройки и таймеров (строго в 2 этапа)
 
-// Общий обработчик создания заметки (add note / write note / write a note — ТОЛЬКО в 2 этапа)
 async function createNoteCommandHandler(currentUser, rawContent, matchedCmd = 'write note', options = {}) {
     const content = String(rawContent || '').trim();
     const prefix = (matchedCmd === 'write a note' || matchedCmd === 'add note') ? matchedCmd : 'write note';
 
     if (content && !(options && options.fromTwoStepBar)) {
-        return {
-            response: `⚠️ Команда \`${prefix}\` работает только в 2 этапа — произвольный текст нельзя вводить сразу в команде!\n1) Введите \`${prefix}\` без текста\n2) После появления команды под строкой ввода напишите текст заметки.`,
-            style: 'output-error'
-        };
+        return rejectInlineParamsError(prefix, 'Купить молоко');
     }
 
     if (!content) {
@@ -61,11 +57,156 @@ async function createNoteCommandHandler(currentUser, rawContent, matchedCmd = 'w
     }
 }
 
+async function addTimerHandler(parameters, options = {}) {
+    const currentUser = await fetchCurrentUser();
+    if (!currentUser) {
+        return { response: t('not_authorized'), style: 'output-error' };
+    }
+
+    const matchedCmd = String((parameters && parameters.matchedCmd) || 'add timer').trim().toLowerCase();
+    const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+
+    if (!(options && options.fromTwoStepBar)) {
+        if (rawArgs) {
+            return rejectInlineParamsError(matchedCmd, 'Сосиска 1');
+        }
+        return {
+            response: `⏱️ Режим запуска таймера (\`${matchedCmd}\`) активирован. Введите \`<Название таймера> [очередь]\` (например: \`Сосиска 1\`) и нажмите Enter (или ✕ для отмены).`,
+            style: 'output-info',
+            commandPrefix: matchedCmd,
+            inputValue: '',
+            inputPlaceholder: 'Название таймера и номер очереди (напр: Сосиска 1)...'
+        };
+    }
+
+    const args = (parameters.args || []).filter(w => !['timer', 'таймер', 'add'].includes(String(w).toLowerCase()));
+    const rawTimerName = args[0];
+    if (!rawTimerName) {
+        return { response: '❌ Укажите название таймера и при необходимости номер очереди (напр: `Сосиска 1`).', style: 'output-error' };
+    }
+
+    let queueGroupId = 1;
+    const possibleQueue = args[1];
+    if (possibleQueue && !isNaN(possibleQueue)) {
+        queueGroupId = parseInt(possibleQueue, 10);
+    }
+
+    const timerQueryName = rawTimerName.charAt(0).toUpperCase() + rawTimerName.slice(1).toLowerCase();
+
+    if (!window.supabaseClient || (typeof navigator !== 'undefined' && navigator.onLine === false) || currentUser.isGuest) {
+        return { response: '📡 Добавление облачных таймеров из терминала доступно при входе и подключении к интернету (или используйте Дашборд).', style: 'output-info' };
+    }
+
+    try {
+        const { data: templates, error: tError } = await window.supabaseClient
+            .from('timer_templates')
+            .select('*')
+            .ilike('name', timerQueryName)
+            .limit(1);
+
+        if (tError) throw tError;
+
+        const template = templates && templates.length > 0 ? templates[0] : null;
+        if (!template) {
+            return { response: `❌ Неизвестный таймер "${rawTimerName}".`, style: 'output-error' };
+        }
+
+        if (window.TaskCooldowns) {
+            const rule = window.TaskCooldowns.getRule(template.name);
+            if (rule) {
+                await window.TaskCooldowns.syncFromSupabase(currentUser.id);
+                const cdState = window.TaskCooldowns.getState(template.name, currentUser.id);
+                if (cdState && cdState.active) {
+                    return {
+                        response: `⛔ Нельзя запустить «${rule.label}» раньше времени! Идёт кулдаун — осталось ${cdState.formatted}.`,
+                        style: 'output-error'
+                    };
+                }
+                const { data: userActive } = await window.supabaseClient
+                    .from('active_timers')
+                    .select('id, name, status')
+                    .eq('created_by', currentUser.id);
+                const duplicate = (userActive || []).find(t => {
+                    const r = window.TaskCooldowns.getRule(t.name);
+                    return r && r.key === rule.key;
+                });
+                if (duplicate) {
+                    return {
+                        response: `⏳ Задача «${rule.label}» уже выполняется или стоит в очереди! Повторный запуск будет доступен после завершения и окончания кулдауна.`,
+                        style: 'output-error'
+                    };
+                }
+            }
+        }
+
+        const { data: existingTimers, error: qError } = await window.supabaseClient
+            .from('active_timers')
+            .select('*')
+            .eq('created_by', currentUser.id)
+            .eq('queue_group_id', queueGroupId)
+            .order('ends_at', { ascending: false });
+
+        if (qError) throw qError;
+
+        const MAX_QUEUE_LIMIT = 5;
+        if (existingTimers && existingTimers.length >= MAX_QUEUE_LIMIT) {
+            return { response: `❌ Очередь заполнена (лимит очереди #${queueGroupId} исчерпан).`, style: 'output-error' };
+        }
+
+        let baseTime = Date.now();
+        if (existingTimers && existingTimers.length > 0) {
+            const validEnds = existingTimers
+                .map(t => t.ends_at ? new Date(t.ends_at).getTime() : 0)
+                .filter(t => t > baseTime);
+
+            if (validEnds.length > 0) {
+                baseTime = Math.max(...validEnds);
+            }
+        }
+
+        const durationMs = template.duration_seconds * 1000;
+        const endsAt = new Date(baseTime + durationMs).toISOString();
+        const status = (!existingTimers || existingTimers.length === 0) ? 'running' : 'queued';
+
+        const { data: maxIdData } = await window.supabaseClient
+            .from('active_timers')
+            .select('inner_id')
+            .eq('created_by', currentUser.id)
+            .order('inner_id', { ascending: false })
+            .limit(1);
+
+        const nextInnerId = (maxIdData && maxIdData.length > 0 && maxIdData[0].inner_id) ? maxIdData[0].inner_id + 1 : 1;
+
+        const { error: insertError } = await window.supabaseClient
+            .from('active_timers')
+            .insert([{
+                inner_id: nextInnerId,
+                name: template.name,
+                queue_group_id: queueGroupId,
+                total_seconds: template.duration_seconds,
+                remaining_seconds: template.duration_seconds,
+                ends_at: endsAt,
+                status: status,
+                created_by: currentUser.id
+            }]);
+
+        if (insertError) throw insertError;
+
+        const statusMsg = status === 'running' ? '🟢 Запущен в работу!' : '⏳ Встал в очередь (время суммировано).';
+        return {
+            response: `⏱️ Таймер "${template.name}" добавлен в очередь #${queueGroupId}. ${statusMsg}`,
+            style: 'output-success'
+        };
+    } catch (err) {
+        return { response: '❌ Ошибка добавления таймера: ' + err.message, style: 'output-error' };
+    }
+}
+
 CommandRegistry.register({
     names: ['add note', 'write note', 'write a note', 'написать заметку', 'написати нотатку'],
     description: 'Создать новую заметку (строго в 2 этапа)',
     category: 'Add',
-    usage: 'add note | write note | write a note',
+    usage: 'add note -> <текст> | write note -> <текст>',
     handler: async (parameters, options = {}) => {
         const currentUser = await fetchCurrentUser();
         if (!currentUser) {
@@ -77,27 +218,40 @@ CommandRegistry.register({
 });
 
 CommandRegistry.register({
-    names: ['add', 'добавить', 'додати', 'timer', 'таймер'],
-    description: 'Adding new item',
+    names: ['add timer', 'create timer', 'start timer', 'timer', 'таймер', 'добавить таймер'],
+    description: 'Добавить таймер в очередь (строго в 2 этапа)',
     category: 'Add',
-    usage: 'add note | write note | add mission | add building | add task',
-    
+    usage: 'add timer -> <Название> [очередь] | timer -> <Название> [очередь]',
+    handler: addTimerHandler
+});
+
+CommandRegistry.register({
+    names: ['add', 'добавить', 'додати'],
+    description: 'Создание заметок, таймеров, поручений, построек и задач (строго в 2 этапа)',
+    category: 'Add',
+    usage: 'add note | add timer | add mission | add building | add task | add alias',
+
     handler: async (parameters, options = {}) => {
         const currentUser = await fetchCurrentUser();
         if (!currentUser) {
             return { response: t('not_authorized'), style: 'output-error' };
         }
 
-        const args = parameters.args;
-        const subCmd = args[0] ? args[0].toLowerCase() : '';
+        const args = parameters.args || [];
+        const subCmd = args[0] ? String(args[0]).toLowerCase() : '';
 
-        // 1. Добавление заметки
-        if (subCmd === 'note' || subCmd === 'заметка' || subCmd === 'нотатка') {
+        if (!subCmd) {
+            return {
+                response: '➕ Выберите словесную команду (все параметры вводятся на 2-м этапе):\n  • `add note` / `write note` — новая заметка\n  • `add timer` / `timer` — запуск таймера\n  • `add mission` — новое поручение\n  • `add building` — новая постройка\n  • `add task` — новая задача в постройку\n  • `add alias` — новый псевдоним команды',
+                style: 'output-info'
+            };
+        }
+
+        if (subCmd === 'note' || subCmd === 'заметка' || subCmd === 'нотатка' || subCmd === 'заметку' || subCmd === 'нотатку') {
             const content = args.slice(1).join(' ').trim();
             return await createNoteCommandHandler(currentUser, content, 'add note', options);
         }
 
-        // 1.5. Добавление поручения / миссии (строго 2 этапа)
         if (['mission', 'missions', 'миссия', 'миссию', 'задание', 'поручение', 'поручення', 'дело'].includes(subCmd)) {
             const addMissionHandler = window.CommandRegistry.getHandler('add mission');
             const strippedParams = {
@@ -111,7 +265,6 @@ CommandRegistry.register({
             }
         }
 
-        // 1.8. Добавление постройки (строго 2 этапа)
         if (['building', 'buildings', 'постройка', 'постройки', 'здание', 'будівля', 'споруда'].includes(subCmd)) {
             const addBuildingHandler = window.CommandRegistry.getHandler('add building');
             if (addBuildingHandler) {
@@ -119,7 +272,6 @@ CommandRegistry.register({
             }
         }
 
-        // 2. Добавление задачи в постройку (строго 2 этапа)
         if (['task', 'tasks', 'задача', 'задачи', 'завдання'].includes(subCmd)) {
             const addTaskHandler = window.CommandRegistry.getHandler('add task');
             if (addTaskHandler) {
@@ -127,7 +279,6 @@ CommandRegistry.register({
             }
         }
 
-        // 2.5. Добавление псевдонимов (Add alias / Add aliases — 3 этапа)
         if (['alias', 'aliases', 'алиас', 'алиасы', 'псевдоним', 'псевдонимы'].includes(subCmd) || (subCmd === 'an' && args[1] && args[1].toLowerCase() === 'alias')) {
             const isPlural = ['aliases', 'алиасы', 'псевдонимы'].includes(subCmd);
             const aliasHandler = window.CommandRegistry.getHandler(isPlural ? 'add aliases' : 'add alias');
@@ -145,138 +296,23 @@ CommandRegistry.register({
             }
         }
 
-        // 3. Добавление таймера
-        let timerNameIndex = 0;
-        if (['timer', 'таймер', 'add'].includes(subCmd)) {
-            timerNameIndex = 1;
-            if (args[1] && ['timer', 'таймер', 'note', 'заметка'].includes(args[1].toLowerCase())) {
-                timerNameIndex = 2;
-            }
+        if (subCmd === 'timer' || subCmd === 'таймер') {
+            return await addTimerHandler({
+                ...parameters,
+                args: args.slice(1),
+                raw_args: args.slice(1).join(' ').trim(),
+                matchedCmd: 'add timer'
+            }, options);
         }
 
-        const rawTimerName = args[timerNameIndex];
-        if (!rawTimerName) {
-            return { response: '❌ Неверный формат команды. Примеры:\n  • `add note Текст`\n  • `timer Сосиска 1`\n  • `add timer Мультиварка 2`', style: 'output-error' };
+        if (!(options && options.fromTwoStepBar)) {
+            return rejectInlineParamsError('add timer', 'Сосиска 1', '💡 Или используйте: `add note`, `add mission`, `add building`, `add task`, `add alias`.');
         }
 
-        let queueGroupId = 1;
-        const possibleQueue = args[timerNameIndex + 1];
-        if (possibleQueue && !isNaN(possibleQueue)) {
-            queueGroupId = parseInt(possibleQueue, 10);
-        }
-
-        const timerQueryName = rawTimerName.charAt(0).toUpperCase() + rawTimerName.slice(1).toLowerCase();
-
-        try {
-            const { data: templates, error: tError } = await window.supabaseClient
-                .from('timer_templates')
-                .select('*')
-                .ilike('name', timerQueryName)
-                .limit(1);
-
-            if (tError) throw tError;
-            
-            const template = templates && templates.length > 0 ? templates[0] : null;
-
-            if (!template) {
-                return { response: `❌ Неизвестный таймер "${rawTimerName}".`, style: 'output-error' };
-            }
-
-            // Проверка кулдауна (Памперс — 3 часа, Кипяток — 1 час) и запрет дубля в очереди
-            if (window.TaskCooldowns) {
-                const rule = window.TaskCooldowns.getRule(template.name);
-                if (rule) {
-                    await window.TaskCooldowns.syncFromSupabase(currentUser.id);
-                    const cdState = window.TaskCooldowns.getState(template.name, currentUser.id);
-                    if (cdState && cdState.active) {
-                        return {
-                            response: `⛔ Нельзя запустить «${rule.label}» раньше времени! Идёт кулдаун — осталось ${cdState.formatted}.`,
-                            style: 'output-error'
-                        };
-                    }
-                    const { data: userActive } = await window.supabaseClient
-                        .from('active_timers')
-                        .select('id, name, status')
-                        .eq('created_by', currentUser.id);
-                    const duplicate = (userActive || []).find(t => {
-                        const r = window.TaskCooldowns.getRule(t.name);
-                        return r && r.key === rule.key;
-                    });
-                    if (duplicate) {
-                        return {
-                            response: `⏳ Задача «${rule.label}» уже выполняется или стоит в очереди! Повторный запуск будет доступен после завершения и окончания кулдауна.`,
-                            style: 'output-error'
-                        };
-                    }
-                }
-            }
-
-            const { data: existingTimers, error: qError } = await window.supabaseClient
-                .from('active_timers')
-                .select('*')
-                .eq('created_by', currentUser.id)
-                .eq('queue_group_id', queueGroupId)
-                .order('ends_at', { ascending: false });
-
-            if (qError) throw qError;
-
-            const MAX_QUEUE_LIMIT = 5;
-            if (existingTimers && existingTimers.length >= MAX_QUEUE_LIMIT) {
-                return { response: `❌ Очередь заполнена (лимит очереди #${queueGroupId} исчерпан).`, style: 'output-error' };
-            }
-
-            let baseTime = Date.now();
-            if (existingTimers && existingTimers.length > 0) {
-                const validEnds = existingTimers
-                    .map(t => t.ends_at ? new Date(t.ends_at).getTime() : 0)
-                    .filter(t => t > baseTime);
-                
-                if (validEnds.length > 0) {
-                    baseTime = Math.max(...validEnds);
-                }
-            }
-
-            const durationMs = template.duration_seconds * 1000;
-            const endsAt = new Date(baseTime + durationMs).toISOString();
-            const status = (!existingTimers || existingTimers.length === 0) ? 'running' : 'queued';
-
-            const { data: maxIdData } = await window.supabaseClient
-                .from('active_timers')
-                .select('inner_id')
-                .eq('created_by', currentUser.id)
-                .order('inner_id', { ascending: false })
-                .limit(1);
-
-            const nextInnerId = (maxIdData && maxIdData.length > 0 && maxIdData[0].inner_id) ? maxIdData[0].inner_id + 1 : 1;
-
-            const { error: insertError } = await window.supabaseClient
-                .from('active_timers')
-                .insert([{
-                    inner_id: nextInnerId,
-                    name: template.name,
-                    queue_group_id: queueGroupId,
-                    total_seconds: template.duration_seconds,
-                    remaining_seconds: template.duration_seconds,
-                    ends_at: endsAt,
-                    status: status,
-                    created_by: currentUser.id
-                }]);
-
-            if (insertError) throw insertError;
-
-            const statusMsg = status === 'running' ? '🟢 Запущен в работу!' : '⏳ Встал в очередь (время суммировано).';
-            return { 
-                response: `⏱️ Таймер "${template.name}" добавлен в очередь #${queueGroupId}. ${statusMsg}`, 
-                style: 'output-success' 
-            };
-
-        } catch (err) {
-            return { response: '❌ Ошибка добавления таймера: ' + err.message, style: 'output-error' };
-        }
+        return await addTimerHandler(parameters, options);
     }
 });
 
-// Глобальная вспомогательная функция для работы с задачами в постройках
 async function modifyTaskInBuildingGlobal(userId, buildingQuery, taskName, durationStr, action) {
     const parseDurationSeconds = (str) => {
         if (!str) return 60;
@@ -306,7 +342,7 @@ async function modifyTaskInBuildingGlobal(userId, buildingQuery, taskName, durat
             for (const building of buildings) {
                 let tasks = building.tasks || [];
                 const existingIdx = tasks.findIndex(t => t.name.toLowerCase() === taskName.toLowerCase());
-                
+
                 if (existingIdx !== -1) {
                     tasks[existingIdx].duration = durationSeconds;
                 } else {
