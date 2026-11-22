@@ -178,11 +178,15 @@
 
             try {
                 const completed = await window.MissionsStore.completeMission(mission.id);
+                const agoText = typeof window.MissionsStore.formatTimeAgo === 'function'
+                    ? window.MissionsStore.formatTimeAgo(completed.completed_at)
+                    : '';
+                const agoPart = agoText ? ` (${agoText})` : '';
                 const offlineHint = (typeof navigator !== 'undefined' && navigator.onLine === false)
                     ? '\n📡 Офлайн-режим: отметка сохранена локально и уйдёт в базу при подключении.'
                     : '';
                 return {
-                    response: `✅ Поручение выполнено!\n🎯 "${completed.title}"\n⏰ Отметка выполнения: ${completed.completed_display}\n🗄️ Задание убрано из активного списка и зафиксировано в таблице архива.${offlineHint}`,
+                    response: `✅ Поручение выполнено!\n🎯 "${completed.title}"\n⏰ Отметка выполнения: ${completed.completed_display}${agoPart}\n🗄️ Задание убрано из активного списка и зафиксировано в таблице архива.${offlineHint}`,
                     style: 'output-success',
                     editedEntity: 'mission'
                 };

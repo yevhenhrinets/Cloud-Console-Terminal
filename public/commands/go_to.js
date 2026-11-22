@@ -15,7 +15,7 @@ CommandRegistry.register({
         'дом', 'дом 1', 'дім', 'дім 1', 'будинок', 'будинок 1',
         'go home', 'go house', 'open home', 'open house'
     ],
-    description: 'Переход в Дом 1 (Кухня 7×7 и Зал 7×9 на одной странице)',
+    description: 'Переход в Дом 1 (единый квадрат 16×16 = 4 зоны 8×8)',
     category: 'House',
     usage: 'go to home 1 | home 1 | house 1',
     handler: async (parameters, options = {}) => {
@@ -221,6 +221,51 @@ CommandRegistry.register({
     }
 });
 
+CommandRegistry.register({
+    names: ['continue', 'continue last', 'resume', 'last page', 'продолжить', 'продовжити', 'далі'],
+    description: 'Продолжить и вернуться на последнюю открытую страницу (Дашборд, Задания, Дом 1/2/3)',
+    category: 'House',
+    usage: 'Continue',
+    handler: async (parameters, options = {}) => {
+        const err = guardNoInlineRouteArgs(parameters, options, 'continue');
+        if (err) return err;
+
+        let target = null;
+        if (window.LastPageSync && typeof window.LastPageSync.getBestLastPage === 'function') {
+            target = await window.LastPageSync.getBestLastPage();
+        } else {
+            try {
+                const raw = localStorage.getItem('terminal_last_page_v1');
+                target = raw ? JSON.parse(raw) : null;
+            } catch (e) {
+                target = null;
+            }
+        }
+
+        if (!target || !target.path) {
+            return {
+                response: 'ℹ️ Сохранённая последняя страница пока не найдена. Откройте Дашборд, Задания или Дом 1–3, чтобы приложение запомнило её.',
+                style: 'output-info'
+            };
+        }
+
+        if (options && options.skipRedirect) {
+            return {
+                response: `🆕 Открываю последнюю страницу в новой вкладке: ${target.title || target.path} (${target.path})`,
+                style: 'output-info'
+            };
+        }
+
+        setTimeout(() => {
+            window.location.href = target.path;
+        }, 180);
+        return {
+            response: `▶️ Переключаю на последнюю страницу: ${target.title || target.path} (${target.path})...`,
+            style: 'output-info'
+        };
+    }
+});
+
 // Универсальный маршрутизатор: go to <цель> / go <цель>
 CommandRegistry.register({
     names: ['go to', 'go', 'перейти', 'перейти в', 'открыть', 'open'],
@@ -365,7 +410,10 @@ CommandRegistry.register({
             'commands': 'commands list',
             'commands list': 'commands list',
             'support': 'support',
-            'reports': 'reports'
+            'reports': 'reports',
+            'continue': 'continue',
+            'resume': 'continue',
+            'продолжить': 'continue'
         };
 
         const resolvedCmd = routeAliases[rawTarget] || rawTarget;

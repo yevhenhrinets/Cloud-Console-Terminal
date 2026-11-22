@@ -12,6 +12,7 @@ window.SUPABASE_ANON_KEY = 'sb_publishable_HdMyTN9U9GOMG1DzpJcrDg_6RCnU37G';
             const endpoint = `${url}/rest/v1/${table}${query ? '?' + query : ''}`;
             const res = await fetch(endpoint, {
                 method: 'GET',
+                cache: 'no-store',
                 headers: {
                     'apikey': key,
                     'Authorization': `Bearer ${key}`,

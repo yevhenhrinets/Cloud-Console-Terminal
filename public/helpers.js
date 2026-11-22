@@ -905,11 +905,26 @@ window.OfflineNotesSync = {
 };
 
 // =========================================================================
-// Синхронизация расположения объектов в House (Kitchen / Hall) с БД
+// Синхронизация расположения объектов в House (единый 16×16 дом и legacy комнаты) с БД
 // =========================================================================
 const HOUSE_PENDING_LAYOUTS_KEY = 'terminal_pending_house_layouts';
+const HOUSE_LAYOUTS_MISSING_SESSION_KEY = 'terminal_house_layouts_missing_v1';
 let houseLayoutsFlushPromise = null;
 let houseLayoutsTableMissing = false;
+try {
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(HOUSE_LAYOUTS_MISSING_SESSION_KEY) === '1') {
+        houseLayoutsTableMissing = true;
+    }
+} catch (e) {}
+
+function markHouseLayoutsTableMissing() {
+    houseLayoutsTableMissing = true;
+    try {
+        if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.setItem(HOUSE_LAYOUTS_MISSING_SESSION_KEY, '1');
+        }
+    } catch (e) {}
+}
 
 function getPendingHouseLayouts() {
     try {
@@ -941,6 +956,26 @@ function isMissingTableError(err) {
     );
 }
 
+async function resolveAuthenticatedDbUser() {
+    if (window.supabaseClient && window.supabaseClient.auth) {
+        try {
+            const { data } = await window.supabaseClient.auth.getSession();
+            if (data && data.session && data.session.user && data.session.user.id) {
+                return {
+                    id: data.session.user.id,
+                    email: data.session.user.email || '',
+                    isGuest: false
+                };
+            }
+        } catch (e) {}
+    }
+    const user = await fetchCurrentUser(true);
+    if (user && !user.isGuest && user.id && user.id !== 'guest') {
+        return user;
+    }
+    return null;
+}
+
 async function flushPendingHouseLayouts() {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return 0;
     if (!window.supabaseClient) return 0;
@@ -953,8 +988,8 @@ async function flushPendingHouseLayouts() {
             const rooms = Object.keys(pendingMap);
             if (rooms.length === 0) return 0;
 
-            const user = await fetchCurrentUser(true);
-            if (!user || user.isGuest || !user.id || user.id === 'guest') return 0;
+            const user = await resolveAuthenticatedDbUser();
+            if (!user) return 0;
 
             let syncedCount = 0;
 
@@ -980,7 +1015,7 @@ async function flushPendingHouseLayouts() {
                         if (!error) {
                             savedOk = true;
                         } else if (isMissingTableError(error)) {
-                            houseLayoutsTableMissing = true;
+                            markHouseLayoutsTableMissing();
                         } else if (isOfflineNetworkError(error)) {
                             throw error;
                         }
@@ -991,6 +1026,12 @@ async function flushPendingHouseLayouts() {
 
                 if (!savedOk) {
                     const markerRawText = `__house_layout__:${room}`;
+                    const payloadParams = {
+                        room,
+                        layout: entry.layout,
+                        updated_at: updatedAt
+                    };
+
                     const { data: existingRows, error: selErr } = await window.supabaseClient
                         .from('commands_history')
                         .select('id')
@@ -1001,18 +1042,12 @@ async function flushPendingHouseLayouts() {
                         .order('created_at', { ascending: false })
                         .limit(1);
 
-                    if (selErr) {
-                        if (isOfflineNetworkError(selErr)) throw selErr;
+                    if (selErr && isOfflineNetworkError(selErr)) {
+                        throw selErr;
                     }
 
-                    const payloadParams = {
-                        room,
-                        layout: entry.layout,
-                        updated_at: updatedAt
-                    };
-
                     let updatedInPlace = false;
-                    if (existingRows && existingRows[0] && existingRows[0].id) {
+                    if (!selErr && existingRows && existingRows[0] && existingRows[0].id) {
                         const { data: updData, error: updErr } = await window.supabaseClient
                             .from('commands_history')
                             .update({
@@ -1077,53 +1112,80 @@ async function flushPendingHouseLayouts() {
     return houseLayoutsFlushPromise;
 }
 
-async function fetchRoomLayoutFromDb(room) {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return null;
-    if (!window.supabaseClient) return null;
+async function fetchAllHouseLayoutsFromDb(roomIds = []) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return {};
+    if (!window.supabaseClient) return {};
 
+    const resultMap = {};
     try {
-        const user = await fetchCurrentUser(true);
-        if (!user || user.isGuest || !user.id || user.id === 'guest') return null;
+        const user = await resolveAuthenticatedDbUser();
+        if (!user) return {};
 
-        if (!houseLayoutsTableMissing) {
+        const cleanRoomIds = Array.isArray(roomIds) ? roomIds.map(String).filter(Boolean) : [];
+
+        if (!houseLayoutsTableMissing && cleanRoomIds.length > 0) {
             try {
                 const { data, error } = await window.supabaseClient
                     .from('house_layouts')
-                    .select('layout, updated_at')
+                    .select('room, layout, updated_at')
                     .eq('user_id', user.id)
-                    .eq('room', room)
-                    .order('updated_at', { ascending: false })
-                    .limit(1);
+                    .in('room', cleanRoomIds);
 
-                if (!error && data && data[0] && data[0].layout) {
-                    return { layout: data[0].layout, updatedAt: data[0].updated_at || null };
-                }
-                if (error && isMissingTableError(error)) {
-                    houseLayoutsTableMissing = true;
+                if (!error && Array.isArray(data)) {
+                    data.forEach(row => {
+                        if (row && row.room && row.layout) {
+                            const ts = row.updated_at ? new Date(row.updated_at).getTime() : 0;
+                            const prev = resultMap[row.room];
+                            const prevTs = prev && prev.updatedAt ? new Date(prev.updatedAt).getTime() : 0;
+                            if (!prev || ts >= prevTs) {
+                                resultMap[row.room] = { layout: row.layout, updatedAt: row.updated_at || null };
+                            }
+                        }
+                    });
+                } else if (error && isMissingTableError(error)) {
+                    markHouseLayoutsTableMissing();
                 }
             } catch (e) {}
         }
 
-        const { data: rows, error: histErr } = await window.supabaseClient
+        let query = window.supabaseClient
             .from('commands_history')
-            .select('parameters, created_at')
+            .select('raw_text, parameters, created_at')
             .eq('created_by', user.id)
             .eq('command', '__house_layout__')
-            .eq('raw_text', `__house_layout__:${room}`)
             .is('deleted_at', null)
             .order('created_at', { ascending: false })
-            .limit(1);
+            .limit(100);
 
-        if (!histErr && rows && rows[0] && rows[0].parameters && rows[0].parameters.layout) {
-            return {
-                layout: rows[0].parameters.layout,
-                updatedAt: rows[0].parameters.updated_at || rows[0].created_at || null
-            };
+        if (cleanRoomIds.length > 0) {
+            query = query.in('raw_text', cleanRoomIds.map(r => `__house_layout__:${r}`));
+        }
+
+        const { data: rows, error: histErr } = await query;
+        if (!histErr && Array.isArray(rows)) {
+            rows.forEach(row => {
+                const p = row && row.parameters;
+                const roomName = (p && p.room) || (row.raw_text ? String(row.raw_text).replace(/^__house_layout__:/, '') : '');
+                if (!roomName || !p || !p.layout) return;
+                const updatedAt = p.updated_at || row.created_at || null;
+                const ts = updatedAt ? new Date(updatedAt).getTime() : 0;
+                const prev = resultMap[roomName];
+                const prevTs = prev && prev.updatedAt ? new Date(prev.updatedAt).getTime() : 0;
+                if (!prev || ts >= prevTs) {
+                    resultMap[roomName] = { layout: p.layout, updatedAt };
+                }
+            });
         }
     } catch (e) {
-        console.warn('fetchRoomLayoutFromDb error:', e);
+        console.warn('fetchAllHouseLayoutsFromDb error:', e);
     }
-    return null;
+    return resultMap;
+}
+
+async function fetchRoomLayoutFromDb(room) {
+    if (!room) return null;
+    const map = await fetchAllHouseLayoutsFromDb([room]);
+    return map[room] || null;
 }
 
 function saveAndSyncHouseLayout(room, layoutObj) {
@@ -1148,8 +1210,251 @@ window.HouseLayoutSync = {
     getPendingHouseLayouts,
     saveAndSyncHouseLayout,
     flushPendingHouseLayouts,
-    fetchRoomLayoutFromDb
+    fetchRoomLayoutFromDb,
+    fetchAllHouseLayoutsFromDb
 };
+
+// =========================================================================
+// Запоминание последней открытой страницы для команды Continue
+// =========================================================================
+const LAST_PAGE_LOCAL_KEY = 'terminal_last_page_v1';
+const LAST_PAGE_PENDING_KEY = 'terminal_last_page_pending_v1';
+let lastPageFlushPromise = null;
+
+function describeTrackablePage(pathname, search = '', hash = '') {
+    const cleanPath = String(pathname || '').toLowerCase();
+    const fullUrl = `${pathname}${search || ''}${hash || ''}`;
+
+    if (cleanPath === '/dashboard.html') {
+        const qp = new URLSearchParams(search || '');
+        const q = qp.get('queue');
+        return { path: fullUrl, title: q ? `🎛️ Дашборд (Постройка #${q})` : '🎛️ Дашборд' };
+    }
+    if (cleanPath === '/missions.html') {
+        return { path: '/missions.html', title: '📋 Задания' };
+    }
+    if (cleanPath === '/house' || cleanPath === '/house/' || cleanPath === '/house/index.html') {
+        return { path: `/house/index.html${hash || ''}`, title: '🏠 Дом 1' };
+    }
+    if (cleanPath === '/house2' || cleanPath === '/house2/' || cleanPath === '/house2/index.html') {
+        return { path: `/house2/index.html${hash || ''}`, title: '🏡 Дом 2' };
+    }
+    if (cleanPath === '/house3' || cleanPath === '/house3/' || cleanPath === '/house3/index.html') {
+        return { path: `/house3/index.html${hash || ''}`, title: '🏘️ Дом 3' };
+    }
+    if (cleanPath === '/kitchen.html') {
+        return { path: '/house/index.html#kitchen', title: '🍳 Кухня — Дом 1' };
+    }
+    if (cleanPath === '/hall.html') {
+        return { path: '/house/index.html#hall', title: '🛋️ Зал — Дом 1' };
+    }
+    return null;
+}
+
+function getLocalLastPage() {
+    try {
+        const raw = localStorage.getItem(LAST_PAGE_LOCAL_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.path) return parsed;
+    } catch (e) {}
+    return null;
+}
+
+function saveLocalLastPage(entry) {
+    try {
+        if (entry && entry.path) {
+            localStorage.setItem(LAST_PAGE_LOCAL_KEY, JSON.stringify(entry));
+        }
+    } catch (e) {}
+}
+
+async function flushPendingLastPage() {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+    if (!window.supabaseClient) return false;
+    if (lastPageFlushPromise) return lastPageFlushPromise;
+
+    lastPageFlushPromise = (async () => {
+        try {
+            let pending = null;
+            try {
+                const raw = localStorage.getItem(LAST_PAGE_PENDING_KEY);
+                pending = raw ? JSON.parse(raw) : null;
+            } catch (e) {}
+            if (!pending || !pending.path) return false;
+
+            const user = await resolveAuthenticatedDbUser();
+            if (!user) return false;
+
+            const updatedAt = pending.updatedAt || new Date(pending.ts || Date.now()).toISOString();
+            const payloadParams = {
+                path: pending.path,
+                title: pending.title || pending.path,
+                updated_at: updatedAt,
+                ts: Number(pending.ts || Date.now())
+            };
+
+            const { data: existingRows, error: selErr } = await window.supabaseClient
+                .from('commands_history')
+                .select('id')
+                .eq('created_by', user.id)
+                .eq('command', '__last_page__')
+                .eq('raw_text', '__last_page__')
+                .is('deleted_at', null)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            if (selErr && isOfflineNetworkError(selErr)) throw selErr;
+
+            let savedOk = false;
+            if (!selErr && existingRows && existingRows[0] && existingRows[0].id) {
+                const { data: updData, error: updErr } = await window.supabaseClient
+                    .from('commands_history')
+                    .update({
+                        parameters: payloadParams,
+                        output: pending.path,
+                        created_at: updatedAt
+                    })
+                    .eq('id', existingRows[0].id)
+                    .select('id');
+                if (!updErr && updData && updData.length > 0) {
+                    savedOk = true;
+                }
+            }
+
+            if (!savedOk) {
+                const { error: insErr } = await window.supabaseClient
+                    .from('commands_history')
+                    .insert([{
+                        raw_text: '__last_page__',
+                        command: '__last_page__',
+                        parameters: payloadParams,
+                        output: pending.path,
+                        result: 'OK',
+                        status: 'success',
+                        created_at: updatedAt,
+                        created_by: user.id
+                    }]);
+                if (!insErr) savedOk = true;
+            }
+
+            if (savedOk) {
+                try {
+                    const cur = JSON.parse(localStorage.getItem(LAST_PAGE_PENDING_KEY) || 'null');
+                    if (cur && Number(cur.ts || 0) <= Number(pending.ts || 0)) {
+                        localStorage.removeItem(LAST_PAGE_PENDING_KEY);
+                    }
+                } catch (e) {}
+            }
+            return savedOk;
+        } catch (e) {
+            return false;
+        } finally {
+            lastPageFlushPromise = null;
+        }
+    })();
+
+    return lastPageFlushPromise;
+}
+
+function trackCurrentPage(customPath = null, customTitle = null) {
+    if (typeof window === 'undefined' || !window.location) return null;
+    const info = customPath
+        ? { path: String(customPath), title: String(customTitle || customPath) }
+        : describeTrackablePage(window.location.pathname, window.location.search, window.location.hash);
+
+    if (!info || !info.path) return null;
+
+    const nowMs = Date.now();
+    const entry = {
+        path: info.path,
+        title: info.title,
+        ts: nowMs,
+        updatedAt: new Date(nowMs).toISOString()
+    };
+    saveLocalLastPage(entry);
+    try {
+        localStorage.setItem(LAST_PAGE_PENDING_KEY, JSON.stringify(entry));
+    } catch (e) {}
+
+    if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+        flushPendingLastPage().catch(() => {});
+    }
+    return entry;
+}
+
+async function fetchRemoteLastPage() {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return null;
+    if (!window.supabaseClient) return null;
+    try {
+        const user = await resolveAuthenticatedDbUser();
+        if (!user) return null;
+
+        const { data: rows, error } = await window.supabaseClient
+            .from('commands_history')
+            .select('parameters, created_at')
+            .eq('created_by', user.id)
+            .eq('command', '__last_page__')
+            .eq('raw_text', '__last_page__')
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        if (!error && rows && rows[0] && rows[0].parameters && rows[0].parameters.path) {
+            const p = rows[0].parameters;
+            const updatedAt = p.updated_at || rows[0].created_at || null;
+            const ts = Number(p.ts) || (updatedAt ? new Date(updatedAt).getTime() : 0);
+            return {
+                path: p.path,
+                title: p.title || p.path,
+                ts,
+                updatedAt
+            };
+        }
+    } catch (e) {}
+    return null;
+}
+
+async function getBestLastPage() {
+    const local = getLocalLastPage();
+    const remote = await fetchRemoteLastPage();
+    if (!local && !remote) return null;
+    if (local && !remote) return local;
+    if (!local && remote) {
+        saveLocalLastPage(remote);
+        return remote;
+    }
+    const localTs = Number(local.ts || (local.updatedAt ? new Date(local.updatedAt).getTime() : 0));
+    const remoteTs = Number(remote.ts || (remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0));
+    if (remoteTs > localTs) {
+        saveLocalLastPage(remote);
+        return remote;
+    }
+    return local;
+}
+
+window.LastPageSync = {
+    trackCurrentPage,
+    getLocalLastPage,
+    fetchRemoteLastPage,
+    getBestLastPage,
+    flushPendingLastPage,
+    describeTrackablePage
+};
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    const autoTrackIfApplicable = () => {
+        if (describeTrackablePage(window.location.pathname, window.location.search, window.location.hash)) {
+            trackCurrentPage();
+        }
+    };
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', autoTrackIfApplicable);
+    } else {
+        autoTrackIfApplicable();
+    }
+    window.addEventListener('hashchange', autoTrackIfApplicable);
+}
 
 // =========================================================================
 // Обращения в поддержку (Support / Issue Reports + уведомления админа)
@@ -2188,6 +2493,9 @@ async function flushAllOfflineConsoleQueues() {
         await flushPendingHouseLayouts();
     } catch (e) {}
     try {
+        await flushPendingLastPage();
+    } catch (e) {}
+    try {
         await flushPendingSupportReports();
     } catch (e) {}
     try {
@@ -2214,6 +2522,7 @@ if (typeof window !== 'undefined') {
             flushPendingActionsToCloud().catch(() => {});
             flushPendingNotes().catch(() => {});
             flushPendingHouseLayouts().catch(() => {});
+            flushPendingLastPage().catch(() => {});
             flushPendingSupportReports().catch(() => {});
             flushPendingCustomAliases().catch(() => {});
             flushPendingTaskCooldowns().catch(() => {});
@@ -2224,6 +2533,7 @@ if (typeof window !== 'undefined') {
             flushPendingActionsToCloud().catch(() => {});
             flushPendingNotes().catch(() => {});
             flushPendingHouseLayouts().catch(() => {});
+            flushPendingLastPage().catch(() => {});
             flushPendingSupportReports().catch(() => {});
             flushPendingCustomAliases().catch(() => {});
             flushPendingTaskCooldowns().catch(() => {});

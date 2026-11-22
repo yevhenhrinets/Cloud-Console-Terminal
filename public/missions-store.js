@@ -1,11 +1,11 @@
 // missions-store.js — Надежное хранилище поручений (Missions) с фиксацией времени выполнения и таймзоны
-// Архитектура: Offline-First + Упорядоченная очередь мутаций (Ops Queue) + Единый облачный источник истины (Supabase REST)
-// Пока интернет есть — ПК и телефон всегда получают абсолютно идентичный снимок из базы данных.
-// Без интернета — все действия работают локально и выстраиваются в строгую хронологическую очередь для синхронизации при подключении.
+// Архитектура: Offline-First + Упорядоченная очередь мутаций (Ops Queue) + Монотонный замок выполнения + Единый облачный источник истины (Supabase REST)
+// Гарантия: если на другом устройстве дата добавления ниже даты выполнения (created_at <= completed_at), задача НИКОГДА не вернётся в невыполненные.
 
 (function(window) {
     const STORAGE_KEY = 'cloud_missions_store';
     const OPS_QUEUE_KEY = 'cloud_missions_ops_queue';
+    const COMPLETION_LOCKS_KEY = 'cloud_missions_completion_locks_v1';
     const DELETED_KEY = 'cloud_missions_deleted';
     const LAST_SYNC_KEY = 'cloud_missions_last_sync';
 
@@ -42,6 +42,36 @@
         return `${dateStr} ${timeStr} (${tzLabel})`;
     }
 
+    function formatTimeAgo(dateInput, nowMs = Date.now()) {
+        if (!dateInput) return '';
+        const ts = dateInput instanceof Date ? dateInput.getTime() : new Date(dateInput).getTime();
+        if (!Number.isFinite(ts) || ts <= 0) return '';
+
+        const diffSec = Math.max(0, Math.floor((nowMs - ts) / 1000));
+        if (diffSec < 60) return 'только что';
+
+        const diffMin = Math.floor(diffSec / 60);
+        if (diffMin < 60) return `${diffMin} мин. назад`;
+
+        const diffHours = Math.floor(diffMin / 60);
+        if (diffHours < 24) return `${diffHours} ч. назад`;
+
+        const diffDays = Math.floor(diffHours / 24);
+        if (diffDays < 30) return `${diffDays} дн. назад`;
+
+        const diffMonths = Math.floor(diffDays / 30);
+        if (diffMonths < 12) return `${diffMonths} мес. назад`;
+
+        const diffYears = Math.floor(diffDays / 365);
+        return `${diffYears} г. назад`;
+    }
+
+    function toTimeMs(val) {
+        if (!val) return 0;
+        const ms = val instanceof Date ? val.getTime() : new Date(val).getTime();
+        return Number.isFinite(ms) ? ms : 0;
+    }
+
     function normalizeRecord(raw) {
         const isDone = Boolean(raw.completed_at || raw.status === 'completed');
         const createdAt = raw.created_at || new Date().toISOString();
@@ -75,6 +105,18 @@
         };
     }
 
+    function rowDiffersFromDb(localNorm, remoteRaw) {
+        if (!remoteRaw) return true;
+        const r = normalizeRecord(remoteRaw);
+        return (
+            localNorm.status !== r.status ||
+            Number(localNorm.position) !== Number(r.position) ||
+            String(localNorm.title) !== String(r.title) ||
+            String(localNorm.created_at || '') !== String(r.created_at || '') ||
+            String(localNorm.completed_at || '') !== String(r.completed_at || '')
+        );
+    }
+
     function sortActiveList(list) {
         return list
             .filter(m => !m.completed_at && m.status !== 'completed')
@@ -103,6 +145,7 @@
         constructor() {
             this.missions = [];
             this.pendingOps = [];
+            this.completionLocks = {};
             this.opSeqCounter = 0;
             this.isSyncingWithSupabase = false;
             this._activeSyncPromise = null;
@@ -114,14 +157,132 @@
             this.init();
         }
 
+        loadCompletionLocks() {
+            try {
+                const raw = localStorage.getItem(COMPLETION_LOCKS_KEY);
+                const parsed = raw ? JSON.parse(raw) : {};
+                return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+            } catch (e) {
+                return {};
+            }
+        }
+
+        saveCompletionLocks(map) {
+            this.completionLocks = (map && typeof map === 'object') ? map : {};
+            try {
+                localStorage.setItem(COMPLETION_LOCKS_KEY, JSON.stringify(this.completionLocks));
+            } catch (e) {}
+        }
+
+        recordCompletionLock(mission) {
+            if (!mission || !mission.id) return;
+            const isDone = Boolean(mission.completed_at || mission.status === 'completed');
+            if (!isDone || !mission.completed_at) return;
+
+            const locks = this.loadCompletionLocks();
+            const id = String(mission.id);
+            const newCompletedMs = toTimeMs(mission.completed_at);
+            const prev = locks[id];
+            const prevCompletedMs = prev ? toTimeMs(prev.completed_at) : 0;
+
+            if (!prev || newCompletedMs >= prevCompletedMs) {
+                locks[id] = {
+                    id,
+                    title: String(mission.title || (prev && prev.title) || ''),
+                    created_at: mission.created_at || (prev && prev.created_at) || new Date().toISOString(),
+                    completed_at: mission.completed_at,
+                    completed_display: mission.completed_display || getFormattedTimezone(mission.completed_at)
+                };
+                this.saveCompletionLocks(locks);
+            }
+        }
+
+        removeCompletionLock(id) {
+            const locks = this.loadCompletionLocks();
+            const key = String(id);
+            if (locks[key]) {
+                delete locks[key];
+                this.saveCompletionLocks(locks);
+            }
+        }
+
+        syncLocksFromList(list) {
+            const locks = this.loadCompletionLocks();
+            let changed = false;
+            (list || []).forEach(m => {
+                if (!m || !m.id) return;
+                const isDone = Boolean(m.completed_at || m.status === 'completed');
+                if (!isDone || !m.completed_at) return;
+                const id = String(m.id);
+                const compMs = toTimeMs(m.completed_at);
+                const prev = locks[id];
+                if (!prev || compMs >= toTimeMs(prev.completed_at)) {
+                    locks[id] = {
+                        id,
+                        title: String(m.title || (prev && prev.title) || ''),
+                        created_at: m.created_at || (prev && prev.created_at) || new Date().toISOString(),
+                        completed_at: m.completed_at,
+                        completed_display: m.completed_display || getFormattedTimezone(m.completed_at)
+                    };
+                    changed = true;
+                }
+            });
+            if (changed) this.saveCompletionLocks(locks);
+            else this.completionLocks = locks;
+            return locks;
+        }
+
+        // Если дата добавления записи ниже/равна дате выполнения и не было явного более позднего возврата —
+        // задача НЕ имеет права возвращаться в невыполненные (pending).
+        enforceCompletionWatermark(list, locksOverride = null) {
+            const locks = locksOverride || this.loadCompletionLocks();
+            const healedIds = new Set();
+
+            const result = (list || []).map(item => {
+                const norm = normalizeRecord(item);
+                const lock = locks[norm.id];
+                if (!lock || !lock.completed_at) {
+                    if (norm.completed_at) this.recordCompletionLock(norm);
+                    return norm;
+                }
+
+                const lockCompletedMs = toTimeMs(lock.completed_at);
+                const itemCreatedMs = toTimeMs(norm.created_at);
+
+                if (norm.status === 'pending') {
+                    // Критическая гарантия: если дата добавления <= дате выполнения — в невыполненные больше не возвращаем!
+                    if (itemCreatedMs <= lockCompletedMs) {
+                        norm.status = 'completed';
+                        norm.completed_at = lock.completed_at;
+                        norm.completed_display = lock.completed_display || getFormattedTimezone(lock.completed_at);
+                        healedIds.add(norm.id);
+                    } else {
+                        // Явный ручной restore на другом устройстве (created_at > completed_at) снимает блокировку
+                        this.removeCompletionLock(norm.id);
+                    }
+                } else {
+                    const normCompletedMs = toTimeMs(norm.completed_at);
+                    if (lockCompletedMs > normCompletedMs) {
+                        norm.completed_at = lock.completed_at;
+                        norm.completed_display = lock.completed_display || getFormattedTimezone(lock.completed_at);
+                        healedIds.add(norm.id);
+                    }
+                }
+                return norm;
+            });
+
+            return { list: result, healedIds };
+        }
+
         init() {
+            this.completionLocks = this.loadCompletionLocks();
+
             // 1. Загружаем отложенную очередь оффлайн-операций и очищаем устаревший legacy-ключ DELETED_KEY
             try {
                 const opsRaw = localStorage.getItem(OPS_QUEUE_KEY);
                 const parsedOps = opsRaw ? JSON.parse(opsRaw) : [];
                 this.pendingOps = Array.isArray(parsedOps) ? parsedOps : [];
 
-                // Если в очереди скопились массовые старые мигрированные delete-записи без флага userInitiated — очищаем мусор
                 const legacyBulkDeletes = this.pendingOps.filter(o => o && o.type === 'delete' && !o.userInitiated);
                 if (legacyBulkDeletes.length > 3) {
                     this.pendingOps = this.pendingOps.filter(o => !(o && o.type === 'delete' && !o.userInitiated));
@@ -137,13 +298,15 @@
                 localStorage.removeItem(DELETED_KEY);
             } catch (e) {}
 
-            // 2. Загружаем локальный кэш поручений (без подмешивания фейковых дефолтных записей, чтобы не портить облако)
+            // 2. Загружаем локальный кэш поручений и применяем защиту от отката выполненных задач
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 try {
                     const parsed = JSON.parse(saved);
                     if (Array.isArray(parsed)) {
-                        this.missions = parsed.map(normalizeRecord);
+                        const normalized = parsed.map(normalizeRecord);
+                        this.syncLocksFromList(normalized);
+                        this.missions = this.enforceCompletionWatermark(normalized).list;
                         this.reindexActiveMissions();
                     }
                 } catch (e) {
@@ -178,11 +341,14 @@
                 });
 
                 window.addEventListener('storage', (event) => {
+                    if (event.key === COMPLETION_LOCKS_KEY) {
+                        this.completionLocks = this.loadCompletionLocks();
+                    }
                     if (event.key === STORAGE_KEY && event.newValue) {
                         try {
                             const parsed = JSON.parse(event.newValue);
                             if (Array.isArray(parsed)) {
-                                this.missions = parsed.map(normalizeRecord);
+                                this.missions = this.enforceCompletionWatermark(parsed.map(normalizeRecord)).list;
                                 this.notify();
                             }
                         } catch (e) {}
@@ -208,6 +374,7 @@
 
         saveLocal() {
             try {
+                this.syncLocksFromList(this.missions);
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(this.missions));
                 this.notify();
             } catch (e) {
@@ -274,6 +441,10 @@
             return getFormattedTimezone(date);
         }
 
+        formatTimeAgo(dateInput, nowMs) {
+            return formatTimeAgo(dateInput, nowMs);
+        }
+
         getActiveMissions() {
             return sortActiveList(this.missions);
         }
@@ -320,8 +491,14 @@
             (remoteList || []).forEach(r => {
                 const norm = normalizeRecord(r);
                 workingMap.set(norm.id, norm);
+                if (norm.completed_at) {
+                    this.recordCompletionLock(norm);
+                }
             });
+
+            const locks = this.loadCompletionLocks();
             const deletedIds = new Set();
+            const dirtyIds = new Set();
 
             const reindexWorking = () => {
                 const active = sortActiveList(Array.from(workingMap.values()));
@@ -337,7 +514,20 @@
                 if (op.type === 'add') {
                     const id = String(p.id);
                     if (deletedIds.has(id)) continue;
+                    const createdAt = p.created_at || new Date(op.ts).toISOString();
                     const existing = workingMap.get(id);
+                    const lock = locks[id];
+
+                    // Если задача уже выполнена позже даты её добавления — никогда не возвращаем в pending
+                    if (lock && toTimeMs(createdAt) <= toTimeMs(lock.completed_at)) {
+                        if (existing) {
+                            existing.status = 'completed';
+                            existing.completed_at = lock.completed_at;
+                            existing.completed_display = lock.completed_display || getFormattedTimezone(lock.completed_at);
+                        }
+                        continue;
+                    }
+
                     if (!existing) {
                         const active = sortActiveList(Array.from(workingMap.values()));
                         const isStart = p.placement === 'start' || p.placement === 'top' || p.placement === 'beginning';
@@ -345,12 +535,12 @@
                         if (isStart) {
                             active.forEach((item, idx) => {
                                 item.position = idx + 2;
+                                dirtyIds.add(item.id);
                             });
                             pos = 1;
                         } else {
                             pos = active.length > 0 ? Math.max(...active.map(m => Number(m.position) || 0)) + 1 : 1;
                         }
-                        const createdAt = p.created_at || new Date(op.ts).toISOString();
                         workingMap.set(id, {
                             id,
                             title: String(p.title || ''),
@@ -362,31 +552,61 @@
                             completed_display: null,
                             created_by: p.created_by || 'guest'
                         });
+                        dirtyIds.add(id);
                     }
                 } else if (op.type === 'complete') {
                     const id = String(p.id);
-                    const target = workingMap.get(id);
+                    const completedAt = p.completed_at || new Date(op.ts).toISOString();
+                    const completedDisplay = p.completed_display || getFormattedTimezone(completedAt);
+                    let target = workingMap.get(id);
+
+                    // Если локально выполнили запись, которая уже есть или создавалась из локального стора
+                    if (!target) {
+                        const localMatch = (this.missions || []).find(m => String(m.id) === id);
+                        if (localMatch && !deletedIds.has(id)) {
+                            target = normalizeRecord(localMatch);
+                            workingMap.set(id, target);
+                        }
+                    }
+
                     if (target) {
-                        const completedAt = p.completed_at || new Date(op.ts).toISOString();
-                        target.completed_at = completedAt;
-                        target.completed_display = p.completed_display || getFormattedTimezone(completedAt);
+                        const targetCompMs = toTimeMs(target.completed_at);
+                        const opCompMs = toTimeMs(completedAt);
+                        if (!target.completed_at || opCompMs >= targetCompMs) {
+                            target.completed_at = completedAt;
+                            target.completed_display = completedDisplay;
+                        }
                         target.status = 'completed';
+                        this.recordCompletionLock(target);
+                        dirtyIds.add(id);
                         reindexWorking();
                     }
                 } else if (op.type === 'restore') {
                     const id = String(p.id);
                     const target = workingMap.get(id);
                     if (target) {
-                        const active = sortActiveList(Array.from(workingMap.values()));
-                        target.completed_at = null;
-                        target.completed_display = null;
-                        target.status = 'pending';
-                        target.position = active.length > 0 ? Math.max(...active.map(m => Number(m.position) || 0)) + 1 : 1;
+                        const restoreIso = p.restored_at || p.created_at || new Date(op.ts).toISOString();
+                        const restoreMs = toTimeMs(restoreIso);
+                        const targetCompMs = toTimeMs(target.completed_at);
+
+                        // Применяем только если ручной restore произошёл ПОСЛЕ последнего завершения
+                        if (!target.completed_at || restoreMs > targetCompMs) {
+                            const active = sortActiveList(Array.from(workingMap.values()));
+                            target.completed_at = null;
+                            target.completed_display = null;
+                            target.status = 'pending';
+                            target.created_at = p.created_at || restoreIso;
+                            target.created_display = p.created_display || getFormattedTimezone(target.created_at);
+                            target.position = active.length > 0 ? Math.max(...active.map(m => Number(m.position) || 0)) + 1 : 1;
+                            this.removeCompletionLock(id);
+                            dirtyIds.add(id);
+                        }
                     }
                 } else if (op.type === 'delete') {
                     const id = String(p.id);
                     workingMap.delete(id);
                     deletedIds.add(id);
+                    this.removeCompletionLock(id);
                     reindexWorking();
                 } else if (op.type === 'reorder') {
                     const orderedIds = Array.isArray(p.orderedIds) ? p.orderedIds.map(String) : [];
@@ -398,8 +618,6 @@
                             return item && !item.completed_at && item.status !== 'completed';
                         });
 
-                        // Слот-сохраняющее слияние: задачи, которые были в переставленном списке,
-                        // занимают свои слоты в новом порядке, не затирая новые задачи с другого устройства
                         let queueCursor = 0;
                         const mergedActive = active.map(item => {
                             if (orderedSet.has(item.id) && queueCursor < orderedQueue.length) {
@@ -408,7 +626,6 @@
                             return item;
                         });
 
-                        // Если какие-то ID из orderedQueue ещё не размещены (напр. восстановлены/добавлены), дописываем
                         const placedSet = new Set(mergedActive.map(m => m.id));
                         orderedQueue.forEach(id => {
                             if (!placedSet.has(id) && workingMap.has(id)) {
@@ -417,16 +634,24 @@
                         });
 
                         mergedActive.forEach((item, idx) => {
-                            item.position = idx + 1;
+                            if (item.position !== idx + 1) {
+                                item.position = idx + 1;
+                                dirtyIds.add(item.id);
+                            }
                         });
                     }
                 }
             }
 
             reindexWorking();
+
+            const watermarked = this.enforceCompletionWatermark(Array.from(workingMap.values()));
+            watermarked.healedIds.forEach(id => dirtyIds.add(id));
+
             return {
-                mergedList: Array.from(workingMap.values()),
-                deletedIds: Array.from(deletedIds)
+                mergedList: watermarked.list,
+                deletedIds: Array.from(deletedIds),
+                dirtyIds
             };
         }
 
@@ -466,7 +691,7 @@
         }
 
         // =========================================================================
-        // СЕРИАЛИЗОВАННАЯ ДВУСТОРОННЯЯ СИНХРОНИЗАЦИЯ (Cloud-Authoritative + Replay)
+        // СЕРИАЛИЗОВАННАЯ ДВУСТОРОННЯЯ СИНХРОНИЗАЦИЯ (Cloud-Authoritative + Monotonic Lock)
         // =========================================================================
         async trySyncSupabase(throwOnError = false) {
             if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -513,22 +738,45 @@
                     throw new Error('Supabase вернул пустой или некорректный ответ');
                 }
 
-                if (opsSnapshot.length === 0) {
-                    // Нет локальных неотправленных изменений — облако на 100% авторитетно!
-                    // Гарантирует абсолютную идентичность на ПК и телефоне.
-                    const normalizedRemote = remoteRecords.map(normalizeRecord);
-                    this.remoteCount = normalizedRemote.length;
+                const remoteById = new Map();
+                remoteRecords.forEach(r => {
+                    if (r && r.id) remoteById.set(String(r.id), normalizeRecord(r));
+                });
 
-                    // Если за время сетевого запроса появились новые локальные операции, не затираем их
+                if (opsSnapshot.length === 0) {
+                    const normalizedRemote = remoteRecords.map(normalizeRecord);
+                    this.syncLocksFromList(normalizedRemote);
+
+                    // Очищаем замки для записей, которые были окончательно удалены с другого устройства
+                    const currentLocks = this.loadCompletionLocks();
+                    let locksTrimmed = false;
+                    Object.keys(currentLocks).forEach(lockId => {
+                        if (!remoteById.has(lockId)) {
+                            delete currentLocks[lockId];
+                            locksTrimmed = true;
+                        }
+                    });
+                    if (locksTrimmed) this.saveCompletionLocks(currentLocks);
+
+                    // Если удалённая база содержит задачу в pending, но created_at <= completed_at известного замка — лечим её в БД!
+                    const { list: safeList, healedIds } = this.enforceCompletionWatermark(normalizedRemote, currentLocks);
+                    if (healedIds.size > 0) {
+                        const healRows = safeList.filter(m => healedIds.has(m.id)).map(toDbRow);
+                        if (healRows.length > 0) {
+                            await this.upsertRemoteMissions(healRows);
+                        }
+                    }
+
+                    this.remoteCount = safeList.length;
+
                     if (this.pendingOps.length === 0) {
-                        this.missions = normalizedRemote;
+                        this.missions = safeList;
                         this.saveLocal();
                     } else {
                         this._syncRequestedAgain = true;
                     }
                 } else {
-                    // Есть локальные оффлайн/очередные операции — применяем их в строгом хронологическом порядке поверх облака
-                    const { mergedList, deletedIds } = this.applyOpsInOrder(remoteRecords, opsSnapshot);
+                    const { mergedList, deletedIds, dirtyIds } = this.applyOpsInOrder(remoteRecords, opsSnapshot);
                     const remoteIdSet = new Set(remoteRecords.map(r => String(r.id)));
 
                     for (const delId of deletedIds) {
@@ -537,12 +785,15 @@
                         }
                     }
 
-                    if (mergedList.length > 0) {
-                        const rowsToUpsert = mergedList.map(toDbRow);
-                        await this.upsertRemoteMissions(rowsToUpsert);
+                    // Отправляем в БД ТОЛЬКО изменённые текущей очередью или исправленные замком строки (никогда не затирая чужие выполненные задачи)
+                    const changedRows = mergedList
+                        .filter(m => dirtyIds.has(m.id) || rowDiffersFromDb(m, remoteById.get(m.id)))
+                        .map(toDbRow);
+
+                    if (changedRows.length > 0) {
+                        await this.upsertRemoteMissions(changedRows);
                     }
 
-                    // Удаляем из очереди только успешно отправленный снимок операций
                     const flushedIds = new Set(opsSnapshot.map(o => o.opId));
                     this.pendingOps = this.pendingOps.filter(o => !flushedIds.has(o.opId));
                     this.saveOpsQueue();
@@ -552,7 +803,6 @@
                         this.remoteCount = mergedList.length;
                         this.saveLocal();
                     } else {
-                        // За время запроса пользователь успел сделать ещё действия — досылаем следующим проходом
                         this.remoteCount = mergedList.length;
                         this._syncRequestedAgain = true;
                     }
@@ -645,6 +895,7 @@
             mission.completed_display = getFormattedTimezone(now);
             mission.status = 'completed';
 
+            this.recordCompletionLock(mission);
             this.reindexActiveMissions();
 
             this.enqueueOp('complete', {
@@ -663,14 +914,26 @@
             const mission = this.missions.find(m => String(m.id) === String(id));
             if (!mission) throw new Error('Поручение не найдено');
 
+            const now = new Date();
+            const nowIso = now.toISOString();
             const active = this.getActiveMissions();
+
             mission.completed_at = null;
             mission.completed_display = null;
             mission.status = 'pending';
+            // Обновляем дату добавления на момент явного ручного возврата (> старого completed_at),
+            // чтобы второе устройство с более старым created_at понимало, что это явный новый возврат.
+            mission.created_at = nowIso;
+            mission.created_display = getFormattedTimezone(now);
             mission.position = active.length > 0 ? Math.max(...active.map(m => Number(m.position) || 0)) + 1 : 1;
 
+            this.removeCompletionLock(mission.id);
+
             this.enqueueOp('restore', {
-                id: String(mission.id)
+                id: String(mission.id),
+                restored_at: nowIso,
+                created_at: mission.created_at,
+                created_display: mission.created_display
             });
 
             this.saveLocal();
@@ -686,6 +949,7 @@
             const [removed] = this.missions.splice(index, 1);
             const strId = String(removed.id);
 
+            this.removeCompletionLock(strId);
             this.reindexActiveMissions();
 
             this.enqueueOp('delete', {

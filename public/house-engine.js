@@ -1,13 +1,20 @@
-// house-engine.js — единый движок для объединённого Дома (Кухня + Зал на одной странице)
-// Поддерживает: разные размеры сеток комнат (например 7×7 и 7×9), плавный скролл пальцем и тачпадом,
-// гарантированное перетаскивание объектов на смартфонах (capture-phase Touch API), синхронизацию с БД.
+// house-engine.js — единый движок для всех Домов (16×16 = 4 подквадрата 8×8)
+// Без мерцания при входе и скролле, с удержанием 1.5 сек до начала перетаскивания,
+// свободным панорамированием поверх объектов до истечения 1.5 сек и надёжной синхронизацией с БД.
 
 (function () {
+    const HOLD_TO_DRAG_MS = 1500;
+    const MOVE_CANCEL_THRESHOLD_PX = 10;
+
     let tilePx = 44;
+    let lastTilePx = 0;
+    let lastViewportW = 0;
+    let lastViewportH = 0;
     let justDraggedUntil = 0;
     let roomsState = [];
     let initialized = false;
     let activeDragSession = null;
+    let panSession = null;
 
     function logActionDirect(cmd, desc) {
         if (typeof window.recordCommandAction === 'function') {
@@ -83,9 +90,11 @@
         for (const item of room.items) {
             const candidate = savedMap[item.id];
             if (candidate && Number.isInteger(candidate.col) && Number.isInteger(candidate.row)) {
-                if (canPlaceItem(room, item.id, candidate.col, candidate.row, item.w, item.h, accepted)) {
-                    if (item.col !== candidate.col || item.row !== candidate.row) changed = true;
-                    accepted.push({ id: item.id, col: candidate.col, row: candidate.row, w: item.w, h: item.h });
+                const cCol = Math.max(0, Math.min(room.gridW - item.w, candidate.col));
+                const cRow = Math.max(0, Math.min(room.gridH - item.h, candidate.row));
+                if (canPlaceItem(room, item.id, cCol, cRow, item.w, item.h, accepted)) {
+                    if (item.col !== cCol || item.row !== cRow) changed = true;
+                    accepted.push({ id: item.id, col: cCol, row: cRow, w: item.w, h: item.h });
                     continue;
                 }
             }
@@ -108,6 +117,7 @@
             finalPositions.forEach(pos => {
                 const target = room.items.find(i => i.id === pos.id);
                 if (target) {
+                    if (target.col !== pos.col || target.row !== pos.row) changed = true;
                     target.col = pos.col;
                     target.row = pos.row;
                 }
@@ -124,30 +134,71 @@
         return payload;
     }
 
+    function buildLegacyMergedMap(roomCfg, sourceGetter) {
+        const legacies = Array.isArray(roomCfg.legacyRooms) ? roomCfg.legacyRooms : [];
+        if (legacies.length === 0) return { layout: null, maxTs: 0 };
+
+        const merged = {};
+        let maxTs = 0;
+        let foundAny = false;
+
+        for (const leg of legacies) {
+            const res = sourceGetter(leg);
+            if (!res || !res.layout || typeof res.layout !== 'object') continue;
+            foundAny = true;
+            if (Number(res.ts || 0) > maxTs) maxTs = Number(res.ts || 0);
+            const offCol = Number(leg.offsetCol) || 0;
+            const offRow = Number(leg.offsetRow) || 0;
+            Object.keys(res.layout).forEach(itemId => {
+                const pos = res.layout[itemId];
+                if (pos && Number.isInteger(pos.col) && Number.isInteger(pos.row)) {
+                    merged[itemId] = {
+                        col: pos.col + offCol,
+                        row: pos.row + offRow
+                    };
+                }
+            });
+        }
+
+        return foundAny ? { layout: merged, maxTs } : { layout: null, maxTs: 0 };
+    }
+
     function loadRoomLayoutState(roomCfg) {
         const boardEl = document.getElementById(roomCfg.boardId);
         const gridOverlay = boardEl ? boardEl.querySelector('.drag-grid-overlay') : null;
         const targetBox = boardEl ? boardEl.querySelector('.drag-target-box') : null;
         const domItems = boardEl ? Array.from(boardEl.querySelectorAll('.room-item')) : [];
 
-        let saved = {};
+        let saved = null;
         try {
-            saved = JSON.parse(localStorage.getItem(roomCfg.storageKey) || '{}') || {};
+            const raw = localStorage.getItem(roomCfg.storageKey);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+                    saved = parsed;
+                }
+            }
         } catch (e) {
-            saved = {};
+            saved = null;
         }
 
         const room = {
             id: roomCfg.id,
             storageKey: roomCfg.storageKey,
             tsKey: roomCfg.tsKey,
-            gridW: Number(roomCfg.gridW) || 7,
-            gridH: Number(roomCfg.gridH) || 7,
+            legacyRooms: Array.isArray(roomCfg.legacyRooms) ? roomCfg.legacyRooms : [],
+            quadrants: roomCfg.quadrants !== false,
+            gridW: Number(roomCfg.gridW) || 16,
+            gridH: Number(roomCfg.gridH) || 16,
             boardEl,
             gridOverlay,
             targetBox,
             items: []
         };
+
+        if (room.quadrants && boardEl) {
+            ensureQuadrantsOverlay(boardEl, roomCfg.quadrantLabels || null);
+        }
 
         room.items = domItems.map(el => {
             const id = el.dataset.id;
@@ -162,8 +213,55 @@
             return itemObj;
         });
 
-        applyLayoutMap(room, saved);
+        if (saved) {
+            applyLayoutMap(room, saved);
+        } else {
+            // Миграция локального legacy-расположения (например house2_kitchen_v2 + house2_hall_v2 -> 16×16)
+            const localLegacy = buildLegacyMergedMap(roomCfg, (leg) => {
+                try {
+                    const raw = localStorage.getItem(leg.storageKey);
+                    if (!raw) return null;
+                    const layout = JSON.parse(raw);
+                    const ts = Number(localStorage.getItem(leg.tsKey) || 0);
+                    return { layout, ts };
+                } catch (e) {
+                    return null;
+                }
+            });
+            if (localLegacy.layout) {
+                applyLayoutMap(room, localLegacy.layout);
+                saveRoomLayoutLocalOnly(room, localLegacy.maxTs || 0);
+            }
+        }
+
         return room;
+    }
+
+    function ensureQuadrantsOverlay(boardEl, labels) {
+        if (!boardEl || boardEl.querySelector('.house-quadrants-overlay')) return;
+        const lbl = labels || {};
+        const overlay = document.createElement('div');
+        overlay.className = 'house-quadrants-overlay';
+        overlay.setAttribute('aria-hidden', 'true');
+        overlay.innerHTML = `
+            <div class="house-quad quad-kitchen">
+                <div class="house-quad-door-v" title="Проход Кухня ↔ Зал"></div>
+                <div class="house-quad-door-h" title="Проход Кухня ↔ Комната"></div>
+                <span class="house-quad-tag" style="left: 8px; bottom: 8px;">${lbl.kitchen || '🍳 Кухня (8×8)'}</span>
+            </div>
+            <div class="house-quad quad-hall">
+                <div class="house-quad-door-h" title="Проход Зал ↔ Коридор"></div>
+                <span class="house-quad-tag" style="right: 8px; bottom: 8px;">${lbl.hall || '🛋️ Зал (8×8)'}</span>
+            </div>
+            <div class="house-quad quad-room">
+                <div class="house-quad-door-v" title="Проход Комната ↔ Коридор"></div>
+                <span class="house-quad-tag" style="left: 8px; top: 8px;">${lbl.room || '🛏️ Комната (8×8)'}</span>
+            </div>
+            <div class="house-quad quad-corridor">
+                <span class="house-quad-tag" style="right: 8px; top: 8px;">${lbl.corridor || '🚶 Коридор (8×8)'}</span>
+            </div>
+        `;
+        boardEl.prepend(overlay);
     }
 
     function saveRoomLayoutLocalOnly(room, customTs = null) {
@@ -191,18 +289,56 @@
             await window.HouseLayoutSync.flushPendingHouseLayouts();
             const pending = window.HouseLayoutSync.getPendingHouseLayouts();
 
+            const allRoomIds = [];
+            roomsState.forEach(r => {
+                allRoomIds.push(r.id);
+                (r.legacyRooms || []).forEach(leg => allRoomIds.push(leg.id));
+            });
+
+            const remoteMap = typeof window.HouseLayoutSync.fetchAllHouseLayoutsFromDb === 'function'
+                ? await window.HouseLayoutSync.fetchAllHouseLayoutsFromDb(allRoomIds)
+                : {};
+
             for (const room of roomsState) {
                 if (pending && pending[room.id]) continue;
-                const remote = await window.HouseLayoutSync.fetchRoomLayoutFromDb(room.id);
-                if (remote && remote.layout) {
-                    const localTs = Number(localStorage.getItem(room.tsKey) || 0);
-                    const remoteTs = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
-                    if (!localTs || !remoteTs || remoteTs >= localTs) {
-                        const changed = applyLayoutMap(room, remote.layout);
-                        saveRoomLayoutLocalOnly(room, remoteTs || Date.now());
-                        if (changed) {
-                            room.items.forEach(item => applyItemGeometry(item));
-                        }
+
+                const localTs = Number(localStorage.getItem(room.tsKey) || 0);
+                const remoteUnified = remoteMap[room.id];
+                const remoteUnifiedTs = (remoteUnified && remoteUnified.updatedAt)
+                    ? new Date(remoteUnified.updatedAt).getTime()
+                    : 0;
+
+                // Проверяем и legacy-комнаты (если с прошлого раза сохранение шло в room_kitchen + room_hall)
+                const remoteLegacy = buildLegacyMergedMap(room, (leg) => {
+                    const entry = remoteMap[leg.id];
+                    if (!entry || !entry.layout) return null;
+                    return {
+                        layout: entry.layout,
+                        ts: entry.updatedAt ? new Date(entry.updatedAt).getTime() : 0
+                    };
+                });
+
+                let chosenLayout = null;
+                let chosenTs = 0;
+                let migratedFromLegacy = false;
+
+                if (remoteLegacy.layout && (!remoteUnified || remoteLegacy.maxTs > remoteUnifiedTs)) {
+                    chosenLayout = remoteLegacy.layout;
+                    chosenTs = remoteLegacy.maxTs || Date.now();
+                    migratedFromLegacy = true;
+                } else if (remoteUnified && remoteUnified.layout) {
+                    chosenLayout = remoteUnified.layout;
+                    chosenTs = remoteUnifiedTs || Date.now();
+                }
+
+                if (chosenLayout && (!localTs || !chosenTs || chosenTs >= localTs)) {
+                    const changed = applyLayoutMap(room, chosenLayout);
+                    const savedPayload = saveRoomLayoutLocalOnly(room, chosenTs || Date.now());
+                    if (changed) {
+                        room.items.forEach(item => applyItemGeometry(item));
+                    }
+                    if (migratedFromLegacy && savedPayload) {
+                        window.HouseLayoutSync.saveAndSyncHouseLayout(room.id, savedPayload);
                     }
                 }
             }
@@ -218,20 +354,34 @@
         item.el.style.height = (item.h * tilePx) + 'px';
     }
 
-    function layoutAllBoards() {
+    function layoutAllBoards(force = false) {
+        // Никогда не пересчитываем макет во время перетаскивания или панорамирования
+        if ((activeDragSession && activeDragSession.isDragging) || panSession) return;
+
         const viewport = document.getElementById('house-viewport');
         if (!viewport || roomsState.length === 0) return;
 
         const style = getComputedStyle(viewport);
         const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
         const availH = Math.max(240, viewport.clientHeight - padY);
-        const availW = Math.max(240, viewport.clientWidth - 40);
+        const availW = Math.max(240, viewport.clientWidth - 32);
 
-        const maxGridH = Math.max(...roomsState.map(r => r.gridH));
-        // Достаточно крупная плитка, чтобы удобно перетаскивать пальцем на смартфоне (минимум ~42px)
-        const byHeight = Math.floor((availH - 54) / maxGridH);
-        const byMobileSingleRoom = Math.floor((Math.max(availW, 320) - 24) / 7);
-        tilePx = Math.max(40, Math.min(58, Math.max(byHeight, Math.min(byMobileSingleRoom, 50))));
+        // Игнорируем мелкое дрожание высоты экрана при скролле на телефоне (адресная строка)
+        if (!force && lastViewportW > 0 &&
+            Math.abs(availW - lastViewportW) < 24 &&
+            Math.abs(availH - lastViewportH) < 120) {
+            return;
+        }
+        lastViewportW = availW;
+        lastViewportH = availH;
+
+        const subH = Math.floor((availH - 42) / 8);
+        const subW = Math.floor((Math.max(availW, 320) - 24) / 8);
+        const nextTilePx = Math.max(38, Math.min(54, Math.min(subH, subW)));
+
+        if (!force && nextTilePx === lastTilePx) return;
+        lastTilePx = nextTilePx;
+        tilePx = nextTilePx;
 
         roomsState.forEach(room => {
             if (!room.boardEl) return;
@@ -240,9 +390,6 @@
             room.boardEl.style.backgroundSize = `${tilePx}px ${tilePx}px`;
 
             if (room.gridOverlay) {
-                room.gridOverlay.style.backgroundImage =
-                    'linear-gradient(to right, rgba(56, 189, 248, 0.25) 1px, transparent 1px), ' +
-                    'linear-gradient(to bottom, rgba(56, 189, 248, 0.25) 1px, transparent 1px)';
                 room.gridOverlay.style.backgroundSize = `${tilePx}px ${tilePx}px`;
             }
 
@@ -250,12 +397,60 @@
         });
     }
 
-    function jumpToRoom(roomSectionId) {
-        const el = document.getElementById(roomSectionId);
+    function jumpToQuadrant(quadKey, smooth = true) {
+        const viewport = document.getElementById('house-viewport');
+        const room = roomsState[0];
+        if (!viewport || !room || !room.boardEl) return;
+
+        const halfW = (room.gridW / 2) * tilePx;
+        const halfH = (room.gridH / 2) * tilePx;
+
+        let targetOffsetX = 0;
+        let targetOffsetY = 0;
+        if (quadKey === 'hall') {
+            targetOffsetX = halfW;
+        } else if (quadKey === 'room') {
+            targetOffsetY = halfH;
+        } else if (quadKey === 'corridor') {
+            targetOffsetX = halfW;
+            targetOffsetY = halfH;
+        }
+
+        const vpRect = viewport.getBoundingClientRect();
+        const boardRect = room.boardEl.getBoundingClientRect();
+        const boardLeftInScroll = (boardRect.left - vpRect.left) + viewport.scrollLeft;
+        const boardTopInScroll = (boardRect.top - vpRect.top) + viewport.scrollTop;
+
+        const targetLeft = Math.max(0, boardLeftInScroll + targetOffsetX - Math.max(0, (viewport.clientWidth - halfW) / 2));
+        const targetTop = Math.max(0, boardTopInScroll + targetOffsetY - Math.max(0, (viewport.clientHeight - halfH - 56) / 2));
+
+        viewport.scrollTo({
+            left: targetLeft,
+            top: targetTop,
+            behavior: smooth ? 'smooth' : 'auto'
+        });
+    }
+
+    function jumpToRoom(targetKey) {
+        if (targetKey === 'section-kitchen' || targetKey === 'kitchen') {
+            jumpToQuadrant('kitchen', true);
+            return;
+        }
+        if (targetKey === 'section-hall' || targetKey === 'hall') {
+            jumpToQuadrant('hall', true);
+            return;
+        }
+        if (targetKey === 'room' || targetKey === 'corridor') {
+            jumpToQuadrant(targetKey, true);
+            return;
+        }
+        const el = document.getElementById(targetKey);
         if (el && typeof el.scrollIntoView === 'function') {
             el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
         }
     }
+
+    window.jumpToQuadrant = jumpToQuadrant;
     window.jumpToRoom = jumpToRoom;
 
     function findTrackedTouch(touchList, id) {
@@ -309,28 +504,47 @@
     function enterDragMode(clientX, clientY) {
         if (!activeDragSession || activeDragSession.isDragging) return;
         activeDragSession.isDragging = true;
+        activeDragSession.holdUnlocked = true;
+        activeDragSession.item.el.classList.remove('is-holding');
         activeDragSession.item.el.classList.add('is-dragging');
+
+        const viewport = document.getElementById('house-viewport');
+        if (viewport) viewport.classList.add('is-dragging-item');
+
         if (activeDragSession.room.gridOverlay) {
             activeDragSession.room.gridOverlay.classList.add('visible');
+        }
+        if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+            try { navigator.vibrate(35); } catch (e) {}
         }
         updateDragVisuals(clientX, clientY);
     }
 
     function handleDragMove(clientX, clientY) {
-        if (!activeDragSession) return;
+        if (!activeDragSession) return false;
         activeDragSession.lastX = clientX;
         activeDragSession.lastY = clientY;
         const dx = clientX - activeDragSession.startX;
         const dy = clientY - activeDragSession.startY;
-        if (Math.hypot(dx, dy) >= 6) {
+        const dist = Math.hypot(dx, dy);
+
+        if (dist >= MOVE_CANCEL_THRESHOLD_PX) {
             activeDragSession.movedPastTap = true;
         }
-        if (!activeDragSession.isDragging && Math.hypot(dx, dy) >= 5) {
-            clearTimeout(activeDragSession.holdTimer);
-            enterDragMode(clientX, clientY);
-        } else if (activeDragSession.isDragging) {
-            updateDragVisuals(clientX, clientY);
+
+        // КЛЮЧЕВОЕ ПРАВИЛО: Пока не прошло 1.5с неподвижного удержания, любое движение >= 10px
+        // немедленно отменяет удержание и позволяет свободно прокручивать/двигать экран!
+        if (!activeDragSession.isDragging) {
+            if (dist >= MOVE_CANCEL_THRESHOLD_PX) {
+                const canceledSession = activeDragSession;
+                finishDragSession(false, false);
+                return canceledSession;
+            }
+            return false;
         }
+
+        updateDragVisuals(clientX, clientY);
+        return false;
     }
 
     function finishDragSession(commit, allowTouchTap = false) {
@@ -340,11 +554,14 @@
 
         clearTimeout(s.holdTimer);
         s.item.el.classList.remove('is-holding', 'is-dragging', 'is-blocked');
+        const viewport = document.getElementById('house-viewport');
+        if (viewport) viewport.classList.remove('is-dragging-item');
+
         if (s.room.gridOverlay) s.room.gridOverlay.classList.remove('visible');
         if (s.room.targetBox) s.room.targetBox.classList.remove('visible', 'blocked');
 
         if (s.isDragging) {
-            justDraggedUntil = Date.now() + 400;
+            justDraggedUntil = Date.now() + 450;
             if (commit && s.canDrop) {
                 s.item.col = s.targetCol;
                 s.item.row = s.targetRow;
@@ -385,13 +602,14 @@
             targetCol: item.col,
             targetRow: item.row,
             canDrop: true,
+            holdUnlocked: false,
             isDragging: false,
             movedPastTap: false,
             holdTimer: setTimeout(() => {
-                if (activeDragSession && activeDragSession.mode === mode) {
+                if (activeDragSession && activeDragSession.mode === mode && !activeDragSession.movedPastTap) {
                     enterDragMode(activeDragSession.lastX, activeDragSession.lastY);
                 }
-            }, 120)
+            }, HOLD_TO_DRAG_MS)
         };
     }
 
@@ -410,9 +628,9 @@
             }
         });
 
-        // 1. Статические capture-phase Touch-обработчики для 100% работы на телефонах:
-        // если палец коснулся фигуры прибора — сразу блокируем нативный скролл и тянем прибор;
-        // если коснулся пустого пола/фона — НЕ блокируем, позволяем плавный панорамный скролл!
+        // 1. Touch-обработчики:
+        // До 1.5с удержания НЕ блокируем нативный скролл — пользователь может свободно свайпать по фигурам.
+        // Только после 1.5с неподвижного удержания перехватываем палец и перетаскиваем объект.
         document.addEventListener('touchstart', (e) => {
             if (!e.touches || e.touches.length !== 1) return;
             const target = e.target;
@@ -422,28 +640,38 @@
             const item = itemEl._houseRoomItem;
             if (!item) return;
 
-            if (e.cancelable) e.preventDefault();
-            e.stopPropagation();
-
             const t = e.touches[0];
             startItemSession('touch', item, t.clientX, t.clientY, t.identifier);
-        }, { capture: true, passive: false });
+        }, { capture: true, passive: true });
 
         document.addEventListener('touchmove', (e) => {
             if (!activeDragSession || activeDragSession.mode !== 'touch') return;
-            if (e.cancelable) e.preventDefault();
-            e.stopPropagation();
             const t = findTrackedTouch(e.touches, activeDragSession.touchId) ||
                       findTrackedTouch(e.changedTouches, activeDragSession.touchId);
-            if (t) handleDragMove(t.clientX, t.clientY);
+            if (!t) return;
+
+            if (activeDragSession.isDragging) {
+                if (e.cancelable) e.preventDefault();
+                e.stopPropagation();
+            }
+            handleDragMove(t.clientX, t.clientY);
         }, { capture: true, passive: false });
 
         document.addEventListener('touchend', (e) => {
             if (!activeDragSession || activeDragSession.mode !== 'touch') return;
             const t = findTrackedTouch(e.changedTouches, activeDragSession.touchId);
             if (!t) return;
-            if (e.cancelable) e.preventDefault();
-            finishDragSession(true, true);
+
+            if (activeDragSession.isDragging) {
+                if (e.cancelable) e.preventDefault();
+                finishDragSession(true, false);
+                return;
+            }
+
+            const moved = Math.hypot(t.clientX - activeDragSession.startX, t.clientY - activeDragSession.startY) >= MOVE_CANCEL_THRESHOLD_PX;
+            const isLinkTap = !moved && !activeDragSession.movedPastTap && activeDragSession.item.el.tagName === 'A';
+            if (isLinkTap && e.cancelable) e.preventDefault();
+            finishDragSession(false, isLinkTap);
         }, { capture: true, passive: false });
 
         document.addEventListener('touchcancel', (e) => {
@@ -453,9 +681,8 @@
             finishDragSession(Boolean(activeDragSession.isDragging && activeDragSession.canDrop), false);
         }, { capture: true });
 
-        // 2. Pointer-обработчики для десктопа (мышь / стилус), тач пропускается в Touch API выше
-        let panSession = null;
-
+        // 2. Pointer-обработчики (мышь / стилус):
+        // Если мышь нажала на объект и сдвинулась >= 10px ДО 1.5с удержания — плавно панорамируем экран!
         document.addEventListener('pointerdown', (e) => {
             if (e.pointerType === 'touch') return;
             if (e.button !== undefined && e.button !== 0) return;
@@ -467,7 +694,6 @@
                 return;
             }
 
-            // Перетаскивание пустого фона мышкой для панорамирования без колеса мыши
             if (viewport && target && target.closest && target.closest('.house-viewport') && !target.closest('.top-nav')) {
                 panSession = {
                     pointerId: e.pointerId,
@@ -482,7 +708,19 @@
 
         window.addEventListener('pointermove', (e) => {
             if (activeDragSession && activeDragSession.mode === 'pointer' && e.pointerId === activeDragSession.pointerId) {
-                handleDragMove(e.clientX, e.clientY);
+                const canceled = handleDragMove(e.clientX, e.clientY);
+                if (canceled && viewport) {
+                    panSession = {
+                        pointerId: e.pointerId,
+                        startX: canceled.startX,
+                        startY: canceled.startY,
+                        startScrollLeft: viewport.scrollLeft,
+                        startScrollTop: viewport.scrollTop
+                    };
+                    viewport.classList.add('is-panning');
+                    viewport.scrollLeft = panSession.startScrollLeft - (e.clientX - panSession.startX);
+                    viewport.scrollTop = panSession.startScrollTop - (e.clientY - panSession.startY);
+                }
                 return;
             }
             if (panSession && e.pointerId === panSession.pointerId && viewport) {
@@ -515,14 +753,25 @@
         }
 
         roomsState = (cfg.rooms || []).map(loadRoomLayoutState);
-        layoutAllBoards();
+        layoutAllBoards(true);
         initInteractions();
         syncAllRoomsWithDatabase();
 
-        if (window.location.hash === '#hall') {
-            setTimeout(() => jumpToRoom('section-hall'), 60);
-        } else if (window.location.hash === '#kitchen') {
-            setTimeout(() => jumpToRoom('section-kitchen'), 60);
+        setTimeout(() => {
+            if (navigator.onLine !== false) syncAllRoomsWithDatabase();
+        }, 600);
+
+        if (window.supabaseClient && window.supabaseClient.auth && typeof window.supabaseClient.auth.onAuthStateChange === 'function') {
+            window.supabaseClient.auth.onAuthStateChange((event) => {
+                if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                    syncAllRoomsWithDatabase();
+                }
+            });
+        }
+
+        const hash = String(window.location.hash || '').replace(/^#/, '').toLowerCase();
+        if (hash === 'hall' || hash === 'kitchen' || hash === 'room' || hash === 'corridor') {
+            setTimeout(() => jumpToQuadrant(hash, false), 40);
         }
     }
 
@@ -536,7 +785,7 @@
             window.location.reload();
         });
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/service-worker.js?v=20261121_5', { updateViaCache: 'none' })
+            navigator.serviceWorker.register('/service-worker.js?v=20261122_1', { updateViaCache: 'none' })
                 .then((reg) => {
                     if (reg && typeof reg.update === 'function') reg.update().catch(() => {});
                 })
@@ -553,16 +802,24 @@
             syncAllRoomsWithDatabase();
         }
     });
-    window.addEventListener('resize', layoutAllBoards);
+    window.addEventListener('pagehide', () => {
+        if (window.HouseLayoutSync && typeof window.HouseLayoutSync.flushPendingHouseLayouts === 'function') {
+            window.HouseLayoutSync.flushPendingHouseLayouts();
+        }
+    });
+    window.addEventListener('resize', () => layoutAllBoards(false));
     if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', layoutAllBoards);
+        window.visualViewport.addEventListener('resize', () => layoutAllBoards(false));
     }
 
-    // Экспортируем для отладки/тестов при необходимости
     window.HouseEngine = {
+        HOLD_TO_DRAG_MS,
+        MOVE_CANCEL_THRESHOLD_PX,
         getRoomsState: () => roomsState,
         canPlaceItem,
+        applyLayoutMap,
         layoutAllBoards,
+        jumpToQuadrant,
         syncAllRoomsWithDatabase
     };
 })();

@@ -8,8 +8,8 @@
     <meta http-equiv="Expires" content="0">
     <title>Поручения и Задания — Cloud Terminal</title>
     
-    <link rel="stylesheet" href="/style.css?v=20261121_5">
-    <link rel="stylesheet" href="/dashboard.css?v=20261121_5">
+    <link rel="stylesheet" href="/style.css?v=20261122_1">
+    <link rel="stylesheet" href="/dashboard.css?v=20261122_1">
     
     <style>
         :root {
@@ -774,10 +774,10 @@
     </style>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="/api.js?v=20261121_5"></script>
-    <script src="/helpers.js?v=20261121_5"></script>
-    <script src="/localization.js?v=20261121_5"></script>
-    <script src="/missions-store.js?v=20261121_5"></script>
+    <script src="/api.js?v=20261122_1"></script>
+    <script src="/helpers.js?v=20261122_1"></script>
+    <script src="/localization.js?v=20261122_1"></script>
+    <script src="/missions-store.js?v=20261122_1"></script>
 </head>
 <body>
 
@@ -903,17 +903,17 @@
         <div class="table-controls">
             <div>
                 <h3 style="margin: 0; font-size: 15px; font-weight: 700; color: var(--text-main);">
-                    🗄️ Таблица базы данных (Все поручения)
+                    🗄️ Таблица выполненных поручений
                 </h3>
                 <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-                    Остаются в таблице с датой и точной таймзоной выполнения
+                    По умолчанию показаны только выполненные поручения с точным временем и давностью выполнения (чтобы не дублировать активные)
                 </div>
             </div>
 
             <div class="filter-tabs">
-                <button type="button" class="filter-tab active" onclick="setTableFilter('all', this)" id="tab-all">Все (0)</button>
+                <button type="button" class="filter-tab active" onclick="setTableFilter('completed', this)" id="tab-completed">Выполненные (0)</button>
                 <button type="button" class="filter-tab" onclick="setTableFilter('pending', this)" id="tab-pending">В процессе (0)</button>
-                <button type="button" class="filter-tab" onclick="setTableFilter('completed', this)" id="tab-completed">Выполненные (0)</button>
+                <button type="button" class="filter-tab" onclick="setTableFilter('all', this)" id="tab-all">Все (0)</button>
             </div>
         </div>
 
@@ -1016,7 +1016,7 @@ on conflict (id) do nothing;</div>
 </div>
 
 <script>
-    let currentFilter = 'all';
+    let currentFilter = 'completed';
     let isActivelyDragging = false;
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -1054,6 +1054,12 @@ on conflict (id) do nothing;</div>
                 window.MissionsStore.trySyncSupabase(false).catch(() => {});
             }
         }, 8000);
+
+        // Живое обновление меток "сколько времени назад выполнено"
+        setInterval(() => {
+            if (isActivelyDragging) return;
+            refreshCompletedTimeAgoLabels();
+        }, 30000);
     });
 
     let toastTimer = null;
@@ -1806,6 +1812,21 @@ on conflict (id) do nothing;</div>
         });
     }
 
+    function formatMissionTimeAgo(dateInput) {
+        if (window.MissionsStore && typeof window.MissionsStore.formatTimeAgo === 'function') {
+            return window.MissionsStore.formatTimeAgo(dateInput);
+        }
+        return '';
+    }
+
+    function refreshCompletedTimeAgoLabels() {
+        document.querySelectorAll('.time-ago-val[data-completed-at]').forEach(el => {
+            const iso = el.getAttribute('data-completed-at');
+            const ago = formatMissionTimeAgo(iso);
+            if (ago) el.textContent = `🕒 ${ago}`;
+        });
+    }
+
     function renderTableOnly() {
         const allMissions = window.MissionsStore.getAllMissions();
         const activeMissions = window.MissionsStore.getActiveMissions();
@@ -1826,9 +1847,9 @@ on conflict (id) do nothing;</div>
             completedNumberMap.set(String(cm.id), i + 1);
         });
 
-        let displayList = allMissions;
+        let displayList = completedMissions;
+        if (currentFilter === 'all') displayList = allMissions;
         if (currentFilter === 'pending') displayList = activeMissions;
-        if (currentFilter === 'completed') displayList = completedMissions;
 
         const tbody = document.getElementById('missions-table-body');
         if (!displayList || displayList.length === 0) {
@@ -1843,6 +1864,7 @@ on conflict (id) do nothing;</div>
             const displayNum = isDone
                 ? (completedNumberMap.get(String(m.id)) || (idx + 1))
                 : (activeNumberMap.get(String(m.id)) || m.position || (idx + 1));
+            const agoLabel = isDone ? formatMissionTimeAgo(m.completed_at) : '';
             const tr = document.createElement('tr');
 
             tr.innerHTML = `
@@ -1855,7 +1877,7 @@ on conflict (id) do nothing;</div>
                 </td>
                 <td>
                     ${isDone
-                        ? `<span class="time-completed-val">✅ ${escapeHtml(m.completed_display || m.completed_at)}</span>`
+                        ? `<span class="time-completed-val">✅ ${escapeHtml(m.completed_display || m.completed_at)}</span>${agoLabel ? `<div class="time-ago-val" data-completed-at="${escapeHtml(m.completed_at)}" style="font-size:11px; color:var(--accent-blue); margin-top:2px;">🕒 ${escapeHtml(agoLabel)}</div>` : ''}`
                         : `<span class="time-pending-val">⏳ В процессе (в активном списке)</span>`
                     }
                 </td>
