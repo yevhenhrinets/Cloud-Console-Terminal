@@ -142,7 +142,7 @@ async function fetchCurrentUser(requireRealAuth = false) {
 }
 
 function isAdminUser(user) {
-    if (!user) return false;
+    if (!user || user.isGuest || user.id === 'guest') return false;
     const role = String(user.role || '').toLowerCase();
     const email = String(user.email || '').toLowerCase();
     return ['root', 'support', 'admin'].includes(role) || email === 'e.grinec@gmail.com' || email === 'yevhenhrinets@gmail.com';
@@ -1461,10 +1461,26 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 // =========================================================================
 const SUPPORT_REPORTS_LOCAL_KEY = 'terminal_support_reports_v1';
 const SUPPORT_REPORTS_PENDING_KEY = 'terminal_pending_support_reports_v1';
+const SUPPORT_REPORTS_PENDING_UPDATES_KEY = 'terminal_pending_support_report_updates_v1';
 const SUPPORT_ADMIN_SEEN_KEY = 'terminal_admin_seen_support_ids_v1';
 let supportReportsFlushPromise = null;
+let supportReportUpdatesFlushPromise = null;
 let supportReportsTableMissing = false;
 let supportRealtimeChannel = null;
+
+function normalizeSupportStatus(rawStatus) {
+    const s = String(rawStatus || '').trim().toLowerCase();
+    if (s === 'resolved' || s === 'completed' || s === 'closed' || s === 'done') return 'resolved';
+    if (s === 'in_review' || s === 'in_progress' || s === 'review' || s === 'taken' || s === 'pending_review') return 'in_review';
+    return 'open';
+}
+
+function getSupportStatusRank(status) {
+    const norm = normalizeSupportStatus(status);
+    if (norm === 'resolved') return 3;
+    if (norm === 'in_review') return 2;
+    return 1;
+}
 
 function getLocalSupportReports() {
     try {
@@ -1498,6 +1514,22 @@ function savePendingSupportReports(list) {
     } catch (e) {}
 }
 
+function getPendingSupportReportUpdates() {
+    try {
+        const raw = localStorage.getItem(SUPPORT_REPORTS_PENDING_UPDATES_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function savePendingSupportReportUpdates(list) {
+    try {
+        localStorage.setItem(SUPPORT_REPORTS_PENDING_UPDATES_KEY, JSON.stringify(list || []));
+    } catch (e) {}
+}
+
 function getAdminSeenSupportIds() {
     try {
         const raw = localStorage.getItem(SUPPORT_ADMIN_SEEN_KEY);
@@ -1527,7 +1559,13 @@ function normalizeSupportReportRow(row) {
             user_email: p.user_email || row.output || 'unknown@local',
             user_name: p.user_name || '',
             message: p.message || '',
-            status: p.status || 'open',
+            status: normalizeSupportStatus(p.status),
+            review_note: p.review_note || '',
+            taken_by: p.taken_by || '',
+            taken_at: p.taken_at || null,
+            resolved_by: p.resolved_by || '',
+            resolved_at: p.resolved_at || null,
+            updated_at: p.updated_at || p.created_at || row.created_at || null,
             created_at: p.created_at || row.created_at || new Date().toISOString()
         };
     }
@@ -1538,9 +1576,37 @@ function normalizeSupportReportRow(row) {
         user_email: row.user_email || 'unknown@local',
         user_name: row.user_name || '',
         message: row.message || '',
-        status: row.status || 'open',
+        status: normalizeSupportStatus(row.status),
+        review_note: row.review_note || '',
+        taken_by: row.taken_by || '',
+        taken_at: row.taken_at || null,
+        resolved_by: row.resolved_by || '',
+        resolved_at: row.resolved_at || null,
+        updated_at: row.updated_at || row.created_at || null,
         created_at: row.created_at || new Date().toISOString()
     };
+}
+
+function applyReportUpdateFields(target, update) {
+    if (!target || !update) return target;
+    const curUpdMs = target.updated_at ? new Date(target.updated_at).getTime() : 0;
+    const newUpdMs = update.updated_at ? new Date(update.updated_at).getTime() : 0;
+    const curRank = getSupportStatusRank(target.status);
+    const newRank = getSupportStatusRank(update.status);
+
+    if (newUpdMs >= curUpdMs || newRank > curRank) {
+        if (update.status) target.status = normalizeSupportStatus(update.status);
+        if (update.review_note !== undefined && update.review_note !== null && String(update.review_note).trim() !== '') {
+            target.review_note = String(update.review_note).trim();
+        }
+        if (update.taken_by) target.taken_by = update.taken_by;
+        if (update.taken_at) target.taken_at = update.taken_at;
+        if (update.resolved_by) target.resolved_by = update.resolved_by;
+        if (update.resolved_at) target.resolved_at = update.resolved_at;
+        if (update.updated_at) target.updated_at = update.updated_at;
+    }
+    if (!target.inner_id && update.inner_id) target.inner_id = Number(update.inner_id);
+    return target;
 }
 
 async function flushPendingSupportReports() {
@@ -1577,7 +1643,7 @@ async function flushPendingSupportReports() {
                                 user_email: entry.user_email || user.email,
                                 user_name: entry.user_name || user.name || '',
                                 message: entry.message,
-                                status: entry.status || 'open',
+                                status: normalizeSupportStatus(entry.status),
                                 created_at: entry.created_at
                             }]);
                         if (!error) {
@@ -1613,7 +1679,13 @@ async function flushPendingSupportReports() {
                                     user_email: entry.user_email || user.email,
                                     user_name: entry.user_name || user.name || '',
                                     message: entry.message,
-                                    status: entry.status || 'open',
+                                    status: normalizeSupportStatus(entry.status),
+                                    review_note: entry.review_note || '',
+                                    taken_by: entry.taken_by || '',
+                                    taken_at: entry.taken_at || null,
+                                    resolved_by: entry.resolved_by || '',
+                                    resolved_at: entry.resolved_at || null,
+                                    updated_at: entry.updated_at || entry.created_at,
                                     created_at: entry.created_at
                                 },
                                 output: entry.user_email || user.email,
@@ -1661,11 +1733,118 @@ async function flushPendingSupportReports() {
     return supportReportsFlushPromise;
 }
 
+async function flushPendingSupportReportUpdates() {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return 0;
+    if (!window.supabaseClient) return 0;
+    if (supportReportUpdatesFlushPromise) return supportReportUpdatesFlushPromise;
+
+    supportReportUpdatesFlushPromise = (async () => {
+        try {
+            const pending = getPendingSupportReportUpdates();
+            if (!pending || pending.length === 0) return 0;
+
+            const user = await fetchCurrentUser(true);
+            if (!user || user.isGuest || !user.id || user.id === 'guest') return 0;
+
+            let flushedCount = 0;
+            const remaining = [];
+            let networkFailed = false;
+
+            for (const entry of pending) {
+                if (networkFailed) {
+                    remaining.push(entry);
+                    continue;
+                }
+                let savedOk = false;
+
+                if (!supportReportsTableMissing) {
+                    try {
+                        const { error } = await window.supabaseClient
+                            .from('support_reports')
+                            .update({ status: normalizeSupportStatus(entry.status) })
+                            .eq('id', entry.report_id);
+                        if (!error) {
+                            // Таблице support_reports может не хватать доп. колонок, поэтому всё равно пишем в commands_history ниже
+                        } else if (isMissingTableError(error)) {
+                            supportReportsTableMissing = true;
+                        } else if (isOfflineNetworkError(error)) {
+                            networkFailed = true;
+                            remaining.push(entry);
+                            continue;
+                        }
+                    } catch (e) {
+                        if (isOfflineNetworkError(e)) {
+                            networkFailed = true;
+                            remaining.push(entry);
+                            continue;
+                        }
+                    }
+                }
+
+                try {
+                    const { error: histErr } = await window.supabaseClient
+                        .from('commands_history')
+                        .insert([{
+                            raw_text: `__support_report_update__:${entry.report_id}`,
+                            command: '__support_report_update__',
+                            parameters: {
+                                type: 'support_report_update',
+                                report_id: entry.report_id,
+                                inner_id: entry.inner_id || null,
+                                status: normalizeSupportStatus(entry.status),
+                                review_note: entry.review_note || '',
+                                taken_by: entry.taken_by || '',
+                                taken_at: entry.taken_at || null,
+                                resolved_by: entry.resolved_by || '',
+                                resolved_at: entry.resolved_at || null,
+                                updated_at: entry.updated_at || new Date().toISOString()
+                            },
+                            output: `Issue #${entry.inner_id || entry.report_id}: ${entry.status}`,
+                            result: 'SUPPORT_REPORT_UPDATE',
+                            status: 'success',
+                            created_at: entry.updated_at || new Date().toISOString(),
+                            created_by: user.id
+                        }]);
+                    if (!histErr) {
+                        savedOk = true;
+                    } else if (isOfflineNetworkError(histErr)) {
+                        networkFailed = true;
+                        remaining.push(entry);
+                        continue;
+                    } else {
+                        console.warn('Support report update DB save error:', histErr.message);
+                    }
+                } catch (e) {
+                    if (isOfflineNetworkError(e)) {
+                        networkFailed = true;
+                        remaining.push(entry);
+                        continue;
+                    }
+                }
+
+                if (savedOk) flushedCount++;
+            }
+
+            const currentPending = getPendingSupportReportUpdates();
+            const processedIds = new Set(pending.map(p => p.updateId));
+            const newlyAdded = currentPending.filter(p => !processedIds.has(p.updateId));
+            savePendingSupportReportUpdates([...remaining, ...newlyAdded]);
+            return flushedCount;
+        } catch (err) {
+            return 0;
+        } finally {
+            supportReportUpdatesFlushPromise = null;
+        }
+    })();
+
+    return supportReportUpdatesFlushPromise;
+}
+
 async function submitSupportReport(message, currentUser, contactOverride = null) {
     const cleanMsg = String(message || '').trim();
     const cleanContact = contactOverride ? String(contactOverride).trim() : '';
-    const localList = getLocalSupportReports();
-    const maxInner = localList.reduce((m, r) => Math.max(m, Number(r.inner_id || 0)), 0);
+    const existingReports = await fetchSupportReports(currentUser).catch(() => getLocalSupportReports());
+    const maxInner = existingReports.reduce((m, r) => Math.max(m, Number(r.inner_id || 0)), 0);
     const reportId = 'rep_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const nowIso = new Date().toISOString();
     const userEmail = cleanContact || ((currentUser && currentUser.email) ? currentUser.email : 'guest@local');
@@ -1680,9 +1859,16 @@ async function submitSupportReport(message, currentUser, contactOverride = null)
         user_name: userName,
         message: cleanMsg,
         status: 'open',
+        review_note: '',
+        taken_by: '',
+        taken_at: null,
+        resolved_by: '',
+        resolved_at: null,
+        updated_at: nowIso,
         created_at: nowIso
     };
 
+    const localList = getLocalSupportReports();
     localList.unshift(report);
     saveLocalSupportReports(localList);
 
@@ -1701,15 +1887,17 @@ async function submitSupportReport(message, currentUser, contactOverride = null)
     return { report, synced };
 }
 
-async function fetchSupportReportsForAdmin(currentUser) {
-    if (!isAdminUser(currentUser)) return [];
-
+async function fetchSupportReports(currentUser = null) {
     const byId = new Map();
+    const updates = [];
+
     const mergeReport = (r) => {
         if (!r) return;
         const key = String(r.id || `${r.user_email}_${r.created_at}`);
         if (!byId.has(key)) {
-            byId.set(key, r);
+            byId.set(key, { ...r });
+        } else {
+            applyReportUpdateFields(byId.get(key), r);
         }
     };
 
@@ -1717,6 +1905,7 @@ async function fetchSupportReportsForAdmin(currentUser) {
     if (isOnline && window.supabaseClient) {
         try {
             await flushPendingSupportReports();
+            await flushPendingSupportReportUpdates();
         } catch (e) {}
 
         if (!supportReportsTableMissing) {
@@ -1738,33 +1927,114 @@ async function fetchSupportReportsForAdmin(currentUser) {
             const { data: histRows, error: histErr } = await window.supabaseClient
                 .from('commands_history')
                 .select('*')
-                .eq('command', '__support_report__')
+                .in('command', ['__support_report__', '__support_report_update__'])
                 .is('deleted_at', null)
                 .order('created_at', { ascending: false })
-                .limit(100);
+                .limit(200);
             if (!histErr && Array.isArray(histRows)) {
-                histRows.map(normalizeSupportReportRow).forEach(mergeReport);
+                histRows.forEach(row => {
+                    if (row.command === '__support_report__') {
+                        mergeReport(normalizeSupportReportRow(row));
+                    } else if (row.command === '__support_report_update__' && row.parameters) {
+                        updates.push({
+                            report_id: String(row.parameters.report_id || ''),
+                            inner_id: Number(row.parameters.inner_id || 0) || null,
+                            status: row.parameters.status,
+                            review_note: row.parameters.review_note,
+                            taken_by: row.parameters.taken_by,
+                            taken_at: row.parameters.taken_at,
+                            resolved_by: row.parameters.resolved_by,
+                            resolved_at: row.parameters.resolved_at,
+                            updated_at: row.parameters.updated_at || row.created_at
+                        });
+                    }
+                });
             }
         } catch (e) {}
     }
 
     getLocalSupportReports().map(normalizeSupportReportRow).forEach(mergeReport);
+    getPendingSupportReportUpdates().forEach(u => updates.push(u));
 
     const list = Array.from(byId.values());
     list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     list.forEach((item, idx) => {
         if (!item.inner_id) item.inner_id = list.length - idx;
     });
+
+    // Сортируем обновления от старых к новым и применяем к соответствующим заявкам
+    updates.sort((a, b) => new Date(a.updated_at || 0).getTime() - new Date(b.updated_at || 0).getTime());
+    updates.forEach(u => {
+        const target = list.find(r =>
+            (u.report_id && String(r.id) === String(u.report_id)) ||
+            (u.inner_id && Number(r.inner_id) === Number(u.inner_id))
+        );
+        if (target) applyReportUpdateFields(target, u);
+    });
+
+    saveLocalSupportReports(list);
     return list;
+}
+
+async function fetchSupportReportsForAdmin(currentUser) {
+    if (!isAdminUser(currentUser)) return [];
+    return await fetchSupportReports(currentUser);
+}
+
+async function updateSupportReportStatus(innerIdOrId, nextStatus, currentUser, reviewNote = '') {
+    const reports = await fetchSupportReports(currentUser);
+    const numId = Number(innerIdOrId);
+    const strId = String(innerIdOrId || '').trim();
+    const target = reports.find(r =>
+        (Number.isInteger(numId) && numId > 0 && Number(r.inner_id) === numId) ||
+        String(r.id) === strId
+    );
+    if (!target) {
+        return { ok: false, error: 'NOT_FOUND' };
+    }
+
+    const nowIso = new Date().toISOString();
+    const normStatus = normalizeSupportStatus(nextStatus);
+    const actor = (currentUser && (currentUser.email || currentUser.name)) || 'support';
+    const cleanNote = String(reviewNote || '').trim();
+
+    const updateEntry = {
+        updateId: 'repupd_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        report_id: String(target.id),
+        inner_id: Number(target.inner_id),
+        status: normStatus,
+        review_note: cleanNote || target.review_note || '',
+        taken_by: normStatus === 'in_review' ? actor : (target.taken_by || actor),
+        taken_at: normStatus === 'in_review' ? (target.taken_at || nowIso) : (target.taken_at || nowIso),
+        resolved_by: normStatus === 'resolved' ? actor : (target.resolved_by || ''),
+        resolved_at: normStatus === 'resolved' ? nowIso : (target.resolved_at || null),
+        updated_at: nowIso
+    };
+
+    applyReportUpdateFields(target, updateEntry);
+    saveLocalSupportReports(reports);
+
+    const pendingUpdates = getPendingSupportReportUpdates();
+    pendingUpdates.push(updateEntry);
+    savePendingSupportReportUpdates(pendingUpdates);
+
+    let synced = false;
+    const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
+    if (isOnline && window.supabaseClient && currentUser && !currentUser.isGuest && currentUser.id !== 'guest') {
+        await flushPendingSupportReportUpdates();
+        synced = !getPendingSupportReportUpdates().some(u => u.updateId === updateEntry.updateId);
+    }
+
+    return { ok: true, report: target, synced };
 }
 
 async function checkAndNotifyAdmin(currentUser, notifyFn) {
     if (!isAdminUser(currentUser) || typeof notifyFn !== 'function') return [];
-    const reports = await fetchSupportReportsForAdmin(currentUser);
+    const reports = await fetchSupportReports(currentUser);
     if (!reports || reports.length === 0) return [];
 
     const seenSet = new Set(getAdminSeenSupportIds().map(String));
-    const unseen = reports.filter(r => r.status !== 'resolved' && !seenSet.has(String(r.id)));
+    const unseen = reports.filter(r => normalizeSupportStatus(r.status) === 'open' && !seenSet.has(String(r.id)));
     if (unseen.length > 0) {
         markAdminSeenSupportIds(unseen.map(r => String(r.id)));
         notifyFn(unseen, reports);
@@ -1800,9 +2070,13 @@ function subscribeRealtimeAdminNotifications(currentUser, onNewReport) {
 }
 
 window.SupportReportsSync = {
+    normalizeSupportStatus,
     submitSupportReport,
     flushPendingSupportReports,
+    flushPendingSupportReportUpdates,
+    fetchSupportReports,
     fetchSupportReportsForAdmin,
+    updateSupportReportStatus,
     checkAndNotifyAdmin,
     markAdminSeenSupportIds,
     subscribeRealtimeAdminNotifications
@@ -2497,6 +2771,7 @@ async function flushAllOfflineConsoleQueues() {
     } catch (e) {}
     try {
         await flushPendingSupportReports();
+        await flushPendingSupportReportUpdates();
     } catch (e) {}
     try {
         await flushPendingCustomAliases();
@@ -2524,6 +2799,7 @@ if (typeof window !== 'undefined') {
             flushPendingHouseLayouts().catch(() => {});
             flushPendingLastPage().catch(() => {});
             flushPendingSupportReports().catch(() => {});
+            flushPendingSupportReportUpdates().catch(() => {});
             flushPendingCustomAliases().catch(() => {});
             flushPendingTaskCooldowns().catch(() => {});
         }
@@ -2535,6 +2811,7 @@ if (typeof window !== 'undefined') {
             flushPendingHouseLayouts().catch(() => {});
             flushPendingLastPage().catch(() => {});
             flushPendingSupportReports().catch(() => {});
+            flushPendingSupportReportUpdates().catch(() => {});
             flushPendingCustomAliases().catch(() => {});
             flushPendingTaskCooldowns().catch(() => {});
         }

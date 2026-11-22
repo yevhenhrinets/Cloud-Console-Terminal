@@ -4,12 +4,14 @@
 
 (function () {
     const HOLD_TO_DRAG_MS = 1500;
+    const HOLD_VISUAL_DELAY_MS = 250;
     const MOVE_CANCEL_THRESHOLD_PX = 10;
 
     let tilePx = 44;
     let lastTilePx = 0;
     let lastViewportW = 0;
     let lastViewportH = 0;
+    let cachedFloorTileUrl = null;
     let justDraggedUntil = 0;
     let roomsState = [];
     let initialized = false;
@@ -284,6 +286,7 @@
 
     async function syncAllRoomsWithDatabase() {
         if (!window.HouseLayoutSync || roomsState.length === 0) return;
+        if (activeDragSession || panSession) return;
         try {
             if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
             await window.HouseLayoutSync.flushPendingHouseLayouts();
@@ -347,7 +350,72 @@
         }
     }
 
+    function getFloorTileDataUrl() {
+        if (cachedFloorTileUrl !== null) return cachedFloorTileUrl;
+        try {
+            const size = 128;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                cachedFloorTileUrl = '';
+                return '';
+            }
+
+            const s = size / 128;
+            const drawPoly = (pts, fill, stroke, lineW) => {
+                ctx.beginPath();
+                pts.forEach(([x, y], idx) => {
+                    if (idx === 0) ctx.moveTo(x * s, y * s);
+                    else ctx.lineTo(x * s, y * s);
+                });
+                ctx.closePath();
+                if (fill) {
+                    ctx.fillStyle = fill;
+                    ctx.fill();
+                }
+                if (stroke && lineW) {
+                    ctx.strokeStyle = stroke;
+                    ctx.lineWidth = lineW * s;
+                    ctx.stroke();
+                }
+            };
+
+            ctx.fillStyle = '#526071';
+            ctx.fillRect(0, 0, size, size);
+
+            const corners = [[0, 0], [128, 0], [0, 128], [128, 128]];
+            corners.forEach(([cx, cy]) => {
+                drawPoly(
+                    [[cx, cy - 30], [cx + 30, cy], [cx, cy + 30], [cx - 30, cy]],
+                    '#2563EB', '#334155', 2.5
+                );
+                drawPoly(
+                    [[cx, cy - 21], [cx + 21, cy], [cx, cy + 21], [cx - 21, cy]],
+                    '#3B82F6', null, 0
+                );
+            });
+
+            drawPoly(
+                [[37, 4], [91, 4], [124, 37], [124, 91], [91, 124], [37, 124], [4, 91], [4, 37]],
+                '#FFFFFF', '#334155', 2.5
+            );
+            drawPoly(
+                [[40, 10], [88, 10], [118, 40], [118, 88], [88, 118], [40, 118], [10, 88], [10, 40]],
+                '#F8FAFC', '#CBD5E1', 1.5
+            );
+
+            cachedFloorTileUrl = canvas.toDataURL('image/png');
+            return cachedFloorTileUrl;
+        } catch (e) {
+            cachedFloorTileUrl = '';
+            return '';
+        }
+    }
+
     function applyItemGeometry(item, pxLeft, pxTop) {
+        item.el.style.transform = 'translate3d(0, 0, 0)';
         item.el.style.left = (pxLeft !== undefined ? pxLeft : item.col * tilePx) + 'px';
         item.el.style.top = (pxTop !== undefined ? pxTop : item.row * tilePx) + 'px';
         item.el.style.width = (item.w * tilePx) + 'px';
@@ -383,11 +451,17 @@
         lastTilePx = nextTilePx;
         tilePx = nextTilePx;
 
+        const floorTileUrl = getFloorTileDataUrl();
+
         roomsState.forEach(room => {
             if (!room.boardEl) return;
             room.boardEl.style.width = (tilePx * room.gridW) + 'px';
             room.boardEl.style.height = (tilePx * room.gridH) + 'px';
             room.boardEl.style.backgroundSize = `${tilePx}px ${tilePx}px`;
+            if (floorTileUrl && !room.boardEl.dataset.floorApplied) {
+                room.boardEl.style.backgroundImage = `url("${floorTileUrl}")`;
+                room.boardEl.dataset.floorApplied = '1';
+            }
 
             if (room.gridOverlay) {
                 room.gridOverlay.style.backgroundSize = `${tilePx}px ${tilePx}px`;
@@ -477,24 +551,28 @@
         if (!s) return;
 
         const room = s.room;
-        const rect = room.boardEl.getBoundingClientRect();
+        const rect = s.boardRect || room.boardEl.getBoundingClientRect();
         const maxLeft = (room.gridW - s.item.w) * tilePx;
         const maxTop = (room.gridH - s.item.h) * tilePx;
 
         const rawLeft = Math.max(0, Math.min(maxLeft, (clientX - rect.left) - s.grabOffsetX));
         const rawTop = Math.max(0, Math.min(maxTop, (clientY - rect.top) - s.grabOffsetY));
 
-        applyItemGeometry(s.item, rawLeft, rawTop);
+        const dx = rawLeft - s.origLeft;
+        const dy = rawTop - s.origTop;
+        s.item.el.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
 
         s.targetCol = Math.max(0, Math.min(room.gridW - s.item.w, Math.round(rawLeft / tilePx)));
         s.targetRow = Math.max(0, Math.min(room.gridH - s.item.h, Math.round(rawTop / tilePx)));
         s.canDrop = canPlaceItem(room, s.item.id, s.targetCol, s.targetRow, s.item.w, s.item.h);
 
         if (room.targetBox) {
-            room.targetBox.style.left = (s.targetCol * tilePx) + 'px';
-            room.targetBox.style.top = (s.targetRow * tilePx) + 'px';
-            room.targetBox.style.width = (s.item.w * tilePx) + 'px';
-            room.targetBox.style.height = (s.item.h * tilePx) + 'px';
+            room.targetBox.style.transform = `translate3d(${s.targetCol * tilePx}px, ${s.targetRow * tilePx}px, 0)`;
+            if (!s.targetBoxSized) {
+                room.targetBox.style.width = (s.item.w * tilePx) + 'px';
+                room.targetBox.style.height = (s.item.h * tilePx) + 'px';
+                s.targetBoxSized = true;
+            }
             room.targetBox.classList.add('visible');
             room.targetBox.classList.toggle('blocked', !s.canDrop);
         }
@@ -505,6 +583,7 @@
         if (!activeDragSession || activeDragSession.isDragging) return;
         activeDragSession.isDragging = true;
         activeDragSession.holdUnlocked = true;
+        activeDragSession.boardRect = activeDragSession.room.boardEl.getBoundingClientRect();
         activeDragSession.item.el.classList.remove('is-holding');
         activeDragSession.item.el.classList.add('is-dragging');
 
@@ -553,14 +632,15 @@
         activeDragSession = null;
 
         clearTimeout(s.holdTimer);
+        clearTimeout(s.holdVisualTimer);
         s.item.el.classList.remove('is-holding', 'is-dragging', 'is-blocked');
-        const viewport = document.getElementById('house-viewport');
-        if (viewport) viewport.classList.remove('is-dragging-item');
-
-        if (s.room.gridOverlay) s.room.gridOverlay.classList.remove('visible');
-        if (s.room.targetBox) s.room.targetBox.classList.remove('visible', 'blocked');
 
         if (s.isDragging) {
+            const viewport = document.getElementById('house-viewport');
+            if (viewport) viewport.classList.remove('is-dragging-item');
+            if (s.room.gridOverlay) s.room.gridOverlay.classList.remove('visible');
+            if (s.room.targetBox) s.room.targetBox.classList.remove('visible', 'blocked');
+
             justDraggedUntil = Date.now() + 450;
             if (commit && s.canDrop) {
                 s.item.col = s.targetCol;
@@ -569,7 +649,6 @@
             }
             applyItemGeometry(s.item);
         } else {
-            applyItemGeometry(s.item);
             if (allowTouchTap && s.mode === 'touch' && !s.movedPastTap) {
                 triggerLinkTap(s.item);
             }
@@ -581,36 +660,52 @@
 
         const room = item.room;
         const rect = room.boardEl.getBoundingClientRect();
-        const grabOffsetX = clientX - (rect.left + item.col * tilePx);
-        const grabOffsetY = clientY - (rect.top + item.row * tilePx);
+        const origLeft = item.col * tilePx;
+        const origTop = item.row * tilePx;
+        const grabOffsetX = clientX - (rect.left + origLeft);
+        const grabOffsetY = clientY - (rect.top + origTop);
 
-        item.el.classList.add('is-holding');
-        activeDragSession = {
+        const session = {
             mode,
             item,
             room,
+            boardRect: rect,
             touchId: mode === 'touch' ? pointerOrTouchId : null,
             pointerId: mode === 'pointer' ? pointerOrTouchId : null,
             startX: clientX,
             startY: clientY,
             lastX: clientX,
             lastY: clientY,
+            origLeft,
+            origTop,
             grabOffsetX,
             grabOffsetY,
             origCol: item.col,
             origRow: item.row,
             targetCol: item.col,
             targetRow: item.row,
+            targetBoxSized: false,
             canDrop: true,
             holdUnlocked: false,
             isDragging: false,
             movedPastTap: false,
-            holdTimer: setTimeout(() => {
-                if (activeDragSession && activeDragSession.mode === mode && !activeDragSession.movedPastTap) {
-                    enterDragMode(activeDragSession.lastX, activeDragSession.lastY);
-                }
-            }, HOLD_TO_DRAG_MS)
+            holdVisualTimer: null,
+            holdTimer: null
         };
+
+        session.holdVisualTimer = setTimeout(() => {
+            if (activeDragSession === session && !session.movedPastTap && !session.isDragging) {
+                session.item.el.classList.add('is-holding');
+            }
+        }, HOLD_VISUAL_DELAY_MS);
+
+        session.holdTimer = setTimeout(() => {
+            if (activeDragSession === session && activeDragSession.mode === mode && !activeDragSession.movedPastTap) {
+                enterDragMode(activeDragSession.lastX, activeDragSession.lastY);
+            }
+        }, HOLD_TO_DRAG_MS);
+
+        activeDragSession = session;
     }
 
     function initInteractions() {
@@ -785,7 +880,7 @@
             window.location.reload();
         });
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/service-worker.js?v=20261122_1', { updateViaCache: 'none' })
+            navigator.serviceWorker.register('/service-worker.js?v=20261122_3', { updateViaCache: 'none' })
                 .then((reg) => {
                     if (reg && typeof reg.update === 'function') reg.update().catch(() => {});
                 })

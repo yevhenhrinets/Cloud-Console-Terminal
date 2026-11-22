@@ -65,10 +65,10 @@ CommandRegistry.register({
             }
 
             if (isAdmin) {
-                helpText += "🔑 **Админ-модификаторы:**\n" +
+                helpText += "🔑 **Админ / Support команды:**\n" +
                     "  • Фильтрация данных: добавьте `of user [UUID]` к командам просмотра\n" +
                     "  • Действия от чужого лица: добавьте `as user [UUID]`\n" +
-                    "  • Обращения в поддержку: `reports` / `show issues`";
+                    "  • Обращения: `reports` / `issues`, взять в работу: `take issue number` / `take an issue` / `взять заявку номер`, завершить: `resolve issue number` / `завершить заявку номер`";
             }
 
             return { response: helpText.trim(), style: 'output-info' };
