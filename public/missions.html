@@ -8,8 +8,8 @@
     <meta http-equiv="Expires" content="0">
     <title>Поручения и Задания — Cloud Terminal</title>
     
-    <link rel="stylesheet" href="/style.css?v=20261122_3">
-    <link rel="stylesheet" href="/dashboard.css?v=20261122_3">
+    <link rel="stylesheet" href="/style.css?v=20261125_1">
+    <link rel="stylesheet" href="/dashboard.css?v=20261125_1">
     
     <style>
         :root {
@@ -398,6 +398,30 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        /* Кнопка отмены поручения */
+        .btn-cancel {
+            background: rgba(239, 68, 68, 0.14);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+
+        .btn-cancel:hover {
+            background: #b91c1c;
+            color: #ffffff;
+            border-color: #991b1b;
         }
 
         /* Кнопка отметки выполнения */
@@ -554,12 +578,35 @@
             white-space: nowrap;
         }
 
+        .badge-cancelled {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 600;
+            color: #f87171;
+            background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            padding: 2px 7px;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+
         .time-completed-val {
             font-family: monospace;
             font-size: 12px;
             color: #34d399;
             font-weight: 600;
             background: rgba(6, 95, 70, 0.25);
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+
+        .time-cancelled-val {
+            font-family: monospace;
+            font-size: 12px;
+            color: #f87171;
+            font-weight: 600;
+            background: rgba(127, 29, 29, 0.25);
             padding: 2px 6px;
             border-radius: 4px;
             display: inline-block;
@@ -774,10 +821,10 @@
     </style>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="/api.js?v=20261122_3"></script>
-    <script src="/helpers.js?v=20261122_3"></script>
-    <script src="/localization.js?v=20261122_3"></script>
-    <script src="/missions-store.js?v=20261122_3"></script>
+    <script src="/api.js?v=20261125_1"></script>
+    <script src="/helpers.js?v=20261125_4"></script>
+    <script src="/localization.js?v=20261125_1"></script>
+    <script src="/missions-store.js?v=20261125_2"></script>
 </head>
 <body>
 
@@ -890,7 +937,7 @@
             </div>
         </div>
         <div class="section-desc">
-            Задания без отметки времени выполнения. При нажатии на «✓ Выполнить» фиксируется дата и время с вашей таймзоной, и поручение скрывается из этого списка.
+            Задания без отметки времени выполнения. При нажатии на «✓ Выполнить» или «✕ Отменить» фиксируется дата и время с вашей таймзоной, и поручение переносится в таблицу снизу.
         </div>
 
         <div id="missions-list" class="missions-list">
@@ -898,22 +945,20 @@
         </div>
     </section>
 
-    <!-- СЕКЦИЯ 2: Таблица базы данных (Все записи с фиксацией времени выполнения) -->
+    <!-- СЕКЦИЯ 2: Таблица выполненных и отменённых поручений (строго без дублирования активных) -->
     <section class="table-section">
         <div class="table-controls">
             <div>
                 <h3 style="margin: 0; font-size: 15px; font-weight: 700; color: var(--text-main);">
-                    🗄️ Таблица выполненных поручений
+                    🗄️ Таблица выполненных и отменённых поручений
                 </h3>
                 <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-                    По умолчанию показаны только выполненные поручения с точным временем и давностью выполнения (чтобы не дублировать активные)
+                    Показаны выполненные и отменённые поручения (от новых к старым) с точным временем и сквозной нумерацией после активных дел
                 </div>
             </div>
 
             <div class="filter-tabs">
-                <button type="button" class="filter-tab active" onclick="setTableFilter('completed', this)" id="tab-completed">Выполненные (0)</button>
-                <button type="button" class="filter-tab" onclick="setTableFilter('pending', this)" id="tab-pending">В процессе (0)</button>
-                <button type="button" class="filter-tab" onclick="setTableFilter('all', this)" id="tab-all">Все (0)</button>
+                <span class="filter-tab active" id="tab-completed" style="cursor: default;">Выполненные (0)</span>
             </div>
         </div>
 
@@ -924,7 +969,7 @@
                         <th style="width: 45px;">№</th>
                         <th>Поручение</th>
                         <th style="width: 140px;">Создано</th>
-                        <th style="width: 250px;">Время выполнения (с таймзоной)</th>
+                        <th style="width: 250px;">Время выполнения / отмены</th>
                         <th style="width: 100px;">Статус</th>
                         <th style="width: 130px; text-align: right;">Действия</th>
                     </tr>
@@ -1016,7 +1061,6 @@ on conflict (id) do nothing;</div>
 </div>
 
 <script>
-    let currentFilter = 'completed';
     let isActivelyDragging = false;
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -1113,7 +1157,6 @@ on conflict (id) do nothing;</div>
             console.error('Ошибка forceSyncSupabase:', e);
             renderMissions();
             showToast(`Ошибка Supabase: ${e.message}`, '🚨', 'error');
-            alert(`🚨 Ошибка подключения к Supabase:\n\n${e.message}\nКод ошибки: ${e.code || e.status || 'N/A'}\n${e.hint ? 'Подсказка базы: ' + e.hint + '\n' : ''}\nПодробности открыты в красной плашке ошибки.`);
         } finally {
             if (btn) {
                 btn.disabled = false;
@@ -1179,7 +1222,6 @@ on conflict (id) do nothing;</div>
             console.error('Ошибка seedSampleMissions:', e);
             renderMissions();
             showToast(`Ошибка записи: ${e.message}`, '🚨', 'error');
-            alert(`🚨 Ошибка записи в базу данных Supabase:\n\n${e.message}\nКод: ${e.code || e.status || 'N/A'}\n${e.details ? 'Детали: ' + e.details : ''}`);
         } finally {
             if (btn) {
                 btn.disabled = false;
@@ -1400,13 +1442,6 @@ on conflict (id) do nothing;</div>
         renderTableOnly();
     }
 
-    function setTableFilter(filter, btn) {
-        currentFilter = filter;
-        document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
-        if (btn) btn.classList.add('active');
-        renderTableOnly();
-    }
-
     async function submitMission(placement = 'end') {
         const input = document.getElementById('new-mission-title');
         const title = (input.value || '').trim();
@@ -1430,7 +1465,7 @@ on conflict (id) do nothing;</div>
             }
             showToast(`Поручение "${title}" добавлено ${posLabel}!`);
         } catch (err) {
-            alert('Ошибка: ' + err.message);
+            showToast('Ошибка: ' + err.message, '🚨', 'error');
         } finally {
             if (startBtn) startBtn.disabled = false;
             if (endBtn) endBtn.disabled = false;
@@ -1450,7 +1485,19 @@ on conflict (id) do nothing;</div>
             }
             showToast(`✅ "${completed.title}" выполнено и перенесено в таблицу!`);
         } catch (err) {
-            alert('Ошибка: ' + err.message);
+            showToast('Ошибка: ' + err.message, '🚨', 'error');
+        }
+    }
+
+    async function cancelMissionItem(id) {
+        try {
+            const cancelled = await window.MissionsStore.cancelMission(id);
+            if (typeof window.recordCommandAction === 'function') {
+                window.recordCommandAction(`Cancel mission #${cancelled.position || ''} ${cancelled.title}`, `Поручение отменено: "${cancelled.title}"`);
+            }
+            showToast(`🚫 "${cancelled.title}" отменено и перенесено в таблицу!`);
+        } catch (err) {
+            showToast('Ошибка: ' + err.message, '🚨', 'error');
         }
     }
 
@@ -1462,7 +1509,7 @@ on conflict (id) do nothing;</div>
             }
             showToast(`↩️ "${restored.title}" возвращено в активный список дел!`);
         } catch (err) {
-            alert('Ошибка: ' + err.message);
+            showToast('Ошибка: ' + err.message, '🚨', 'error');
         }
     }
 
@@ -1475,7 +1522,7 @@ on conflict (id) do nothing;</div>
             }
             showToast('Запись удалена.');
         } catch (err) {
-            alert('Ошибка: ' + err.message);
+            showToast('Ошибка: ' + err.message, '🚨', 'error');
         }
     }
 
@@ -1553,6 +1600,7 @@ on conflict (id) do nothing;</div>
                 <div class="mission-actions">
                     <button type="button" class="mobile-order-btn" title="Поднять выше" onclick="moveItemUp(${index})" ${index === 0 ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▲</button>
                     <button type="button" class="mobile-order-btn" title="Опустить ниже" onclick="moveItemDown(${index})" ${index === activeMissions.length - 1 ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>▼</button>
+                    <button type="button" class="btn-cancel" onclick="cancelMissionItem('${mission.id}')">✕ Отменить</button>
                     <button type="button" class="btn-complete" onclick="markDone('${mission.id}')">✓ Выполнить</button>
                 </div>
             `;
@@ -1827,44 +1875,51 @@ on conflict (id) do nothing;</div>
         });
     }
 
+    function formatExactCompletionDisplay(m) {
+        if (!m) return '—';
+        if (m.completed_at) {
+            const d = new Date(m.completed_at);
+            if (!isNaN(d.getTime())) {
+                const datePart = d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                const timePart = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                const offsetMin = -d.getTimezoneOffset();
+                const sign = offsetMin >= 0 ? '+' : '-';
+                const absMin = Math.abs(offsetMin);
+                const tzStr = `GMT${sign}${String(Math.floor(absMin / 60)).padStart(2, '0')}:${String(absMin % 60).padStart(2, '0')}`;
+                return `${datePart} в ${timePart} (${tzStr})`;
+            }
+        }
+        return m.completed_display || m.completed_at || '—';
+    }
+
     function renderTableOnly() {
-        const allMissions = window.MissionsStore.getAllMissions();
         const activeMissions = window.MissionsStore.getActiveMissions();
         const completedMissions = window.MissionsStore.getCompletedMissions();
 
-        // Обновляем счетчики на табах
-        document.getElementById('tab-all').textContent = `Все (${allMissions.length})`;
-        document.getElementById('tab-pending').textContent = `В процессе (${activeMissions.length})`;
-        document.getElementById('tab-completed').textContent = `Выполненные (${completedMissions.length})`;
+        const doneCount = completedMissions.filter(m => m.status !== 'cancelled').length;
+        const cancelledCount = completedMissions.filter(m => m.status === 'cancelled').length;
 
-        const activeNumberMap = new Map();
-        activeMissions.forEach((am, i) => {
-            activeNumberMap.set(String(am.id), am.position || (i + 1));
-        });
-
-        const completedNumberMap = new Map();
-        completedMissions.forEach((cm, i) => {
-            completedNumberMap.set(String(cm.id), i + 1);
-        });
-
-        let displayList = completedMissions;
-        if (currentFilter === 'all') displayList = allMissions;
-        if (currentFilter === 'pending') displayList = activeMissions;
+        const tabCompleted = document.getElementById('tab-completed');
+        if (tabCompleted) {
+            tabCompleted.textContent = cancelledCount > 0
+                ? `Выполненные (${doneCount}) • Отменённые (${cancelledCount})`
+                : `Выполненные (${doneCount})`;
+        }
 
         const tbody = document.getElementById('missions-table-body');
-        if (!displayList || displayList.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 24px;">Записей в этой категории не найдено.</td></tr>`;
+        if (!completedMissions || completedMissions.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #64748b; padding: 24px;">Выполненных и отменённых поручений пока нет.</td></tr>`;
             return;
         }
 
         tbody.innerHTML = '';
+        const baseOffset = activeMissions.length;
 
-        displayList.forEach((m, idx) => {
-            const isDone = !!m.completed_at || m.status === 'completed';
-            const displayNum = isDone
-                ? (completedNumberMap.get(String(m.id)) || (idx + 1))
-                : (activeNumberMap.get(String(m.id)) || m.position || (idx + 1));
-            const agoLabel = isDone ? formatMissionTimeAgo(m.completed_at) : '';
+        completedMissions.forEach((m, idx) => {
+            const displayNum = baseOffset + idx + 1;
+            const isCancelled = m.status === 'cancelled';
+            const agoLabel = formatMissionTimeAgo(m.completed_at);
+            const exactTimeStr = formatExactCompletionDisplay(m);
             const tr = document.createElement('tr');
 
             tr.innerHTML = `
@@ -1876,22 +1931,14 @@ on conflict (id) do nothing;</div>
                     ${escapeHtml(m.created_display || m.created_at || '—')}
                 </td>
                 <td>
-                    ${isDone
-                        ? `<span class="time-completed-val">✅ ${escapeHtml(m.completed_display || m.completed_at)}</span>${agoLabel ? `<div class="time-ago-val" data-completed-at="${escapeHtml(m.completed_at)}" style="font-size:11px; color:var(--accent-blue); margin-top:2px;">🕒 ${escapeHtml(agoLabel)}</div>` : ''}`
-                        : `<span class="time-pending-val">⏳ В процессе (в активном списке)</span>`
-                    }
+                    <span class="${isCancelled ? 'time-cancelled-val' : 'time-completed-val'}">${isCancelled ? '🚫' : '✅'} ${escapeHtml(exactTimeStr)}</span>
+                    ${agoLabel ? `<div class="time-ago-val" data-completed-at="${escapeHtml(m.completed_at)}" style="font-size:11px; color:var(--accent-blue); margin-top:2px;">🕒 ${escapeHtml(agoLabel)}</div>` : ''}
                 </td>
                 <td>
-                    ${isDone
-                        ? `<span class="badge-completed">Выполнено</span>`
-                        : `<span class="badge-pending">В процессе</span>`
-                    }
+                    <span class="${isCancelled ? 'badge-cancelled' : 'badge-completed'}">${isCancelled ? 'Отменено' : 'Выполнено'}</span>
                 </td>
                 <td style="text-align: right; white-space: nowrap;">
-                    ${isDone
-                        ? `<button type="button" class="btn-table-action" onclick="restoreMission('${m.id}')" title="Вернуть в список дел">↩️ В список</button>`
-                        : `<button type="button" class="btn-table-action" onclick="markDone('${m.id}')" style="color:#34d399;" title="Отметить выполненным">✓ Сделано</button>`
-                    }
+                    <button type="button" class="btn-table-action" onclick="restoreMission('${m.id}')" title="Вернуть в список дел">↩️ В список</button>
                     <button type="button" class="btn-table-action btn-table-delete" onclick="deleteMission('${m.id}')" title="Удалить из таблицы">🗑️</button>
                 </td>
             `;
@@ -1909,6 +1956,24 @@ on conflict (id) do nothing;</div>
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
     }
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+    let swRefreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (swRefreshing) return;
+        swRefreshing = true;
+        window.location.reload();
+    });
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js?v=20261125_4', { updateViaCache: 'none' })
+            .then((reg) => {
+                if (reg && typeof reg.update === 'function') reg.update().catch(() => {});
+            })
+            .catch(() => {});
+    });
+}
 </script>
 
 </body>

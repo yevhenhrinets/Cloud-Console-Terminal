@@ -8,6 +8,38 @@ function guardNoInlineRouteArgs(parameters, options, defaultCmd) {
     return rejectInlineParamsError(cmd, '', `💡 Команда \`${cmd}\` выполняется без параметров, либо используйте пошаговый переход: \`go to\`.`);
 }
 
+async function guardHouseAccess(houseIdOrPath) {
+    const user = typeof fetchCurrentUser === 'function' ? await fetchCurrentUser(true) : null;
+    if (user && !user.isGuest && window.UserHousesSync && typeof window.UserHousesSync.syncFromDb === 'function') {
+        try {
+            await Promise.race([
+                window.UserHousesSync.syncFromDb(user),
+                new Promise(resolve => setTimeout(resolve, 450))
+            ]);
+        } catch (e) {}
+    }
+    if (typeof window !== 'undefined' && typeof window.canAccessHouse === 'function') {
+        const res = window.canAccessHouse(user, houseIdOrPath);
+        if (!res.allowed) {
+            return { response: res.message, style: 'output-error', houseAccess: res };
+        }
+        return { allowedHouse: res.house, error: null };
+    }
+    if (!user || user.isGuest || !user.id || user.id === 'guest') {
+        return {
+            response: '🔒 Доступ к Домам открыт только авторизованным пользователям. Выполните вход через Google (команда `login`).',
+            style: 'output-error'
+        };
+    }
+    return null;
+}
+
+function unwrapHouseGuardResult(guardRes) {
+    if (!guardRes) return null;
+    if (guardRes.error === null) return null;
+    return guardRes;
+}
+
 CommandRegistry.register({
     names: [
         'go to home', 'go to home 1', 'go to house', 'go to house 1',
@@ -21,6 +53,8 @@ CommandRegistry.register({
     handler: async (parameters, options = {}) => {
         const err = guardNoInlineRouteArgs(parameters, options, 'go to home 1');
         if (err) return err;
+        const accessErr = unwrapHouseGuardResult(await guardHouseAccess('house1'));
+        if (accessErr) return accessErr;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 1 в новой вкладке: /house/index.html', style: 'output-info' };
         }
@@ -39,6 +73,8 @@ CommandRegistry.register({
     handler: async (parameters, options = {}) => {
         const err = guardNoInlineRouteArgs(parameters, options, 'go to kitchen');
         if (err) return err;
+        const accessErr = unwrapHouseGuardResult(await guardHouseAccess('house1'));
+        if (accessErr) return accessErr;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 1 (Кухня) в новой вкладке: /house/index.html#kitchen', style: 'output-info' };
         }
@@ -57,6 +93,8 @@ CommandRegistry.register({
     handler: async (parameters, options = {}) => {
         const err = guardNoInlineRouteArgs(parameters, options, 'go to hall');
         if (err) return err;
+        const accessErr = unwrapHouseGuardResult(await guardHouseAccess('house1'));
+        if (accessErr) return accessErr;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 1 (Зал) в новой вкладке: /house/index.html#hall', style: 'output-info' };
         }
@@ -80,6 +118,8 @@ CommandRegistry.register({
     handler: async (parameters, options = {}) => {
         const err = guardNoInlineRouteArgs(parameters, options, 'go to home 2');
         if (err) return err;
+        const accessErr = unwrapHouseGuardResult(await guardHouseAccess('house2'));
+        if (accessErr) return accessErr;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 2 в новой вкладке: /house2/index.html', style: 'output-info' };
         }
@@ -98,6 +138,8 @@ CommandRegistry.register({
     handler: async (parameters, options = {}) => {
         const err = guardNoInlineRouteArgs(parameters, options, 'go to kitchen 2');
         if (err) return err;
+        const accessErr = unwrapHouseGuardResult(await guardHouseAccess('house2'));
+        if (accessErr) return accessErr;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 2 (Кухня) в новой вкладке: /house2/index.html#kitchen', style: 'output-info' };
         }
@@ -116,6 +158,8 @@ CommandRegistry.register({
     handler: async (parameters, options = {}) => {
         const err = guardNoInlineRouteArgs(parameters, options, 'go to hall 2');
         if (err) return err;
+        const accessErr = unwrapHouseGuardResult(await guardHouseAccess('house2'));
+        if (accessErr) return accessErr;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 2 (Зал) в новой вкладке: /house2/index.html#hall', style: 'output-info' };
         }
@@ -139,6 +183,8 @@ CommandRegistry.register({
     handler: async (parameters, options = {}) => {
         const err = guardNoInlineRouteArgs(parameters, options, 'go to home 3');
         if (err) return err;
+        const accessErr = unwrapHouseGuardResult(await guardHouseAccess('house3'));
+        if (accessErr) return accessErr;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 3 в новой вкладке: /house3/index.html', style: 'output-info' };
         }
@@ -157,6 +203,8 @@ CommandRegistry.register({
     handler: async (parameters, options = {}) => {
         const err = guardNoInlineRouteArgs(parameters, options, 'go to kitchen 3');
         if (err) return err;
+        const accessErr = unwrapHouseGuardResult(await guardHouseAccess('house3'));
+        if (accessErr) return accessErr;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 3 (Кухня) в новой вкладке: /house3/index.html#kitchen', style: 'output-info' };
         }
@@ -175,6 +223,8 @@ CommandRegistry.register({
     handler: async (parameters, options = {}) => {
         const err = guardNoInlineRouteArgs(parameters, options, 'go to hall 3');
         if (err) return err;
+        const accessErr = unwrapHouseGuardResult(await guardHouseAccess('house3'));
+        if (accessErr) return accessErr;
         if (options && options.skipRedirect) {
             return { response: '🆕 Открываю Дом 3 (Зал) в новой вкладке: /house3/index.html#hall', style: 'output-info' };
         }
@@ -247,6 +297,12 @@ CommandRegistry.register({
                 response: 'ℹ️ Сохранённая последняя страница пока не найдена. Откройте Дашборд, Задания или Дом 1–3, чтобы приложение запомнило её.',
                 style: 'output-info'
             };
+        }
+
+        const targetLower = String(target.path || '').toLowerCase();
+        if (targetLower.startsWith('/house') || targetLower === '/kitchen.html' || targetLower === '/hall.html') {
+            const accessErr = unwrapHouseGuardResult(await guardHouseAccess(targetLower));
+            if (accessErr) return accessErr;
         }
 
         if (options && options.skipRedirect) {
@@ -421,6 +477,28 @@ CommandRegistry.register({
 
         if (targetHandler && resolvedCmd !== 'go to' && resolvedCmd !== 'go') {
             return await targetHandler({ args: [], raw_args: '' }, options);
+        }
+
+        // Проверяем пользовательские дома текущего аккаунта (напр. go to -> home 4 / Дача / Дом 2)
+        const user = typeof fetchCurrentUser === 'function' ? await fetchCurrentUser(true) : null;
+        if (user && !user.isGuest && window.UserHousesSync) {
+            try {
+                await Promise.race([
+                    window.UserHousesSync.syncFromDb(user),
+                    new Promise(resolve => setTimeout(resolve, 450))
+                ]);
+            } catch (e) {}
+            const cleanedRef = rawTarget.replace(/^(home|house|дом|дім|будинок)\s+/i, '').trim();
+            const foundHouse = window.UserHousesSync.findHouse(user, rawTarget) || window.UserHousesSync.findHouse(user, cleanedRef);
+            if (foundHouse && foundHouse.url) {
+                if (options && options.skipRedirect) {
+                    return { response: `🆕 Открываю ${foundHouse.name} в новой вкладке: ${foundHouse.url}`, style: 'output-info' };
+                }
+                setTimeout(() => {
+                    window.location.href = foundHouse.url;
+                }, 200);
+                return { response: `🚀 Переход в ${foundHouse.name} (${foundHouse.url})...`, style: 'output-info' };
+            }
         }
 
         return {

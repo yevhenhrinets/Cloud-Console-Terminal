@@ -1,4 +1,4 @@
-const CACHE_NAME = 'terminal-v43';
+const CACHE_NAME = 'terminal-v55';
 
 const URLS_TO_CACHE = [
     '/',
@@ -46,6 +46,7 @@ const URLS_TO_CACHE = [
     '/commands/go_to.js',
     '/commands/help.js',
     '/commands/history.js',
+    '/commands/houses.js',
     '/commands/inventory.js',
     '/commands/lang.js',
     '/commands/missions.js',

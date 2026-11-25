@@ -72,35 +72,46 @@
         return Number.isFinite(ms) ? ms : 0;
     }
 
+    function isCancelledStatus(raw) {
+        return String(raw && raw.status || '').toLowerCase() === 'cancelled';
+    }
+
+    function isClosedMission(raw) {
+        if (!raw) return false;
+        return Boolean(isCancelledStatus(raw) || raw.status === 'completed' || raw.completed_at);
+    }
+
     function normalizeRecord(raw) {
-        const isDone = Boolean(raw.completed_at || raw.status === 'completed');
+        const cancelled = isCancelledStatus(raw);
+        const isClosed = cancelled || Boolean(raw.completed_at || raw.status === 'completed');
         const createdAt = raw.created_at || new Date().toISOString();
-        const completedAt = isDone ? (raw.completed_at || new Date().toISOString()) : null;
+        const completedAt = isClosed ? (raw.completed_at || new Date().toISOString()) : null;
         return {
             id: String(raw.id),
             title: String(raw.title || ''),
             position: Number(raw.position) > 0 ? Number(raw.position) : 1,
-            status: isDone ? 'completed' : 'pending',
+            status: cancelled ? 'cancelled' : (isClosed ? 'completed' : 'pending'),
             created_at: createdAt,
             created_display: raw.created_display || getFormattedTimezone(createdAt),
             completed_at: completedAt,
-            completed_display: isDone ? (raw.completed_display || getFormattedTimezone(completedAt)) : null,
+            completed_display: isClosed ? (raw.completed_display || getFormattedTimezone(completedAt)) : null,
             created_by: raw.created_by || 'guest'
         };
     }
 
     function toDbRow(m) {
-        const isDone = Boolean(m.completed_at || m.status === 'completed');
+        const cancelled = isCancelledStatus(m);
+        const isClosed = cancelled || Boolean(m.completed_at || m.status === 'completed');
         const createdAt = m.created_at || new Date().toISOString();
         return {
             id: String(m.id),
             title: String(m.title || ''),
             position: Number(m.position) > 0 ? Number(m.position) : 1,
-            status: isDone ? 'completed' : 'pending',
+            status: cancelled ? 'cancelled' : (isClosed ? 'completed' : 'pending'),
             created_at: createdAt,
             created_display: m.created_display || getFormattedTimezone(createdAt),
-            completed_at: isDone ? m.completed_at : null,
-            completed_display: isDone ? (m.completed_display || getFormattedTimezone(m.completed_at)) : null,
+            completed_at: isClosed ? m.completed_at : null,
+            completed_display: isClosed ? (m.completed_display || getFormattedTimezone(m.completed_at)) : null,
             created_by: m.created_by || 'guest'
         };
     }
@@ -119,7 +130,7 @@
 
     function sortActiveList(list) {
         return list
-            .filter(m => !m.completed_at && m.status !== 'completed')
+            .filter(m => !isClosedMission(m))
             .sort((a, b) => {
                 const posA = (a.position === null || a.position === undefined || Number(a.position) <= 0) ? 999999 : Number(a.position);
                 const posB = (b.position === null || b.position === undefined || Number(b.position) <= 0) ? 999999 : Number(b.position);
@@ -176,18 +187,19 @@
 
         recordCompletionLock(mission) {
             if (!mission || !mission.id) return;
-            const isDone = Boolean(mission.completed_at || mission.status === 'completed');
-            if (!isDone || !mission.completed_at) return;
+            if (!isClosedMission(mission) || !mission.completed_at) return;
 
             const locks = this.loadCompletionLocks();
             const id = String(mission.id);
             const newCompletedMs = toTimeMs(mission.completed_at);
             const prev = locks[id];
             const prevCompletedMs = prev ? toTimeMs(prev.completed_at) : 0;
+            const resolvedStatus = isCancelledStatus(mission) ? 'cancelled' : 'completed';
 
             if (!prev || newCompletedMs >= prevCompletedMs) {
                 locks[id] = {
                     id,
+                    status: resolvedStatus,
                     title: String(mission.title || (prev && prev.title) || ''),
                     created_at: mission.created_at || (prev && prev.created_at) || new Date().toISOString(),
                     completed_at: mission.completed_at,
@@ -211,14 +223,15 @@
             let changed = false;
             (list || []).forEach(m => {
                 if (!m || !m.id) return;
-                const isDone = Boolean(m.completed_at || m.status === 'completed');
-                if (!isDone || !m.completed_at) return;
+                if (!isClosedMission(m) || !m.completed_at) return;
                 const id = String(m.id);
                 const compMs = toTimeMs(m.completed_at);
                 const prev = locks[id];
+                const resolvedStatus = isCancelledStatus(m) ? 'cancelled' : 'completed';
                 if (!prev || compMs >= toTimeMs(prev.completed_at)) {
                     locks[id] = {
                         id,
+                        status: resolvedStatus,
                         title: String(m.title || (prev && prev.title) || ''),
                         created_at: m.created_at || (prev && prev.created_at) || new Date().toISOString(),
                         completed_at: m.completed_at,
@@ -232,7 +245,7 @@
             return locks;
         }
 
-        // Если дата добавления записи ниже/равна дате выполнения и не было явного более позднего возврата —
+        // Если дата добавления записи ниже/равна дате выполнения/отмены и не было явного более позднего возврата —
         // задача НЕ имеет права возвращаться в невыполненные (pending).
         enforceCompletionWatermark(list, locksOverride = null) {
             const locks = locksOverride || this.loadCompletionLocks();
@@ -248,11 +261,12 @@
 
                 const lockCompletedMs = toTimeMs(lock.completed_at);
                 const itemCreatedMs = toTimeMs(norm.created_at);
+                const lockStatus = lock.status === 'cancelled' ? 'cancelled' : 'completed';
 
                 if (norm.status === 'pending') {
-                    // Критическая гарантия: если дата добавления <= дате выполнения — в невыполненные больше не возвращаем!
+                    // Критическая гарантия: если дата добавления <= дате закрытия — в невыполненные больше не возвращаем!
                     if (itemCreatedMs <= lockCompletedMs) {
-                        norm.status = 'completed';
+                        norm.status = lockStatus;
                         norm.completed_at = lock.completed_at;
                         norm.completed_display = lock.completed_display || getFormattedTimezone(lock.completed_at);
                         healedIds.add(norm.id);
@@ -263,6 +277,7 @@
                 } else {
                     const normCompletedMs = toTimeMs(norm.completed_at);
                     if (lockCompletedMs > normCompletedMs) {
+                        norm.status = lockStatus;
                         norm.completed_at = lock.completed_at;
                         norm.completed_display = lock.completed_display || getFormattedTimezone(lock.completed_at);
                         healedIds.add(norm.id);
@@ -337,6 +352,14 @@
                 document.addEventListener('visibilitychange', () => {
                     if (document.visibilityState === 'visible' && navigator.onLine !== false) {
                         this.trySyncSupabase(false).catch(() => {});
+                    } else if (document.visibilityState === 'hidden' && navigator.onLine !== false) {
+                        this.flushPendingWithKeepalive();
+                    }
+                });
+
+                window.addEventListener('pagehide', () => {
+                    if (navigator.onLine !== false) {
+                        this.flushPendingWithKeepalive();
                     }
                 });
 
@@ -364,12 +387,10 @@
                 });
             }
 
-            // 4. Начальная синхронизация с Supabase (неблокирующая)
-            setTimeout(() => {
-                this.trySyncSupabase(false).catch(err => {
-                    console.warn('Начальная синхронизация поручений:', err);
-                });
-            }, 80);
+            // 4. Немедленная начальная синхронизация с Supabase при открытии страницы
+            this.trySyncSupabase(false).catch(err => {
+                console.warn('Начальная синхронизация поручений:', err);
+            });
         }
 
         saveLocal() {
@@ -451,22 +472,22 @@
 
         getCompletedMissions() {
             return this.missions
-                .filter(m => !!m.completed_at || m.status === 'completed')
+                .filter(m => isClosedMission(m))
                 .sort((a, b) => {
                     const ta = new Date(a.completed_at || 0).getTime();
                     const tb = new Date(b.completed_at || 0).getTime();
-                    if (ta !== tb) return ta - tb;
+                    if (tb !== ta) return tb - ta;
                     const ca = new Date(a.created_at || 0).getTime();
                     const cb = new Date(b.created_at || 0).getTime();
-                    if (ca !== cb) return ca - cb;
-                    return String(a.id).localeCompare(String(b.id));
+                    if (cb !== ca) return cb - ca;
+                    return String(b.id).localeCompare(String(a.id));
                 });
         }
 
         getAllMissions() {
             return [...this.missions].sort((a, b) => {
-                const aDone = Boolean(a.completed_at || a.status === 'completed');
-                const bDone = Boolean(b.completed_at || b.status === 'completed');
+                const aDone = isClosedMission(a);
+                const bDone = isClosedMission(b);
                 if (!aDone && bDone) return -1;
                 if (aDone && !bDone) return 1;
                 if (!aDone && !bDone) {
@@ -477,12 +498,16 @@
                 }
                 const ta = new Date(a.completed_at || 0).getTime();
                 const tb = new Date(b.completed_at || 0).getTime();
-                if (ta !== tb) return ta - tb;
+                if (tb !== ta) return tb - ta;
                 const ca = new Date(a.created_at || 0).getTime();
                 const cb = new Date(b.created_at || 0).getTime();
-                if (ca !== cb) return ca - cb;
-                return String(a.id).localeCompare(String(b.id));
+                if (cb !== ca) return cb - ca;
+                return String(b.id).localeCompare(String(a.id));
             });
+        }
+
+        getCompletedStartNumber() {
+            return this.getActiveMissions().length + 1;
         }
 
         // Хронологическое воспроизведение отложенных оффлайн-операций поверх актуального состояния из облака
@@ -518,10 +543,10 @@
                     const existing = workingMap.get(id);
                     const lock = locks[id];
 
-                    // Если задача уже выполнена позже даты её добавления — никогда не возвращаем в pending
+                    // Если задача уже закрыта (выполнена/отменена) позже даты её добавления — никогда не возвращаем в pending
                     if (lock && toTimeMs(createdAt) <= toTimeMs(lock.completed_at)) {
                         if (existing) {
-                            existing.status = 'completed';
+                            existing.status = lock.status === 'cancelled' ? 'cancelled' : 'completed';
                             existing.completed_at = lock.completed_at;
                             existing.completed_display = lock.completed_display || getFormattedTimezone(lock.completed_at);
                         }
@@ -554,13 +579,14 @@
                         });
                         dirtyIds.add(id);
                     }
-                } else if (op.type === 'complete') {
+                } else if (op.type === 'complete' || op.type === 'cancel') {
                     const id = String(p.id);
+                    const targetStatus = (op.type === 'cancel' || p.status === 'cancelled') ? 'cancelled' : 'completed';
                     const completedAt = p.completed_at || new Date(op.ts).toISOString();
                     const completedDisplay = p.completed_display || getFormattedTimezone(completedAt);
                     let target = workingMap.get(id);
 
-                    // Если локально выполнили запись, которая уже есть или создавалась из локального стора
+                    // Если локально закрыли запись, которая уже есть или создавалась из локального стора
                     if (!target) {
                         const localMatch = (this.missions || []).find(m => String(m.id) === id);
                         if (localMatch && !deletedIds.has(id)) {
@@ -575,8 +601,8 @@
                         if (!target.completed_at || opCompMs >= targetCompMs) {
                             target.completed_at = completedAt;
                             target.completed_display = completedDisplay;
+                            target.status = targetStatus;
                         }
-                        target.status = 'completed';
                         this.recordCompletionLock(target);
                         dirtyIds.add(id);
                         reindexWorking();
@@ -589,7 +615,7 @@
                         const restoreMs = toTimeMs(restoreIso);
                         const targetCompMs = toTimeMs(target.completed_at);
 
-                        // Применяем только если ручной restore произошёл ПОСЛЕ последнего завершения
+                        // Применяем только если ручной restore произошёл ПОСЛЕ последнего завершения/отмены
                         if (!target.completed_at || restoreMs > targetCompMs) {
                             const active = sortActiveList(Array.from(workingMap.values()));
                             target.completed_at = null;
@@ -615,7 +641,7 @@
                         const orderedSet = new Set(orderedIds);
                         const orderedQueue = orderedIds.filter(id => {
                             const item = workingMap.get(id);
-                            return item && !item.completed_at && item.status !== 'completed';
+                            return item && !isClosedMission(item);
                         });
 
                         let queueCursor = 0;
@@ -678,16 +704,34 @@
             }
         }
 
-        async upsertRemoteMissions(rows) {
+        async upsertRemoteMissions(rows, reqOpts = {}) {
             if (!rows || rows.length === 0) return [];
             if (window.supabaseDirectApi) {
-                return await window.supabaseDirectApi.upsert('missions', rows);
+                return await window.supabaseDirectApi.upsert('missions', rows, reqOpts);
             }
             if (window.supabaseClient) {
                 const { data, error } = await window.supabaseClient.from('missions').upsert(rows, { onConflict: 'id' }).select();
                 if (error) throw error;
                 return data;
             }
+        }
+
+        flushPendingWithKeepalive() {
+            try {
+                if (!this.pendingOps || this.pendingOps.length === 0) return;
+                if (!window.supabaseDirectApi) return;
+                const touchedIds = new Set();
+                this.pendingOps.forEach(op => {
+                    if (op && op.payload && op.payload.id) touchedIds.add(String(op.payload.id));
+                    if (op && op.payload && Array.isArray(op.payload.orderedIds)) {
+                        op.payload.orderedIds.forEach(id => touchedIds.add(String(id)));
+                    }
+                });
+                const rows = this.missions.filter(m => touchedIds.has(String(m.id))).map(toDbRow);
+                if (rows.length > 0) {
+                    window.supabaseDirectApi.upsert('missions', rows, { keepalive: true }).catch(() => {});
+                }
+            } catch (e) {}
         }
 
         // =========================================================================
@@ -785,13 +829,40 @@
                         }
                     }
 
-                    // Отправляем в БД ТОЛЬКО изменённые текущей очередью или исправленные замком строки (никогда не затирая чужие выполненные задачи)
+                    // Отправляем в БД ТОЛЬКО изменённые текущей очередью или исправленные замком строки
+                    // Дополнительно защищаем уже выполненные в облаке строки: если в облаке запись уже выполнена
+                    // и created_at <= completed_at без явного более позднего restore, никогда не откатываем её в pending!
+                    const explicitRestoreTimeById = new Map();
+                    opsSnapshot.forEach(op => {
+                        if (op && op.type === 'restore' && op.payload && op.payload.id) {
+                            const rMs = toTimeMs(op.payload.restored_at || op.payload.created_at || op.ts);
+                            const idKey = String(op.payload.id);
+                            if (rMs > (explicitRestoreTimeById.get(idKey) || 0)) {
+                                explicitRestoreTimeById.set(idKey, rMs);
+                            }
+                        }
+                    });
+
+                    mergedList.forEach(m => {
+                        const rem = remoteById.get(m.id);
+                        if (rem && isClosedMission(rem) && m.status === 'pending') {
+                            const remCompMs = toTimeMs(rem.completed_at);
+                            const restoreMs = explicitRestoreTimeById.get(m.id) || 0;
+                            if (!(restoreMs > remCompMs && toTimeMs(m.created_at) > remCompMs)) {
+                                m.status = isCancelledStatus(rem) ? 'cancelled' : 'completed';
+                                m.completed_at = rem.completed_at;
+                                m.completed_display = rem.completed_display || getFormattedTimezone(rem.completed_at);
+                                this.recordCompletionLock(m);
+                            }
+                        }
+                    });
+
                     const changedRows = mergedList
                         .filter(m => dirtyIds.has(m.id) || rowDiffersFromDb(m, remoteById.get(m.id)))
                         .map(toDbRow);
 
                     if (changedRows.length > 0) {
-                        await this.upsertRemoteMissions(changedRows);
+                        await this.upsertRemoteMissions(changedRows, { keepalive: true });
                     }
 
                     const flushedIds = new Set(opsSnapshot.map(o => o.opId));
@@ -881,7 +952,10 @@
             });
 
             this.saveLocal();
-            this.trySyncSupabase(false).catch(() => {});
+            await Promise.race([
+                this.trySyncSupabase(false).catch(() => {}),
+                new Promise(r => setTimeout(r, 1400))
+            ]);
 
             return newMission;
         }
@@ -890,9 +964,12 @@
             const mission = this.missions.find(m => String(m.id) === String(id));
             if (!mission) throw new Error('Поручение с таким ID не найдено');
 
-            const now = new Date();
-            mission.completed_at = now.toISOString();
-            mission.completed_display = getFormattedTimezone(now);
+            const createdMs = toTimeMs(mission.created_at);
+            // Гарантируем строгую монотонность (completed_at >= created_at) даже при небольшом рассинхроне часов устройств
+            const completedMs = Math.max(Date.now(), createdMs > 0 ? createdMs + 1000 : Date.now());
+            const completedDate = new Date(completedMs);
+            mission.completed_at = completedDate.toISOString();
+            mission.completed_display = getFormattedTimezone(completedDate);
             mission.status = 'completed';
 
             this.recordCompletionLock(mission);
@@ -901,11 +978,45 @@
             this.enqueueOp('complete', {
                 id: String(mission.id),
                 completed_at: mission.completed_at,
-                completed_display: mission.completed_display
+                completed_display: mission.completed_display,
+                status: 'completed'
             });
 
             this.saveLocal();
-            this.trySyncSupabase(false).catch(() => {});
+            await Promise.race([
+                this.trySyncSupabase(false).catch(() => {}),
+                new Promise(r => setTimeout(r, 1400))
+            ]);
+
+            return mission;
+        }
+
+        async cancelMission(id) {
+            const mission = this.missions.find(m => String(m.id) === String(id));
+            if (!mission) throw new Error('Поручение с таким ID не найдено');
+
+            const createdMs = toTimeMs(mission.created_at);
+            const cancelledMs = Math.max(Date.now(), createdMs > 0 ? createdMs + 1000 : Date.now());
+            const cancelledDate = new Date(cancelledMs);
+            mission.completed_at = cancelledDate.toISOString();
+            mission.completed_display = getFormattedTimezone(cancelledDate);
+            mission.status = 'cancelled';
+
+            this.recordCompletionLock(mission);
+            this.reindexActiveMissions();
+
+            this.enqueueOp('cancel', {
+                id: String(mission.id),
+                completed_at: mission.completed_at,
+                completed_display: mission.completed_display,
+                status: 'cancelled'
+            });
+
+            this.saveLocal();
+            await Promise.race([
+                this.trySyncSupabase(false).catch(() => {}),
+                new Promise(r => setTimeout(r, 1400))
+            ]);
 
             return mission;
         }
@@ -914,8 +1025,10 @@
             const mission = this.missions.find(m => String(m.id) === String(id));
             if (!mission) throw new Error('Поручение не найдено');
 
-            const now = new Date();
-            const nowIso = now.toISOString();
+            const prevCompletedMs = toTimeMs(mission.completed_at);
+            const restoreMs = Math.max(Date.now(), prevCompletedMs > 0 ? prevCompletedMs + 1000 : Date.now());
+            const restoreDate = new Date(restoreMs);
+            const nowIso = restoreDate.toISOString();
             const active = this.getActiveMissions();
 
             mission.completed_at = null;
@@ -924,7 +1037,7 @@
             // Обновляем дату добавления на момент явного ручного возврата (> старого completed_at),
             // чтобы второе устройство с более старым created_at понимало, что это явный новый возврат.
             mission.created_at = nowIso;
-            mission.created_display = getFormattedTimezone(now);
+            mission.created_display = getFormattedTimezone(restoreDate);
             mission.position = active.length > 0 ? Math.max(...active.map(m => Number(m.position) || 0)) + 1 : 1;
 
             this.removeCompletionLock(mission.id);
@@ -937,7 +1050,10 @@
             });
 
             this.saveLocal();
-            this.trySyncSupabase(false).catch(() => {});
+            await Promise.race([
+                this.trySyncSupabase(false).catch(() => {}),
+                new Promise(r => setTimeout(r, 1400))
+            ]);
 
             return mission;
         }
@@ -957,7 +1073,10 @@
             });
 
             this.saveLocal();
-            this.trySyncSupabase(false).catch(() => {});
+            await Promise.race([
+                this.trySyncSupabase(false).catch(() => {}),
+                new Promise(r => setTimeout(r, 1400))
+            ]);
 
             return true;
         }
@@ -985,7 +1104,10 @@
             });
 
             this.saveLocal();
-            this.trySyncSupabase(false).catch(() => {});
+            await Promise.race([
+                this.trySyncSupabase(false).catch(() => {}),
+                new Promise(r => setTimeout(r, 1400))
+            ]);
         }
     }
 

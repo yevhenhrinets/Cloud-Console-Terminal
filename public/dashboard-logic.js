@@ -102,14 +102,13 @@ function loadFromLocalStorage() {
     if (savedTimers) localTimersData = JSON.parse(savedTimers);
     if (savedInv) {
         allInventoryData = JSON.parse(savedInv);
-        localInventoryData = JSON.parse(savedInv);
+        localInventoryData = allInventoryData;
     }
     if (savedBuildings) localBuildingsData = JSON.parse(savedBuildings);
 
     if (currentUser.isGuest && !allInventoryData.some(i => String(i.name || '').trim().toLowerCase() === 'ускорители')) {
         const starter = { name: 'Ускорители', count: 10, created_by: currentUser.id };
-        allInventoryData.push({ ...starter });
-        localInventoryData.push({ ...starter });
+        allInventoryData.push(starter);
         localStorage.setItem(keys.inventory, JSON.stringify(allInventoryData));
     }
     
@@ -225,6 +224,10 @@ async function forceSyncWithDB() {
         try {
             const now = Date.now();
 
+            if (window.DailyAcceleratorsSync && typeof window.DailyAcceleratorsSync.checkAndGrant === 'function') {
+                await window.DailyAcceleratorsSync.checkAndGrant({ user: currentUser }).catch(() => null);
+            }
+
             // Загружаем таймеры, склад, постройки и кулдауны из БД
             const [timersRes, invRes, buildingsRes] = await Promise.all([
                 window.supabaseClient.from('active_timers').select('*').eq('created_by', currentUser.id).order('ends_at', { ascending: true }),
@@ -311,12 +314,18 @@ async function forceSyncWithDB() {
             localTimersData = activeTimers;
             allInventoryData = serverInv;
             
-            // 💡 Фильтруем инвентарь по продукции разрешенных задач для этой постройки (+ Ускорители)
+            // 💡 Фильтруем инвентарь по продукции разрешенных задач для этой постройки (+ Ускорители и требуемые ингредиенты запуска)
             if (targetQueueId !== null) {
                 const allowedTaskNames = localBuildingsData.flatMap(b => (b.tasks || []).map(t => t.name.toLowerCase()));
+                const allowedCostAliases = (window.TaskLaunchCosts && typeof window.TaskLaunchCosts.getAllowedCostAliasesForBuildings === 'function')
+                    ? window.TaskLaunchCosts.getAllowedCostAliasesForBuildings(localBuildingsData)
+                    : new Set();
                 localInventoryData = serverInv.filter(item => {
                     const lower = String(item.name || '').trim().toLowerCase();
-                    return allowedTaskNames.includes(lower) || lower === 'ускорители';
+                    const norm = (window.TaskLaunchCosts && typeof window.TaskLaunchCosts.normalizeName === 'function')
+                        ? window.TaskLaunchCosts.normalizeName(item.name)
+                        : lower;
+                    return allowedTaskNames.includes(lower) || lower === 'ускорители' || allowedCostAliases.has(norm);
                 });
             } else {
                 localInventoryData = serverInv;
@@ -388,7 +397,24 @@ async function quickAddTimer(name, queueId, overrideDuration = null) {
     const buildingItems = localTimersData.filter(t => Number(t.queue_group_id) === Number(queueId));
     if (buildingItems.length >= 4) {
         showError('❌ В здании уже заняты все 4 слота!');
-        return;
+        return false;
+    }
+
+    const foundBuildingForRule = (localBuildingsData || []).find(b => Number(b.queue_group_id) === Number(queueId));
+    const buildingNameForRule = foundBuildingForRule ? foundBuildingForRule.building_name : null;
+    const launchCostRule = (window.TaskLaunchCosts && typeof window.TaskLaunchCosts.getRule === 'function')
+        ? window.TaskLaunchCosts.getRule(name, buildingNameForRule)
+        : null;
+
+    if (launchCostRule) {
+        const invSource = (Array.isArray(allInventoryData) && allInventoryData.length > 0)
+            ? allInventoryData
+            : localInventoryData;
+        const availCheck = window.TaskLaunchCosts.checkAvailability(launchCostRule, invSource);
+        if (!availCheck.ok) {
+            showError(window.TaskLaunchCosts.formatMissingError(launchCostRule, availCheck));
+            return false;
+        }
     }
 
     const hasRunning = buildingItems.length > 0;
@@ -415,9 +441,30 @@ async function quickAddTimer(name, queueId, overrideDuration = null) {
     };
 
     localMutationEpoch++;
+    if (launchCostRule) {
+        if ((!Array.isArray(allInventoryData) || allInventoryData.length === 0) && Array.isArray(localInventoryData) && localInventoryData.length > 0) {
+            allInventoryData = localInventoryData;
+        }
+        window.TaskLaunchCosts.deductFromList(allInventoryData, launchCostRule);
+        if (targetQueueId === null) {
+            localInventoryData = allInventoryData;
+        } else {
+            const allowedTaskNames = (localBuildingsData || []).flatMap(b => (b.tasks || []).map(t => String(t.name || '').toLowerCase()));
+            const allowedCostAliases = window.TaskLaunchCosts.getAllowedCostAliasesForBuildings(localBuildingsData);
+            localInventoryData = allInventoryData.filter(item => {
+                const lower = String(item && item.name || '').trim().toLowerCase();
+                const norm = window.TaskLaunchCosts.normalizeName(item && item.name);
+                return allowedTaskNames.includes(lower) || lower === 'ускорители' || allowedCostAliases.has(norm);
+            });
+        }
+    }
     localTimersData.push(newItem);
     saveToLocalStorage();
     renderUI();
+
+    if (launchCostRule) {
+        showDashboardToast(`🍽️ ${name}: списано ${window.TaskLaunchCosts.formatCostText(launchCostRule)}`, 'ready');
+    }
 
     // Запись действия в историю команд (например, Task add Печь Кипяток 2м)
     try {
@@ -426,15 +473,18 @@ async function quickAddTimer(name, queueId, overrideDuration = null) {
         if (foundB && foundB.building_name) {
             bName = foundB.building_name;
         } else if (Number(queueId) === 1) bName = 'Печь';
+        else if (Number(queueId) === 2) bName = 'Уход';
         else if (Number(queueId) === 3) bName = 'Стиральная машина';
         else if (Number(queueId) === 4) bName = 'Кресло';
+        else if (Number(queueId) === 5) bName = 'Ребёнок';
         else if (Number(queueId) === 6) bName = 'Телевизор';
         else if (Number(queueId) === 8) bName = 'Мультиварка';
         else if (Number(queueId) === 10) bName = 'Роутер';
 
         const durStr = duration >= 60 ? `${Math.round(duration / 60)}м` : `${duration}с`;
         const cmdStr = `Task add ${bName} ${name} ${durStr}`;
-        const descStr = `Запущен таймер "${name}" в постройке "${bName}" (${durStr})`;
+        const costSuffix = launchCostRule ? `; списано: ${window.TaskLaunchCosts.formatCostText(launchCostRule)}` : '';
+        const descStr = `Запущен таймер "${name}" в постройке "${bName}" (${durStr}${costSuffix})`;
 
         if (typeof window.recordCommandAction === 'function') {
             window.recordCommandAction(cmdStr, descStr);
@@ -462,7 +512,7 @@ async function quickAddTimer(name, queueId, overrideDuration = null) {
     }
 
     if (currentUser.id === 'guest' || currentUser.isGuest) {
-        return;
+        return true;
     }
 
     const userIdSnapshot = currentUser.id;
@@ -471,6 +521,55 @@ async function quickAddTimer(name, queueId, overrideDuration = null) {
         .catch(() => {})
         .then(async () => {
             try {
+                if (launchCostRule) {
+                    const { data: userInvRows, error: invFetchErr } = await window.supabaseClient
+                        .from('completed_items')
+                        .select('*')
+                        .eq('created_by', userIdSnapshot);
+                    if (invFetchErr) throw invFetchErr;
+
+                    const serverCheck = window.TaskLaunchCosts.checkAvailability(launchCostRule, userInvRows || []);
+                    if (!serverCheck.ok) {
+                        // Откатываем локальный оптимистичный запуск и возвращаем списанное
+                        localTimersData = localTimersData.filter(t => t.id !== tempId);
+                        window.TaskLaunchCosts.restoreToList(allInventoryData, launchCostRule, userIdSnapshot);
+                        if (targetQueueId === null) {
+                            localInventoryData = allInventoryData;
+                        } else {
+                            const allowedTaskNames = (localBuildingsData || []).flatMap(b => (b.tasks || []).map(t => String(t.name || '').toLowerCase()));
+                            const allowedCostAliases = window.TaskLaunchCosts.getAllowedCostAliasesForBuildings(localBuildingsData);
+                            localInventoryData = allInventoryData.filter(item => {
+                                const lower = String(item && item.name || '').trim().toLowerCase();
+                                const norm = window.TaskLaunchCosts.normalizeName(item && item.name);
+                                return allowedTaskNames.includes(lower) || lower === 'ускорители' || allowedCostAliases.has(norm);
+                            });
+                        }
+                        saveToLocalStorage();
+                        renderUI();
+                        showError(window.TaskLaunchCosts.formatMissingError(launchCostRule, serverCheck));
+                        return;
+                    }
+
+                    const nowIso = new Date().toISOString();
+                    for (const cost of launchCostRule.costs) {
+                        let leftToDeduct = Math.max(1, Number(cost.amount) || 1);
+                        for (const row of (userInvRows || [])) {
+                            if (leftToDeduct <= 0) break;
+                            if (!window.TaskLaunchCosts.matchesInventoryItem(row.name, cost)) continue;
+                            const curCount = Math.max(0, Number(row.count) || 0);
+                            if (curCount <= 0) continue;
+                            const take = Math.min(curCount, leftToDeduct);
+                            const { error: updInvErr } = await window.supabaseClient
+                                .from('completed_items')
+                                .update({ count: curCount - take, updated_at: nowIso })
+                                .eq('id', row.id);
+                            if (updInvErr) throw updInvErr;
+                            row.count = curCount - take;
+                            leftToDeduct -= take;
+                        }
+                    }
+                }
+
                 const { error } = await window.supabaseClient.from('active_timers').insert([{
                     name: name,
                     queue_group_id: queueId,
@@ -494,6 +593,7 @@ async function quickAddTimer(name, queueId, overrideDuration = null) {
                 }
             }
         });
+    return true;
 }
 
 async function accelerateRunningTimer(timerId) {
@@ -708,3 +808,40 @@ function showCooldownReadyNotification(rule) {
         } catch (e) {}
     }
 }
+
+function syncDashboardInventoryFromStorage() {
+    const keys = getStorageKeys();
+    try {
+        const raw = localStorage.getItem(keys.inventory);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) {
+            allInventoryData = parsed;
+            if (targetQueueId !== null) {
+                const allowedTaskNames = (localBuildingsData || []).flatMap(b => (b.tasks || []).map(t => String(t.name || '').toLowerCase()));
+                const allowedCostAliases = (window.TaskLaunchCosts && typeof window.TaskLaunchCosts.getAllowedCostAliasesForBuildings === 'function')
+                    ? window.TaskLaunchCosts.getAllowedCostAliasesForBuildings(localBuildingsData)
+                    : new Set();
+                localInventoryData = allInventoryData.filter(item => {
+                    const lower = String(item && item.name || '').trim().toLowerCase();
+                    const norm = (window.TaskLaunchCosts && typeof window.TaskLaunchCosts.normalizeName === 'function')
+                        ? window.TaskLaunchCosts.normalizeName(item && item.name)
+                        : lower;
+                    return allowedTaskNames.includes(lower) || lower === 'ускорители' || allowedCostAliases.has(norm);
+                });
+            } else {
+                localInventoryData = allInventoryData;
+            }
+        }
+    } catch (e) {}
+}
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('dailyAcceleratorsGranted', (event) => {
+        const detail = (event && event.detail) || {};
+        const curUid = (typeof currentUser !== 'undefined' && currentUser && currentUser.id) ? currentUser.id : 'guest';
+        if (detail.uid && detail.uid !== curUid) return;
+        syncDashboardInventoryFromStorage();
+        if (typeof renderUI === 'function') renderUI();
+    });
+}
+

@@ -7,7 +7,8 @@ async function initDashboard() {
             id: 'guest',
             name: 'Гость (Демо-режим)',
             email: 'guest@cloud',
-            role: 'user'
+            role: 'user',
+            isGuest: true
         };
         showError('ℹ️ Гостевой режим. Для синхронизации с Supabase используйте команду "login" в консоли.');
     }
@@ -34,10 +35,11 @@ async function initDashboard() {
 
     if (!localBuildingsData || localBuildingsData.length === 0) {
         localBuildingsData = [
-            { queue_group_id: 1, building_name: 'Печь', icon: '🍳', tasks: [{ name: 'Сосиски', duration: 60 }, { name: 'Кипяток', duration: 120 }, { name: 'Яйца', duration: 180 }] },
+            { queue_group_id: 1, building_name: 'Печь', icon: '🍳', tasks: [{ name: 'Сосиски', duration: 60 }, { name: 'Макароны', duration: 120 }, { name: 'Кипяток', duration: 120 }, { name: 'Яйца', duration: 180 }] },
             { queue_group_id: 2, building_name: 'Уход', icon: '👶', tasks: [{ name: 'Памперс', duration: 60 }] },
             { queue_group_id: 3, building_name: 'Стиральная машина', icon: '🧺', tasks: [{ name: 'Стирка', duration: 180 }] },
             { queue_group_id: 4, building_name: 'Кресло', icon: '🪑', tasks: [{ name: 'Отдых', duration: 120 }] },
+            { queue_group_id: 5, building_name: 'Ребёнок', icon: '🍼', tasks: [{ name: 'Покормить', duration: 60 }, { name: 'Памперс', duration: 60 }] },
             { queue_group_id: 6, building_name: 'Телевизор', icon: '📺', tasks: [{ name: 'Сериал', duration: 300 }] },
             { queue_group_id: 8, building_name: 'Мультиварка', icon: '🍲', tasks: [{ name: 'Плов', duration: 240 }, { name: 'Каша', duration: 180 }] },
             { queue_group_id: 10, building_name: 'Роутер', icon: '📡', tasks: [{ name: 'Перезагрузка', duration: 30 }] }
@@ -49,9 +51,15 @@ async function initDashboard() {
         localBuildingsData = localBuildingsData.filter(b => Number(b.queue_group_id) === targetQueueId);
         localTimersData = localTimersData.filter(t => Number(t.queue_group_id) === targetQueueId);
         const allowedInitNames = localBuildingsData.flatMap(b => (b.tasks || []).map(t => t.name.toLowerCase()));
+        const allowedCostAliases = (window.TaskLaunchCosts && typeof window.TaskLaunchCosts.getAllowedCostAliasesForBuildings === 'function')
+            ? window.TaskLaunchCosts.getAllowedCostAliasesForBuildings(localBuildingsData)
+            : new Set();
         localInventoryData = (allInventoryData.length > 0 ? allInventoryData : localInventoryData).filter(item => {
             const lower = String(item.name || '').trim().toLowerCase();
-            return allowedInitNames.includes(lower) || lower === 'ускорители';
+            const norm = (window.TaskLaunchCosts && typeof window.TaskLaunchCosts.normalizeName === 'function')
+                ? window.TaskLaunchCosts.normalizeName(item.name)
+                : lower;
+            return allowedInitNames.includes(lower) || lower === 'ускорители' || allowedCostAliases.has(norm);
         });
     }
 
@@ -66,6 +74,15 @@ async function initDashboard() {
         }
     } catch (e) {
         console.warn('Ошибка записи перехода в дашборд:', e);
+    }
+
+    const isOfflineOrGuest = currentUser.isGuest || currentUser.id === 'guest' || !window.supabaseClient || (typeof navigator !== 'undefined' && navigator.onLine === false);
+    if (isOfflineOrGuest && window.DailyAcceleratorsSync && typeof window.DailyAcceleratorsSync.checkAndGrant === 'function') {
+        await window.DailyAcceleratorsSync.checkAndGrant({ user: currentUser }).catch(() => null);
+        if (typeof syncDashboardInventoryFromStorage === 'function') {
+            syncDashboardInventoryFromStorage();
+        }
+        renderUI();
     }
 
     await forceSyncWithDB();
@@ -107,6 +124,10 @@ function renderBuildingControls() {
 
     const uid = (typeof currentUser !== 'undefined' && currentUser && currentUser.id) ? currentUser.id : 'guest';
     const hasCooldownHelper = Boolean(window.TaskCooldowns && typeof window.TaskCooldowns.getRule === 'function');
+    const hasLaunchCostHelper = Boolean(window.TaskLaunchCosts && typeof window.TaskLaunchCosts.getRule === 'function');
+    const costInvSource = (typeof allInventoryData !== 'undefined' && Array.isArray(allInventoryData) && allInventoryData.length > 0)
+        ? allInventoryData
+        : localInventoryData;
     const structParts = [];
     const timerUpdates = [];
     const stripParts = [];
@@ -142,7 +163,15 @@ function renderBuildingControls() {
                         }
                     }
                 }
-                taskSigs.push(`${t.name}:${t.duration}:${mode}`);
+                let costSig = '';
+                if (hasLaunchCostHelper) {
+                    const cRule = window.TaskLaunchCosts.getRule(t.name, b.building_name);
+                    if (cRule) {
+                        const cAvail = window.TaskLaunchCosts.checkAvailability(cRule, costInvSource);
+                        costSig = ':cost=' + (cAvail.ok ? '1' : '0') + '_' + cAvail.items.map(i => i.available).join('/');
+                    }
+                }
+                taskSigs.push(`${t.name}:${t.duration}:${mode}${costSig}`);
             });
         }
         structParts.push(`${b.queue_group_id}:${b.building_name}:${taskSigs.join(',')}`);
@@ -196,9 +225,20 @@ function renderBuildingControls() {
                 const taskIcon = t.icon || getItemEmoji(t.name);
                 const safeName = String(t.name || '').replace(/'/g, "\\'");
                 const rule = hasCooldownHelper ? window.TaskCooldowns.getRule(t.name) : null;
+                const costRule = hasLaunchCostHelper ? window.TaskLaunchCosts.getRule(t.name, b.building_name) : null;
                 let btnClass = 'btn-action';
                 let btnExtra = '';
                 let btnTitle = '';
+
+                if (costRule) {
+                    const costAvail = window.TaskLaunchCosts.checkAvailability(costRule, costInvSource);
+                    const costSummary = costAvail.items.map(c => `${c.emoji} ${c.label}: ${c.available}/${c.needed}`).join(', ');
+                    btnExtra += ` <span class="cost-chip ${costAvail.ok ? '' : 'is-missing'}">${window.TaskLaunchCosts.formatCostBadge(costRule)}</span>`;
+                    btnTitle = `При запуске: ${window.TaskLaunchCosts.formatCostText(costRule)} (на складе: ${costSummary})`;
+                    if (!costAvail.ok) {
+                        btnClass = 'btn-action btn-missing-cost';
+                    }
+                }
 
                 if (rule) {
                     const inQueue = (localTimersData || []).some(item => {
@@ -207,14 +247,14 @@ function renderBuildingControls() {
                     });
                     if (inQueue) {
                         btnClass = 'btn-action btn-in-queue';
-                        btnExtra = ` <span class="cooldown-chip">🔄 В очереди</span>`;
+                        btnExtra += ` <span class="cooldown-chip">🔄 В очереди</span>`;
                         btnTitle = `Задача «${t.name}» уже в очереди или выполняется`;
                     } else {
                         const cd = window.TaskCooldowns.getState(t.name, uid);
                         if (cd && cd.active) {
                             const domKey = `${rule.key}_${b.queue_group_id}_${idx}`;
                             btnClass = 'btn-action btn-cooldown';
-                            btnExtra = ` <span id="cooldown-timer-${domKey}" class="cooldown-chip">⏳ ${cd.formatted}</span>`;
+                            btnExtra += ` <span id="cooldown-timer-${domKey}" class="cooldown-chip">⏳ ${cd.formatted}</span>`;
                             btnTitle = `Перезарядка ${rule.label}: осталось ${cd.formatted}`;
                         }
                     }
@@ -237,8 +277,10 @@ function renderBuildingControls() {
 
 // Вспомогательный выбор эмодзи по названию (для обратной совместимости)
 function getItemEmoji(name) {
-    const lowerName = name.toLowerCase();
+    const lowerName = String(name || '').toLowerCase();
     if (lowerName.includes('памперс')) return '👶';
+    if (lowerName.includes('покорм') || lowerName.includes('корм')) return '🍽️';
+    if (lowerName.includes('ребен') || lowerName.includes('ребён')) return '👶';
     if (lowerName.includes('сосиск')) return '🌭';
     if (lowerName.includes('кипяток')) return '🔥';
     if (lowerName.includes('яйц')) return '🥚';
@@ -410,7 +452,10 @@ function renderInventory() {
 
     container.innerHTML = visibleEntries.map(([name, count]) => {
         const emoji = getItemEmoji(name);
-        return `<div class="badge">${emoji} ${name}: <strong>${count} шт.</strong></div>`;
+        const titleAttr = String(name || '').trim().toLowerCase() === 'ускорители'
+            ? ' title="Ежедневно: +1 в 09:00 и +2 в 21:00 (всего 3/день)"'
+            : '';
+        return `<div class="badge"${titleAttr}>${emoji} ${name}: <strong>${count} шт.</strong></div>`;
     }).join('');
 }
 

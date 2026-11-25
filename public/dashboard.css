@@ -292,6 +292,45 @@ body {
     background: rgba(255, 255, 255, 0.7);
 }
 
+.cost-chip {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 1px 6px;
+    border-radius: 6px;
+    background: rgba(15, 23, 42, 0.38);
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.cost-chip.is-missing {
+    background: rgba(220, 38, 38, 0.28);
+    color: #fecaca;
+}
+
+.btn-action.btn-missing-cost {
+    background: #334155;
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.45);
+}
+
+[data-theme="light"] .btn-action.btn-missing-cost,
+.theme-light .btn-action.btn-missing-cost {
+    background: #fef2f2;
+    color: #b91c1c;
+    border-color: #f87171;
+}
+
+[data-theme="light"] .cost-chip,
+.theme-light .cost-chip {
+    background: rgba(255, 255, 255, 0.65);
+}
+
+[data-theme="light"] .cost-chip.is-missing,
+.theme-light .cost-chip.is-missing {
+    background: rgba(254, 202, 202, 0.75);
+    color: #991b1b;
+}
+
 [data-theme="light"] .cooldown-strip,
 .theme-light .cooldown-strip {
     background: #fffbeb;

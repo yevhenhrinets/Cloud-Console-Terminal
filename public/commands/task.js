@@ -127,7 +127,11 @@ async function handleShowTasks(parameters, options = {}, forceFilterMode = false
             resp += `\n[Очередь #${b.queue_group_id}] **${b.building_name}**:\n`;
             if (b.tasks && b.tasks.length > 0) {
                 b.tasks.forEach(t => {
-                    resp += `  • ${t.name} (${t.duration} сек)\n`;
+                    const cRule = (window.TaskLaunchCosts && typeof window.TaskLaunchCosts.getRule === 'function')
+                        ? window.TaskLaunchCosts.getRule(t.name, b.building_name)
+                        : null;
+                    const costText = cRule ? ` [при запуске: ${window.TaskLaunchCosts.formatCostText(cRule)}]` : '';
+                    resp += `  • ${t.name} (${t.duration} сек)${costText}\n`;
                 });
             } else {
                 resp += `  • (нет задач — добавьте через \`add task\` в 2 этапа)\n`;
@@ -159,7 +163,11 @@ async function handleShowTasks(parameters, options = {}, forceFilterMode = false
             resp += `\n[Очередь #${b.queue_group_id}] **${b.building_name}**:\n`;
             if (b.tasks && b.tasks.length > 0) {
                 b.tasks.forEach(t => {
-                    resp += `  • ${t.name} (${t.duration} сек)\n`;
+                    const cRule = (window.TaskLaunchCosts && typeof window.TaskLaunchCosts.getRule === 'function')
+                        ? window.TaskLaunchCosts.getRule(t.name, b.building_name)
+                        : null;
+                    const costText = cRule ? ` [при запуске: ${window.TaskLaunchCosts.formatCostText(cRule)}]` : '';
+                    resp += `  • ${t.name} (${t.duration} сек)${costText}\n`;
                 });
             } else {
                 resp += `  • (нет задач — добавьте через \`add task\` в 2 этапа)\n`;

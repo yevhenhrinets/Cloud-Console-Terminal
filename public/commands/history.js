@@ -67,14 +67,8 @@ async function runHistoryCommand(parameters, options = {}, forceLimitMode = fals
 
             if (!error && Array.isArray(data) && data.length > 0) {
                 const visible = data.filter(r =>
-                    r.command !== '__house_layout__' &&
-                    !String(r.raw_text || '').startsWith('__house_layout__:') &&
-                    r.command !== '__support_report__' &&
-                    !String(r.raw_text || '').startsWith('__support_report__:') &&
-                    r.command !== '__command_alias__' &&
-                    !String(r.raw_text || '').startsWith('__command_alias__:') &&
-                    r.command !== '__task_cooldown__' &&
-                    !String(r.raw_text || '').startsWith('__task_cooldown__:')
+                    !String(r.command || '').startsWith('__') &&
+                    !String(r.raw_text || '').startsWith('__')
                 );
                 if (visible.length > 0) {
                     const row = visible[0];
@@ -107,14 +101,8 @@ async function runHistoryCommand(parameters, options = {}, forceLimitMode = fals
 
             if (!error && Array.isArray(data)) {
                 remoteActions = data.filter(r =>
-                    r.command !== '__house_layout__' &&
-                    !String(r.raw_text || '').startsWith('__house_layout__:') &&
-                    r.command !== '__support_report__' &&
-                    !String(r.raw_text || '').startsWith('__support_report__:') &&
-                    r.command !== '__command_alias__' &&
-                    !String(r.raw_text || '').startsWith('__command_alias__:') &&
-                    r.command !== '__task_cooldown__' &&
-                    !String(r.raw_text || '').startsWith('__task_cooldown__:')
+                    !String(r.command || '').startsWith('__') &&
+                    !String(r.raw_text || '').startsWith('__')
                 );
             }
         } catch (err) {

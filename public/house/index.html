@@ -8,10 +8,14 @@
     <meta http-equiv="Expires" content="0">
     <title>Cloud Terminal — Дом 1 (16×16: 4 квадрата 8×8)</title>
 
-    <link rel="stylesheet" href="/house.css?v=20261122_3">
+    <link rel="stylesheet" href="/house.css?v=20261125_4">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="/api.js?v=20261122_3"></script>
-    <script src="/helpers.js?v=20261122_3"></script>
+    <script src="/api.js?v=20261124_1"></script>
+    <script src="/localization.js?v=20261125_4"></script>
+    <script src="/registry.js?v=20261125_4"></script>
+    <script src="/helpers.js?v=20261125_4"></script>
+    <script src="/commands/houses.js?v=20261125_4"></script>
+    <script src="/commands.js?v=20261125_4"></script>
 </head>
 <body>
 
@@ -41,7 +45,7 @@
 
                     <!-- КУХНЯ (верхний левый 8×8: col 0..7, row 0..7) -->
                     <!-- Стиральная машина: 2×2 -->
-                    <a href="/dashboard.html?queue=3" draggable="false" class="room-item" data-id="washer" data-w="2" data-h="2" data-col="0" data-row="0" title="Стиральная машина (2×2 — удерживайте 1.5с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=3', 'select Стиральная машина 3', 'Выбрана постройка Стиральная машина (ID: 3)')">
+                    <a href="/dashboard.html?queue=3" draggable="false" class="room-item" data-id="washer" data-w="2" data-h="2" data-col="0" data-row="0" title="Стиральная машина (2×2 — удерживайте 0.75с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=3', 'select Стиральная машина 3', 'Выбрана постройка Стиральная машина (ID: 3)')">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="48 48 416 448" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Стиральная машина" class="appliance-object">
                             <rect x="64" y="64" width="384" height="416" rx="24" fill="#F8F9FA" stroke="#D1D5DB" stroke-width="6"/>
                             <rect x="64" y="64" width="384" height="72" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="4"/>
@@ -64,7 +68,7 @@
                     </a>
 
                     <!-- Печь: 2×2 -->
-                    <a href="/dashboard.html?queue=1" draggable="false" class="room-item" data-id="stove" data-w="2" data-h="2" data-col="5" data-row="0" title="Печь (2×2 — удерживайте 1.5с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=1', 'select Печь 1', 'Выбрана постройка Печь (ID: 1)')">
+                    <a href="/dashboard.html?queue=1" draggable="false" class="room-item" data-id="stove" data-w="2" data-h="2" data-col="5" data-row="0" title="Печь (2×2 — удерживайте 0.75с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=1', 'select Печь 1', 'Выбрана постройка Печь (ID: 1)')">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="48 48 416 448" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Печь" class="appliance-object">
                             <rect x="64" y="64" width="384" height="416" rx="24" fill="#F8F9FA" stroke="#D1D5DB" stroke-width="6"/>
                             <rect x="64" y="64" width="384" height="64" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="4"/>
@@ -84,7 +88,7 @@
                     </a>
 
                     <!-- Зеленый стол: 2×2 -->
-                    <div class="room-item" data-id="table" data-w="2" data-h="2" data-col="0" data-row="5" title="Стол (2×2 — удерживайте 1.5с для перемещения)">
+                    <div class="room-item" data-id="table" data-w="2" data-h="2" data-col="0" data-row="5" title="Стол (2×2 — удерживайте 0.75с для перемещения)">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="20 165 472 340" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Стол" class="appliance-object">
                             <ellipse cx="256" cy="450" rx="200" ry="30" fill="#000000" opacity="0.25" class="non-hit-shadow"/>
                             <rect x="110" y="220" width="28" height="200" rx="6" fill="#15803D"/>
@@ -98,7 +102,7 @@
                     </div>
 
                     <!-- Мультиварка: 1×1 -->
-                    <a href="/dashboard.html?queue=8" draggable="false" class="room-item" data-id="multicooker" data-w="1" data-h="1" data-col="3" data-row="5" title="Мультиварка (1×1 — удерживайте 1.5с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=8', 'select Мультиварка 8', 'Выбрана постройка Мультиварка (ID: 8)')">
+                    <a href="/dashboard.html?queue=8" draggable="false" class="room-item" data-id="multicooker" data-w="1" data-h="1" data-col="3" data-row="5" title="Мультиварка (1×1 — удерживайте 0.75с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=8', 'select Мультиварка 8', 'Выбрана постройка Мультиварка (ID: 8)')">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="72 64 368 388" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Мультиварка" class="appliance-object">
                             <rect x="140" y="420" width="40" height="16" rx="6" fill="#111827"/>
                             <rect x="332" y="420" width="40" height="16" rx="6" fill="#111827"/>
@@ -120,7 +124,7 @@
 
                     <!-- ЗАЛ (верхний правый 8×8: col 8..15, row 0..7) -->
                     <!-- Телевизор: 2×2 -->
-                    <a href="/dashboard.html?queue=6" draggable="false" class="room-item" data-id="tv" data-w="2" data-h="2" data-col="9" data-row="0" title="Телевизор (2×2 — удерживайте 1.5с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=6', 'select Телевизор 6', 'Выбрана постройка Телевизор (ID: 6)')">
+                    <a href="/dashboard.html?queue=6" draggable="false" class="room-item" data-id="tv" data-w="2" data-h="2" data-col="9" data-row="0" title="Телевизор (2×2 — удерживайте 0.75с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=6', 'select Телевизор 6', 'Выбрана постройка Телевизор (ID: 6)')">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="32 68 448 408" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Телевизор" class="appliance-object">
                             <path d="M192 432h128l32 32H160l32-32z" fill="#334155" stroke="#1e293b" stroke-width="10" stroke-linejoin="round"/>
                             <rect x="224" y="368" width="64" height="64" fill="#cbd5e1" stroke="#1e293b" stroke-width="10"/>
@@ -133,7 +137,7 @@
                     </a>
 
                     <!-- Роутер: 1×1 -->
-                    <a href="/dashboard.html?queue=10" draggable="false" class="room-item" data-id="router" data-w="1" data-h="1" data-col="14" data-row="0" title="Роутер (1×1 — удерживайте 1.5с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=10', 'select Роутер 10', 'Выбрана постройка Роутер (ID: 10)')">
+                    <a href="/dashboard.html?queue=10" draggable="false" class="room-item" data-id="router" data-w="1" data-h="1" data-col="14" data-row="0" title="Роутер (1×1 — удерживайте 0.75с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=10', 'select Роутер 10', 'Выбрана постройка Роутер (ID: 10)')">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="64 60 384 360" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Роутер" class="appliance-object">
                             <path d="M144 224L96 96" fill="none" stroke="#1e293b" stroke-width="16" stroke-linecap="round"/>
                             <path d="M368 224l48-128" fill="none" stroke="#1e293b" stroke-width="16" stroke-linecap="round"/>
@@ -148,7 +152,7 @@
                     </a>
 
                     <!-- Коричневый столик: 2×2 -->
-                    <div class="room-item" data-id="hall_table" data-w="2" data-h="2" data-col="9" data-row="3" title="Коричневый столик (2×2 — удерживайте 1.5с для перемещения)">
+                    <div class="room-item" data-id="hall_table" data-w="2" data-h="2" data-col="9" data-row="3" title="Коричневый столик (2×2 — удерживайте 0.75с для перемещения)">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="20 165 472 340" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Коричневый столик" class="appliance-object">
                             <ellipse cx="256" cy="450" rx="200" ry="30" fill="#000000" opacity="0.25" class="non-hit-shadow"/>
                             <rect x="110" y="220" width="28" height="200" rx="6" fill="#78350F"/>
@@ -162,7 +166,7 @@
                     </div>
 
                     <!-- Первое кресло: 2×2 -->
-                    <a href="/dashboard.html?queue=4" draggable="false" class="room-item" data-id="armchair" data-w="2" data-h="2" data-col="13" data-row="3" title="Кресло (2×2 — удерживайте 1.5с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=4', 'select Кресло 4', 'Выбрана постройка Кресло (ID: 4)')">
+                    <a href="/dashboard.html?queue=4" draggable="false" class="room-item" data-id="armchair" data-w="2" data-h="2" data-col="13" data-row="3" title="Кресло (2×2 — удерживайте 0.75с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=4', 'select Кресло 4', 'Выбрана постройка Кресло (ID: 4)')">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="64 96 384 384" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Кресло" class="appliance-object">
                             <g transform="rotate(90 256 288)">
                                 <rect x="112" y="416" width="32" height="48" rx="8" fill="#1e293b"/>
@@ -177,7 +181,7 @@
                     </a>
 
                     <!-- Широкий диван (5×2) -->
-                    <div class="room-item" data-id="sofa" data-w="5" data-h="2" data-col="8" data-row="6" title="Диван (5×2 — удерживайте 1.5с для перемещения)">
+                    <div class="room-item" data-id="sofa" data-w="5" data-h="2" data-col="8" data-row="6" title="Диван (5×2 — удерживайте 0.75с для перемещения)">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 112 920 376" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Диван" class="appliance-object">
                             <g transform="rotate(180 460 300)">
                                 <rect x="96" y="416" width="40" height="48" rx="8" fill="#1e293b"/>
@@ -194,7 +198,7 @@
                     </div>
 
                     <!-- Второе кресло справа от дивана: 2×2 -->
-                    <a href="/dashboard.html?queue=4" draggable="false" class="room-item" data-id="armchair2" data-w="2" data-h="2" data-col="13" data-row="6" title="Кресло справа (2×2 — удерживайте 1.5с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=4', 'select Кресло 4', 'Выбрана постройка Кресло (ID: 4)')">
+                    <a href="/dashboard.html?queue=4" draggable="false" class="room-item" data-id="armchair2" data-w="2" data-h="2" data-col="13" data-row="6" title="Кресло справа (2×2 — удерживайте 0.75с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=4', 'select Кресло 4', 'Выбрана постройка Кресло (ID: 4)')">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="64 96 384 384" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Кресло" class="appliance-object">
                             <g transform="rotate(90 256 288)">
                                 <rect x="112" y="416" width="32" height="48" rx="8" fill="#1e293b"/>
@@ -216,6 +220,9 @@
 <script>
     window.HOUSE_CONFIG = {
         homeId: 'house1',
+        requireAuth: true,
+        ownerRole: 'root',
+        ownerEmails: ['yevhenhrinets@gmail.com', 'e.grinec@gmail.com'],
         navCmd: 'go to home 1',
         navDesc: 'Переход в Дом 1 (16×16: 4 квадрата 8×8)',
         rooms: [
@@ -259,7 +266,7 @@
         ]
     };
 </script>
-<script src="/house-engine.js?v=20261122_3"></script>
+<script src="/house-engine.js?v=20261125_4"></script>
 
 </body>
 </html>

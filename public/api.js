@@ -34,17 +34,20 @@ window.SUPABASE_ANON_KEY = 'sb_publishable_HdMyTN9U9GOMG1DzpJcrDg_6RCnU37G';
             return parsed;
         },
 
-        async insert(table, rows) {
+        async insert(table, rows, reqOpts = {}) {
             const endpoint = `${url}/rest/v1/${table}`;
+            const bodyStr = JSON.stringify(rows);
+            const useKeepalive = Boolean(reqOpts && reqOpts.keepalive && bodyStr.length < 60000);
             const res = await fetch(endpoint, {
                 method: 'POST',
+                keepalive: useKeepalive,
                 headers: {
                     'apikey': key,
                     'Authorization': `Bearer ${key}`,
                     'Content-Type': 'application/json',
                     'Prefer': 'return=representation'
                 },
-                body: JSON.stringify(rows)
+                body: bodyStr
             });
             const text = await res.text();
             let parsed = null;
@@ -61,17 +64,20 @@ window.SUPABASE_ANON_KEY = 'sb_publishable_HdMyTN9U9GOMG1DzpJcrDg_6RCnU37G';
             return parsed;
         },
 
-        async upsert(table, rows) {
+        async upsert(table, rows, reqOpts = {}) {
             const endpoint = `${url}/rest/v1/${table}`;
+            const bodyStr = JSON.stringify(rows);
+            const useKeepalive = Boolean(reqOpts && reqOpts.keepalive && bodyStr.length < 60000);
             const res = await fetch(endpoint, {
                 method: 'POST',
+                keepalive: useKeepalive,
                 headers: {
                     'apikey': key,
                     'Authorization': `Bearer ${key}`,
                     'Content-Type': 'application/json',
                     'Prefer': 'resolution=merge-duplicates,return=representation'
                 },
-                body: JSON.stringify(rows)
+                body: bodyStr
             });
             const text = await res.text();
             let parsed = null;
@@ -88,17 +94,20 @@ window.SUPABASE_ANON_KEY = 'sb_publishable_HdMyTN9U9GOMG1DzpJcrDg_6RCnU37G';
             return parsed;
         },
 
-        async update(table, id, data) {
+        async update(table, id, data, reqOpts = {}) {
             const endpoint = `${url}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`;
+            const bodyStr = JSON.stringify(data);
+            const useKeepalive = Boolean(reqOpts && reqOpts.keepalive && bodyStr.length < 60000);
             const res = await fetch(endpoint, {
                 method: 'PATCH',
+                keepalive: useKeepalive,
                 headers: {
                     'apikey': key,
                     'Authorization': `Bearer ${key}`,
                     'Content-Type': 'application/json',
                     'Prefer': 'return=representation'
                 },
-                body: JSON.stringify(data)
+                body: bodyStr
             });
             const text = await res.text();
             let parsed = null;

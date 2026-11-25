@@ -34,6 +34,11 @@ function clearCachedAuthUser() {
     } catch (e) {}
 }
 
+function clearCurrentUserCache() {
+    currentUserCache = null;
+    clearCachedAuthUser();
+}
+
 // Функция безопасного выхода из системы
 async function performLogout() {
     try {
@@ -55,8 +60,7 @@ async function performLogout() {
             printOutput('❌ Ошибка выхода: ' + err.message, 'output-error', true);
         }
     } finally {
-        currentUserCache = null;
-        clearCachedAuthUser();
+        clearCurrentUserCache();
     }
 }
 
@@ -141,14 +145,347 @@ async function fetchCurrentUser(requireRealAuth = false) {
     }
 }
 
+const ROOT_OWNER_EMAILS = ['yevhenhrinets@gmail.com', 'e.grinec@gmail.com'];
+const USER_HOUSES_STORAGE_PREFIX = 'terminal_user_houses_v2';
+const USER_HOUSES_PENDING_PREFIX = 'terminal_user_houses_pending_v2';
+let cachedSupabaseAccessToken = null;
+
+const HOUSE_DEFINITIONS = [
+    {
+        id: 'house1',
+        number: 1,
+        roomId: 'house1_square',
+        name: 'Дом 1',
+        url: '/house/index.html',
+        builtin: true,
+        ownerRole: 'root',
+        ownerEmails: ROOT_OWNER_EMAILS
+    },
+    {
+        id: 'house2',
+        number: 2,
+        roomId: 'house2_square',
+        name: 'Дом 2',
+        url: '/house2/index.html',
+        builtin: true,
+        ownerRole: 'root',
+        ownerEmails: ROOT_OWNER_EMAILS
+    },
+    {
+        id: 'house3',
+        number: 3,
+        roomId: 'house3_square_v2',
+        name: 'Дом 3',
+        url: '/house3/index.html',
+        builtin: true,
+        ownerRole: 'root',
+        ownerEmails: ROOT_OWNER_EMAILS
+    }
+];
+
+function isRootUser(user) {
+    if (!user || user.isGuest || !user.id || user.id === 'guest') return false;
+    const role = String(user.role || '').toLowerCase().trim();
+    const email = String(user.email || '').toLowerCase().trim();
+    return role === 'root' || ROOT_OWNER_EMAILS.includes(email);
+}
+
 function isAdminUser(user) {
     if (!user || user.isGuest || user.id === 'guest') return false;
     const role = String(user.role || '').toLowerCase();
     const email = String(user.email || '').toLowerCase();
-    return ['root', 'support', 'admin'].includes(role) || email === 'e.grinec@gmail.com' || email === 'yevhenhrinets@gmail.com';
+    return ['root', 'support', 'admin'].includes(role) || ROOT_OWNER_EMAILS.includes(email);
 }
+
+function normalizeHouseRefId(houseIdOrRef) {
+    const raw = String(houseIdOrRef || '').trim().toLowerCase();
+    if (!raw || raw === '1' || raw === 'house' || raw === 'home' || raw === 'house 1' || raw === 'home 1' || raw === 'house1' || raw === 'home1' || raw === 'дом' || raw === 'дом 1' || raw === 'дім' || raw === 'дім 1' || raw === 'house1_square' || raw.includes('/house/') || raw === '/house' || raw.includes('kitchen.html') || raw.includes('hall.html')) {
+        return 'house1';
+    }
+    if (raw === '2' || raw === 'house2' || raw === 'home2' || raw === 'house 2' || raw === 'home 2' || raw === 'дом 2' || raw === 'дом2' || raw === 'дім 2' || raw === 'house2_square' || raw.includes('/house2')) {
+        return 'house2';
+    }
+    if (raw === '3' || raw === 'house3' || raw === 'home3' || raw === 'house 3' || raw === 'home 3' || raw === 'дом 3' || raw === 'дом3' || raw === 'дім 3' || raw === 'house3_square' || raw === 'house3_square_v2' || raw.includes('/house3')) {
+        return 'house3';
+    }
+    if (/^\d+$/.test(raw)) {
+        return `house${parseInt(raw, 10)}`;
+    }
+    return raw;
+}
+
+function makeHouseSlugId(nameOrNum) {
+    const clean = String(nameOrNum || '').trim();
+    if (/^\d+$/.test(clean)) {
+        return `house${parseInt(clean, 10)}`;
+    }
+    const normRef = normalizeHouseRefId(clean);
+    if (normRef === 'house1' || normRef === 'house2' || normRef === 'house3') {
+        return normRef;
+    }
+    const slug = clean.toLowerCase().replace(/[^a-z0-9а-яєіїё]+/gi, '_').replace(/^_+|_+$/g, '');
+    return `house_${slug || Date.now()}`;
+}
+
+function getHouseUrlByRecord(h) {
+    if (!h) return '/house/index.html';
+    if (h.id === 'house1') return '/house/index.html';
+    if (h.id === 'house2') return '/house2/index.html';
+    if (h.id === 'house3') return '/house3/index.html';
+    return `/house/index.html?house=${encodeURIComponent(h.id)}`;
+}
+
+function buildDefaultUserHousesState(user) {
+    const isRoot = isRootUser(user);
+    const nowIso = new Date().toISOString();
+    if (isRoot) {
+        return {
+            version: 2,
+            updatedAt: nowIso,
+            ts: Date.now(),
+            houses: HOUSE_DEFINITIONS.map(def => ({
+                id: def.id,
+                number: def.number,
+                roomId: def.roomId,
+                name: def.name,
+                url: def.url,
+                builtin: true,
+                rooms: [],
+                things: [],
+                createdAt: nowIso
+            }))
+        };
+    }
+    // По умолчанию для нового/обычного аккаунта — 1 пустой Дом 1
+    return {
+        version: 2,
+        updatedAt: nowIso,
+        ts: Date.now(),
+        houses: [
+            {
+                id: 'house1',
+                number: 1,
+                roomId: 'house1_square',
+                name: 'Дом 1',
+                url: '/house/index.html',
+                builtin: false,
+                rooms: [],
+                things: [],
+                createdAt: nowIso
+            }
+        ]
+    };
+}
+
+function loadUserHousesState(user) {
+    if (!user || user.isGuest || !user.id || user.id === 'guest') return null;
+    const key = `${USER_HOUSES_STORAGE_PREFIX}::${user.id}`;
+    try {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && Array.isArray(parsed.houses)) {
+                // Для root гарантируем наличие встроенных house1, house2, house3
+                if (isRootUser(user)) {
+                    HOUSE_DEFINITIONS.forEach(def => {
+                        let existing = parsed.houses.find(h => h.id === def.id);
+                        if (!existing) {
+                            parsed.houses.unshift({
+                                id: def.id,
+                                number: def.number,
+                                roomId: def.roomId,
+                                name: def.name,
+                                url: def.url,
+                                builtin: true,
+                                rooms: [],
+                                things: [],
+                                createdAt: new Date().toISOString()
+                            });
+                        } else {
+                            existing.builtin = true;
+                            existing.roomId = def.roomId;
+                            if (!existing.url) existing.url = def.url;
+                            if (!existing.number) existing.number = def.number;
+                        }
+                    });
+                } else {
+                    // Для обычного аккаунта гарантируем хотя бы пустой Дом 1
+                    if (!parsed.houses.some(h => h.id === 'house1')) {
+                        parsed.houses.unshift({
+                            id: 'house1',
+                            number: 1,
+                            roomId: 'house1_square',
+                            name: 'Дом 1',
+                            url: '/house/index.html',
+                            builtin: false,
+                            rooms: [],
+                            things: [],
+                            createdAt: new Date().toISOString()
+                        });
+                    }
+                    parsed.houses.forEach(h => {
+                        h.builtin = false;
+                    });
+                }
+                return parsed;
+            }
+        }
+    } catch (e) {}
+    const fresh = buildDefaultUserHousesState(user);
+    try {
+        localStorage.setItem(key, JSON.stringify(fresh));
+    } catch (e) {}
+    return fresh;
+}
+
+function saveUserHousesStateLocal(user, state) {
+    if (!user || user.isGuest || !user.id || user.id === 'guest' || !state) return;
+    try {
+        localStorage.setItem(`${USER_HOUSES_STORAGE_PREFIX}::${user.id}`, JSON.stringify(state));
+    } catch (e) {}
+}
+
+function findUserHouseByRef(housesList, ref) {
+    if (!Array.isArray(housesList) || housesList.length === 0) return null;
+    const raw = String(ref || '').trim();
+    if (!raw) return null;
+    const lower = raw.toLowerCase();
+    const norm = normalizeHouseRefId(raw);
+    return housesList.find(h =>
+        String(h.id || '').toLowerCase() === lower ||
+        String(h.id || '').toLowerCase() === norm ||
+        String(h.name || '').toLowerCase() === lower ||
+        (h.number !== undefined && String(h.number) === lower) ||
+        (`дом ${h.number}` === lower) ||
+        (`house ${h.number}` === lower) ||
+        (`home ${h.number}` === lower)
+    ) || null;
+}
+
+function getHouseDefinition(houseIdOrPath) {
+    const raw = String(houseIdOrPath || '').toLowerCase().trim();
+    if (!raw) return HOUSE_DEFINITIONS[0];
+    if (raw === 'house3' || raw === 'home3' || raw === '3' || raw === 'house3_square' || raw === 'house3_square_v2' || raw.includes('/house3')) {
+        return HOUSE_DEFINITIONS[2];
+    }
+    if (raw === 'house2' || raw === 'home2' || raw === '2' || raw === 'house2_square' || raw.includes('/house2')) {
+        return HOUSE_DEFINITIONS[1];
+    }
+    if (raw === 'house1' || raw === 'home1' || raw === '1' || raw === 'house' || raw === 'home' || raw === 'house1_square' || raw.includes('/house/') || raw === '/house' || raw.includes('kitchen.html') || raw.includes('hall.html')) {
+        return HOUSE_DEFINITIONS[0];
+    }
+    return {
+        id: raw,
+        roomId: `${raw}_square`,
+        name: raw,
+        url: `/house/index.html?house=${encodeURIComponent(raw)}`,
+        builtin: false
+    };
+}
+
+function getUserBoundHouses(user) {
+    if (!user || user.isGuest || !user.id || user.id === 'guest') return [];
+    const state = loadUserHousesState(user);
+    const list = (state && Array.isArray(state.houses)) ? state.houses : [];
+    return list.map(h => ({
+        ...h,
+        url: getHouseUrlByRecord(h),
+        roomId: h.roomId || `${h.id}_square`,
+        ownerId: user.id,
+        ownerEmail: user.email || '',
+        ownerRole: user.role || 'user'
+    }));
+}
+
+function canAccessHouse(user, houseIdOrPath = 'house1') {
+    const baseDef = getHouseDefinition(houseIdOrPath) || HOUSE_DEFINITIONS[0];
+    if (!user || user.isGuest || !user.id || user.id === 'guest') {
+        return {
+            allowed: false,
+            reason: 'unauthenticated',
+            house: baseDef,
+            message: '🔒 Доступ к Домам открыт только авторизованным пользователям. Выполните вход через Google (команда `login`).'
+        };
+    }
+    const bound = getUserBoundHouses(user);
+    const normRef = normalizeHouseRefId(baseDef.id || houseIdOrPath);
+    const found = findUserHouseByRef(bound, normRef) || findUserHouseByRef(bound, houseIdOrPath);
+    if (!found) {
+        return {
+            allowed: false,
+            reason: 'not_owned_or_created',
+            house: baseDef,
+            message: `🔒 ${baseDef.name} ещё не создан для аккаунта ${user.email || user.id}.\nСоздайте его пошагово: \`Add house\` ➔ введите номер/название, а затем \`Add room\` и \`Add thing\`.`
+        };
+    }
+    return {
+        allowed: true,
+        reason: 'ok',
+        house: found,
+        user
+    };
+}
+
+function applyHouseNavVisibility(user) {
+    if (typeof document === 'undefined') return;
+    const isAuthed = Boolean(user && !user.isGuest && user.id && user.id !== 'guest');
+    const bound = isAuthed ? getUserBoundHouses(user) : [];
+    const hasHouse1 = bound.some(h => h.id === 'house1');
+    const hasHouse2 = bound.some(h => h.id === 'house2');
+    const hasHouse3 = bound.some(h => h.id === 'house3');
+
+    const mapSelectors = [
+        { show: hasHouse1, sel: '.quick-bar a[href="/house/index.html"], .header a[href="/house/index.html"], .nav-links a[href="/house/index.html"]' },
+        { show: hasHouse2, sel: '.quick-bar a[href="/house2/index.html"], .header a[href="/house2/index.html"], .nav-links a[href="/house2/index.html"]' },
+        { show: hasHouse3, sel: '.quick-bar a[href="/house3/index.html"], .header a[href="/house3/index.html"], .nav-links a[href="/house3/index.html"]' }
+    ];
+    try {
+        mapSelectors.forEach(entry => {
+            document.querySelectorAll(entry.sel).forEach(el => {
+                el.style.display = entry.show ? '' : 'none';
+                el.setAttribute('aria-hidden', entry.show ? 'false' : 'true');
+            });
+        });
+
+        // Добавляем кнопки для пользовательских домов (>3 или с именами) в quick-bar
+        const quickBar = document.getElementById('quick-bar');
+        if (quickBar) {
+            quickBar.querySelectorAll('a.dynamic-house-chip').forEach(el => el.remove());
+            if (isAuthed) {
+                const anchorBefore = quickBar.querySelector('a[href="/house3/index.html"]') || quickBar.querySelector('a[href="/house/index.html"]');
+                const customHouses = bound.filter(h => !['house1', 'house2', 'house3'].includes(h.id));
+                customHouses.forEach(h => {
+                    const a = document.createElement('a');
+                    a.className = 'quick-chip dynamic-house-chip';
+                    a.href = getHouseUrlByRecord(h);
+                    a.textContent = `🏠 ${h.name}`;
+                    a.onclick = (e) => {
+                        if (typeof handleQuickNav === 'function') {
+                            return handleQuickNav(e, `go to home ${h.number || h.id}`);
+                        }
+                        return true;
+                    };
+                    if (anchorBefore && anchorBefore.parentNode === quickBar) {
+                        quickBar.insertBefore(a, anchorBefore.nextSibling);
+                    } else {
+                        quickBar.appendChild(a);
+                    }
+                });
+            }
+        }
+    } catch (e) {}
+}
+
 if (typeof window !== 'undefined') {
+    window.ROOT_OWNER_EMAILS = ROOT_OWNER_EMAILS;
+    window.HOUSE_DEFINITIONS = HOUSE_DEFINITIONS;
+    window.isRootUser = isRootUser;
     window.isAdminUser = isAdminUser;
+    window.getHouseDefinition = getHouseDefinition;
+    window.getUserBoundHouses = getUserBoundHouses;
+    window.canAccessHouse = canAccessHouse;
+    window.applyHouseNavVisibility = applyHouseNavVisibility;
+    window.clearCurrentUserCache = clearCurrentUserCache;
 }
 
 function parseCommand(rawText) {
@@ -907,28 +1244,114 @@ window.OfflineNotesSync = {
 // =========================================================================
 // Синхронизация расположения объектов в House (единый 16×16 дом и legacy комнаты) с БД
 // =========================================================================
-const HOUSE_PENDING_LAYOUTS_KEY = 'terminal_pending_house_layouts';
-const HOUSE_LAYOUTS_MISSING_SESSION_KEY = 'terminal_house_layouts_missing_v1';
+const HOUSE_PENDING_LAYOUTS_LEGACY_KEY = 'terminal_pending_house_layouts';
+const HOUSE_BOUND_REGISTRY_KEY_PREFIX = 'terminal_user_houses_v1';
+const HOUSE_TABLES_MISSING_COOLDOWN_MS = 30000;
 let houseLayoutsFlushPromise = null;
-let houseLayoutsTableMissing = false;
+let houseLayoutsTableMissingUntil = 0;
+let userHousesTableMissingUntil = 0;
+
 try {
-    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(HOUSE_LAYOUTS_MISSING_SESSION_KEY) === '1') {
-        houseLayoutsTableMissing = true;
+    if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem('terminal_house_layouts_missing_v1');
     }
 } catch (e) {}
 
+function isHouseLayoutsTableMissing() {
+    return Date.now() < houseLayoutsTableMissingUntil;
+}
+
 function markHouseLayoutsTableMissing() {
-    houseLayoutsTableMissing = true;
+    houseLayoutsTableMissingUntil = Date.now() + HOUSE_TABLES_MISSING_COOLDOWN_MS;
+}
+
+function clearHouseLayoutsTableMissing() {
+    houseLayoutsTableMissingUntil = 0;
+}
+
+function isUserHousesTableMissing() {
+    return Date.now() < userHousesTableMissingUntil;
+}
+
+function markUserHousesTableMissing() {
+    userHousesTableMissingUntil = Date.now() + HOUSE_TABLES_MISSING_COOLDOWN_MS;
+}
+
+function clearUserHousesTableMissing() {
+    userHousesTableMissingUntil = 0;
+}
+
+function getHousesDatabaseSetupSql() {
+    return [
+        "create table if not exists public.user_houses (user_id text primary key, user_email text, houses jsonb not null default '[]'::jsonb, ts bigint not null default 0, updated_at timestamptz not null default now());",
+        "create table if not exists public.house_layouts (id text primary key, user_id text not null, user_email text, room text not null, layout jsonb not null default '{}'::jsonb, ts bigint not null default 0, updated_at timestamptz not null default now());",
+        "alter table public.user_houses add column if not exists user_email text;",
+        "alter table public.user_houses add column if not exists ts bigint not null default 0;",
+        "alter table public.house_layouts add column if not exists user_email text;",
+        "alter table public.house_layouts add column if not exists ts bigint not null default 0;",
+        "create index if not exists idx_house_layouts_user_id on public.house_layouts (user_id);",
+        "create index if not exists idx_house_layouts_user_room on public.house_layouts (user_id, room);",
+        "grant usage on schema public to authenticated, service_role;",
+        "grant all on table public.user_houses to authenticated, service_role;",
+        "grant all on table public.house_layouts to authenticated, service_role;",
+        "alter table public.user_houses enable row level security;",
+        "alter table public.house_layouts enable row level security;",
+        "drop policy if exists \"Users manage own houses\" on public.user_houses;",
+        "create policy \"Users manage own houses\" on public.user_houses for all to authenticated using (auth.uid()::text = user_id) with check (auth.uid()::text = user_id);",
+        "drop policy if exists \"Users manage own house layouts\" on public.house_layouts;",
+        "create policy \"Users manage own house layouts\" on public.house_layouts for all to authenticated using (auth.uid()::text = user_id) with check (auth.uid()::text = user_id);"
+    ].join('\n');
+}
+
+function getPendingHouseLayoutsStorageKey(userId) {
+    const uid = String(userId || '').trim();
+    if (!uid || uid === 'guest') return null;
+    return `terminal_pending_house_layouts_${uid}`;
+}
+
+function resolveUserSyncIdHint(userIdOverride = null) {
+    if (typeof userIdOverride === 'string' && userIdOverride.trim() && userIdOverride !== 'guest') {
+        return userIdOverride.trim();
+    }
+    if (userIdOverride && typeof userIdOverride === 'object' && userIdOverride.id && userIdOverride.id !== 'guest') {
+        return String(userIdOverride.id);
+    }
+    if (currentUserCache && !currentUserCache.isGuest && currentUserCache.id && currentUserCache.id !== 'guest') {
+        return String(currentUserCache.id);
+    }
+    const cached = getCachedAuthUser();
+    if (cached && cached.id && cached.id !== 'guest') {
+        return String(cached.id);
+    }
+    return null;
+}
+
+function migrateLegacyPendingHouseLayoutsForRoot(user) {
+    if (!isRootUser(user)) return;
     try {
-        if (typeof sessionStorage !== 'undefined') {
-            sessionStorage.setItem(HOUSE_LAYOUTS_MISSING_SESSION_KEY, '1');
+        const legacyRaw = localStorage.getItem(HOUSE_PENDING_LAYOUTS_LEGACY_KEY);
+        if (!legacyRaw) return;
+        const legacyParsed = JSON.parse(legacyRaw);
+        const targetKey = getPendingHouseLayoutsStorageKey(user.id);
+        if (targetKey && legacyParsed && typeof legacyParsed === 'object' && !Array.isArray(legacyParsed)) {
+            let currentMap = {};
+            try {
+                const existingRaw = localStorage.getItem(targetKey);
+                if (existingRaw) currentMap = JSON.parse(existingRaw) || {};
+            } catch (e) {}
+            const merged = { ...legacyParsed, ...currentMap };
+            localStorage.setItem(targetKey, JSON.stringify(merged));
         }
+        localStorage.removeItem(HOUSE_PENDING_LAYOUTS_LEGACY_KEY);
     } catch (e) {}
 }
 
-function getPendingHouseLayouts() {
+function getPendingHouseLayouts(userIdOverride = null) {
     try {
-        const raw = localStorage.getItem(HOUSE_PENDING_LAYOUTS_KEY);
+        const uid = resolveUserSyncIdHint(userIdOverride);
+        const key = getPendingHouseLayoutsStorageKey(uid);
+        if (!key) return {};
+        const raw = localStorage.getItem(key);
         if (!raw) return {};
         const parsed = JSON.parse(raw);
         return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
@@ -937,10 +1360,30 @@ function getPendingHouseLayouts() {
     }
 }
 
-function savePendingHouseLayouts(map) {
+function savePendingHouseLayouts(map, userIdOverride = null) {
     try {
-        localStorage.setItem(HOUSE_PENDING_LAYOUTS_KEY, JSON.stringify(map || {}));
+        const uid = resolveUserSyncIdHint(userIdOverride);
+        const key = getPendingHouseLayoutsStorageKey(uid);
+        if (!key) return;
+        localStorage.setItem(key, JSON.stringify(map || {}));
     } catch (e) {}
+}
+
+function syncUserHouseRegistryLocal(user) {
+    try {
+        if (!user || user.isGuest || !user.id || user.id === 'guest') return [];
+        const bound = getUserBoundHouses(user);
+        localStorage.setItem(`${HOUSE_BOUND_REGISTRY_KEY_PREFIX}::${user.id}`, JSON.stringify({
+            ownerId: user.id,
+            ownerEmail: user.email || '',
+            ownerRole: user.role || 'user',
+            houses: bound,
+            updatedAt: new Date().toISOString()
+        }));
+        return bound;
+    } catch (e) {
+        return [];
+    }
 }
 
 function isMissingTableError(err) {
@@ -961,9 +1404,19 @@ async function resolveAuthenticatedDbUser() {
         try {
             const { data } = await window.supabaseClient.auth.getSession();
             if (data && data.session && data.session.user && data.session.user.id) {
+                if (data.session.access_token) {
+                    cachedSupabaseAccessToken = data.session.access_token;
+                }
+                const authUser = data.session.user;
+                const emailLower = String(authUser.email || '').toLowerCase().trim();
+                const cached = getCachedAuthUser();
+                const fallbackRole = ROOT_OWNER_EMAILS.includes(emailLower) ? 'root' : 'user';
+                const cachedRole = (cached && cached.id === authUser.id && cached.role) ? cached.role : null;
+                const currentRole = (currentUserCache && currentUserCache.id === authUser.id && currentUserCache.role) ? currentUserCache.role : null;
                 return {
-                    id: data.session.user.id,
-                    email: data.session.user.email || '',
+                    id: authUser.id,
+                    email: authUser.email || '',
+                    role: currentRole || cachedRole || fallbackRole,
                     isGuest: false
                 };
             }
@@ -976,6 +1429,145 @@ async function resolveAuthenticatedDbUser() {
     return null;
 }
 
+function getHouseLayoutRowIdCacheKey(userId, room) {
+    return `terminal_house_layout_rowid::${userId}::${room}`;
+}
+
+function isMissingColumnError(err) {
+    if (!err) return false;
+    const code = String(err.code || '').toUpperCase();
+    const msg = String(err.message || '').toLowerCase();
+    return code === 'PGRST204' || code === '42703' || msg.includes('could not find the') && msg.includes('column');
+}
+
+function flushPendingHouseLayoutsKeepalive(userOverride = null) {
+    try {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+        const uid = resolveUserSyncIdHint(userOverride);
+        if (!uid || uid === 'guest') return;
+        const pendingMap = getPendingHouseLayouts(uid);
+        const rooms = Object.keys(pendingMap);
+        if (rooms.length === 0) return;
+
+        const apiUrl = window.SUPABASE_URL;
+        const apiKey = window.SUPABASE_ANON_KEY;
+        const bearer = cachedSupabaseAccessToken || apiKey;
+        if (!apiUrl || !apiKey) return;
+
+        if (!isHouseLayoutsTableMissing()) {
+            rooms.forEach(room => {
+                const entry = pendingMap[room];
+                if (!entry || !entry.layout) return;
+                const updatedAt = entry.updatedAt || new Date(entry.ts || Date.now()).toISOString();
+                const body = JSON.stringify([{
+                    id: `${uid}_${room}`,
+                    user_id: uid,
+                    room,
+                    layout: entry.layout,
+                    updated_at: updatedAt
+                }]);
+                if (body.length < 60000) {
+                    fetch(`${apiUrl}/rest/v1/house_layouts?on_conflict=id`, {
+                        method: 'POST',
+                        keepalive: true,
+                        headers: {
+                            'apikey': apiKey,
+                            'Authorization': `Bearer ${bearer}`,
+                            'Content-Type': 'application/json',
+                            'Prefer': 'resolution=merge-duplicates,return=minimal'
+                        },
+                        body
+                    }).catch(() => {});
+                }
+            });
+            return;
+        }
+
+        rooms.forEach(room => {
+            const entry = pendingMap[room];
+            if (!entry || !entry.layout) return;
+            const updatedAt = entry.updatedAt || new Date(entry.ts || Date.now()).toISOString();
+            const markerRawText = `__house_layout__:${room}`;
+            const payloadParams = {
+                room,
+                layout: entry.layout,
+                user_id: uid,
+                owner_email: entry.owner_email || '',
+                bound_role: entry.bound_role || 'user',
+                ts: Number(entry.ts || Date.now()),
+                updated_at: updatedAt
+            };
+            const cachedRowId = localStorage.getItem(getHouseLayoutRowIdCacheKey(uid, room));
+            const headers = {
+                'apikey': apiKey,
+                'Authorization': `Bearer ${bearer}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=minimal'
+            };
+            if (cachedRowId) {
+                const body = JSON.stringify({ parameters: payloadParams, created_at: updatedAt });
+                if (body.length < 60000) {
+                    fetch(`${apiUrl}/rest/v1/commands_history?id=eq.${encodeURIComponent(cachedRowId)}`, {
+                        method: 'PATCH',
+                        keepalive: true,
+                        headers,
+                        body
+                    }).catch(() => {});
+                }
+            } else {
+                const body = JSON.stringify([{
+                    raw_text: markerRawText,
+                    command: '__house_layout__',
+                    parameters: payloadParams,
+                    output: 'house_layout',
+                    result: 'OK',
+                    status: 'success',
+                    created_at: updatedAt,
+                    created_by: uid
+                }]);
+                if (body.length < 60000) {
+                    fetch(`${apiUrl}/rest/v1/commands_history`, {
+                        method: 'POST',
+                        keepalive: true,
+                        headers,
+                        body
+                    }).catch(() => {});
+                }
+            }
+        });
+    } catch (e) {}
+}
+
+async function upsertHouseLayoutRow(user, room, layout, entryTs, updatedAt) {
+    const richRow = {
+        id: `${user.id}_${room}`,
+        user_id: user.id,
+        user_email: user.email || '',
+        room,
+        layout,
+        ts: entryTs,
+        updated_at: updatedAt
+    };
+    let { error } = await window.supabaseClient
+        .from('house_layouts')
+        .upsert([richRow], { onConflict: 'id' });
+
+    if (error && isMissingColumnError(error)) {
+        const coreRow = {
+            id: `${user.id}_${room}`,
+            user_id: user.id,
+            room,
+            layout,
+            updated_at: updatedAt
+        };
+        const retry = await window.supabaseClient
+            .from('house_layouts')
+            .upsert([coreRow], { onConflict: 'id' });
+        error = retry.error;
+    }
+    return error || null;
+}
+
 async function flushPendingHouseLayouts() {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return 0;
     if (!window.supabaseClient) return 0;
@@ -984,12 +1576,14 @@ async function flushPendingHouseLayouts() {
 
     houseLayoutsFlushPromise = (async () => {
         try {
-            const pendingMap = getPendingHouseLayouts();
-            const rooms = Object.keys(pendingMap);
-            if (rooms.length === 0) return 0;
-
             const user = await resolveAuthenticatedDbUser();
             if (!user) return 0;
+            migrateLegacyPendingHouseLayoutsForRoot(user);
+            syncUserHouseRegistryLocal(user);
+
+            const pendingMap = getPendingHouseLayouts(user.id);
+            const rooms = Object.keys(pendingMap);
+            if (rooms.length === 0) return 0;
 
             let syncedCount = 0;
 
@@ -997,22 +1591,15 @@ async function flushPendingHouseLayouts() {
                 const entry = pendingMap[room];
                 if (!entry || !entry.layout) continue;
 
-                const updatedAt = entry.updatedAt || new Date(entry.ts || Date.now()).toISOString();
+                const entryTs = Number(entry.ts || (entry.updatedAt ? new Date(entry.updatedAt).getTime() : 0) || Date.now());
+                const updatedAt = entry.updatedAt || new Date(entryTs).toISOString();
                 let savedOk = false;
 
-                if (!houseLayoutsTableMissing) {
+                if (!isHouseLayoutsTableMissing()) {
                     try {
-                        const { error } = await window.supabaseClient
-                            .from('house_layouts')
-                            .upsert([{
-                                id: `${user.id}_${room}`,
-                                user_id: user.id,
-                                room,
-                                layout: entry.layout,
-                                updated_at: updatedAt
-                            }], { onConflict: 'id' });
-
+                        const error = await upsertHouseLayoutRow(user, room, entry.layout, entryTs, updatedAt);
                         if (!error) {
+                            clearHouseLayoutsTableMissing();
                             savedOk = true;
                         } else if (isMissingTableError(error)) {
                             markHouseLayoutsTableMissing();
@@ -1029,6 +1616,10 @@ async function flushPendingHouseLayouts() {
                     const payloadParams = {
                         room,
                         layout: entry.layout,
+                        user_id: user.id,
+                        owner_email: user.email || '',
+                        bound_role: user.role || 'user',
+                        ts: entryTs,
                         updated_at: updatedAt
                     };
 
@@ -1048,6 +1639,9 @@ async function flushPendingHouseLayouts() {
 
                     let updatedInPlace = false;
                     if (!selErr && existingRows && existingRows[0] && existingRows[0].id) {
+                        try {
+                            localStorage.setItem(getHouseLayoutRowIdCacheKey(user.id, room), String(existingRows[0].id));
+                        } catch (e) {}
                         const { data: updData, error: updErr } = await window.supabaseClient
                             .from('commands_history')
                             .update({
@@ -1066,7 +1660,7 @@ async function flushPendingHouseLayouts() {
                     }
 
                     if (!updatedInPlace) {
-                        const { error: insErr } = await window.supabaseClient
+                        const { data: insData, error: insErr } = await window.supabaseClient
                             .from('commands_history')
                             .insert([{
                                 raw_text: markerRawText,
@@ -1077,22 +1671,28 @@ async function flushPendingHouseLayouts() {
                                 status: 'success',
                                 created_at: updatedAt,
                                 created_by: user.id
-                            }]);
+                            }])
+                            .select('id');
 
                         if (insErr) {
                             if (isOfflineNetworkError(insErr)) throw insErr;
                             console.warn('House layout DB save error:', insErr.message);
                         } else {
+                            if (insData && insData[0] && insData[0].id) {
+                                try {
+                                    localStorage.setItem(getHouseLayoutRowIdCacheKey(user.id, room), String(insData[0].id));
+                                } catch (e) {}
+                            }
                             savedOk = true;
                         }
                     }
                 }
 
                 if (savedOk) {
-                    const latestPending = getPendingHouseLayouts();
+                    const latestPending = getPendingHouseLayouts(user.id);
                     if (latestPending[room] && Number(latestPending[room].ts || 0) <= Number(entry.ts || 0)) {
                         delete latestPending[room];
-                        savePendingHouseLayouts(latestPending);
+                        savePendingHouseLayouts(latestPending, user.id);
                     }
                     syncedCount++;
                 }
@@ -1117,28 +1717,35 @@ async function fetchAllHouseLayoutsFromDb(roomIds = []) {
     if (!window.supabaseClient) return {};
 
     const resultMap = {};
+    const tableMap = {};
+    let houseLayoutsTableReady = false;
+
     try {
         const user = await resolveAuthenticatedDbUser();
         if (!user) return {};
 
         const cleanRoomIds = Array.isArray(roomIds) ? roomIds.map(String).filter(Boolean) : [];
 
-        if (!houseLayoutsTableMissing && cleanRoomIds.length > 0) {
+        if (!isHouseLayoutsTableMissing() && cleanRoomIds.length > 0) {
             try {
                 const { data, error } = await window.supabaseClient
                     .from('house_layouts')
-                    .select('room, layout, updated_at')
+                    .select('*')
                     .eq('user_id', user.id)
                     .in('room', cleanRoomIds);
 
                 if (!error && Array.isArray(data)) {
+                    clearHouseLayoutsTableMissing();
+                    houseLayoutsTableReady = true;
                     data.forEach(row => {
                         if (row && row.room && row.layout) {
-                            const ts = row.updated_at ? new Date(row.updated_at).getTime() : 0;
+                            const ts = Number(row.ts) || (row.updated_at ? new Date(row.updated_at).getTime() : 0);
                             const prev = resultMap[row.room];
-                            const prevTs = prev && prev.updatedAt ? new Date(prev.updatedAt).getTime() : 0;
+                            const prevTs = prev ? (Number(prev.ts) || (prev.updatedAt ? new Date(prev.updatedAt).getTime() : 0)) : 0;
                             if (!prev || ts >= prevTs) {
-                                resultMap[row.room] = { layout: row.layout, updatedAt: row.updated_at || null };
+                                const entry = { layout: row.layout, updatedAt: row.updated_at || null, ts };
+                                resultMap[row.room] = entry;
+                                tableMap[row.room] = entry;
                             }
                         }
                     });
@@ -1150,7 +1757,7 @@ async function fetchAllHouseLayoutsFromDb(roomIds = []) {
 
         let query = window.supabaseClient
             .from('commands_history')
-            .select('raw_text, parameters, created_at')
+            .select('id, raw_text, parameters, created_at')
             .eq('created_by', user.id)
             .eq('command', '__house_layout__')
             .is('deleted_at', null)
@@ -1167,14 +1774,32 @@ async function fetchAllHouseLayoutsFromDb(roomIds = []) {
                 const p = row && row.parameters;
                 const roomName = (p && p.room) || (row.raw_text ? String(row.raw_text).replace(/^__house_layout__:/, '') : '');
                 if (!roomName || !p || !p.layout) return;
+                if (row.id) {
+                    try {
+                        localStorage.setItem(getHouseLayoutRowIdCacheKey(user.id, roomName), String(row.id));
+                    } catch (e) {}
+                }
                 const updatedAt = p.updated_at || row.created_at || null;
-                const ts = updatedAt ? new Date(updatedAt).getTime() : 0;
+                const ts = Number(p.ts) || (updatedAt ? new Date(updatedAt).getTime() : 0);
                 const prev = resultMap[roomName];
-                const prevTs = prev && prev.updatedAt ? new Date(prev.updatedAt).getTime() : 0;
+                const prevTs = prev ? (Number(prev.ts) || (prev.updatedAt ? new Date(prev.updatedAt).getTime() : 0)) : 0;
                 if (!prev || ts >= prevTs) {
-                    resultMap[roomName] = { layout: p.layout, updatedAt };
+                    resultMap[roomName] = { layout: p.layout, updatedAt, ts };
                 }
             });
+        }
+
+        // Если таблица house_layouts существует, автоматически переносим в неё расклады из legacy commands_history
+        if (houseLayoutsTableReady) {
+            for (const roomName of Object.keys(resultMap)) {
+                const chosen = resultMap[roomName];
+                const inTable = tableMap[roomName];
+                if (chosen && chosen.layout && (!inTable || Number(chosen.ts || 0) > Number(inTable.ts || 0))) {
+                    const chosenTs = Number(chosen.ts || Date.now());
+                    const updatedAt = chosen.updatedAt || new Date(chosenTs).toISOString();
+                    upsertHouseLayoutRow(user, roomName, chosen.layout, chosenTs, updatedAt).catch(() => {});
+                }
+            }
         }
     } catch (e) {
         console.warn('fetchAllHouseLayoutsFromDb error:', e);
@@ -1188,30 +1813,1027 @@ async function fetchRoomLayoutFromDb(room) {
     return map[room] || null;
 }
 
-function saveAndSyncHouseLayout(room, layoutObj) {
-    if (!room || !layoutObj) return;
-    const nowMs = Date.now();
+function saveAndSyncHouseLayout(room, layoutObj, userOverride = null, customTs = null) {
+    if (!room || !layoutObj) return Promise.resolve(0);
+    const uid = resolveUserSyncIdHint(userOverride);
+    if (!uid || uid === 'guest') return Promise.resolve(0);
+    const nowMs = customTs ? Number(customTs) : Date.now();
     const updatedAt = new Date(nowMs).toISOString();
-    const pendingMap = getPendingHouseLayouts();
+    const pendingMap = getPendingHouseLayouts(uid);
     pendingMap[room] = {
         room,
         layout: layoutObj,
+        user_id: uid,
         updatedAt,
         ts: nowMs
     };
-    savePendingHouseLayouts(pendingMap);
+    savePendingHouseLayouts(pendingMap, uid);
 
     if (typeof navigator === 'undefined' || navigator.onLine !== false) {
-        flushPendingHouseLayouts().catch(() => {});
+        return flushPendingHouseLayouts().catch(() => 0);
     }
+    return Promise.resolve(0);
 }
 
 window.HouseLayoutSync = {
     getPendingHouseLayouts,
     saveAndSyncHouseLayout,
     flushPendingHouseLayouts,
+    flushPendingHouseLayoutsKeepalive,
     fetchRoomLayoutFromDb,
-    fetchAllHouseLayoutsFromDb
+    fetchAllHouseLayoutsFromDb,
+    syncUserHouseRegistryLocal,
+    migrateLegacyPendingHouseLayoutsForRoot,
+    isHouseLayoutsTableMissing,
+    getSetupSql: getHousesDatabaseSetupSql
+};
+
+// =========================================================================
+// Аккаунт-зависимые Дома, Комнаты и Предметы (Add house / Add room / Add thing)
+// =========================================================================
+const THING_CATALOG_PRESETS = {
+    table: { type: 'table', label: 'Стол', w: 2, h: 2 },
+    desk: { type: 'desk', label: 'Стол', w: 2, h: 2 },
+    стол: { type: 'table', label: 'Стол', w: 2, h: 2 },
+    стіл: { type: 'table', label: 'Стол', w: 2, h: 2 },
+    столик: { type: 'desk', label: 'Столик', w: 2, h: 1 },
+    stove: { type: 'stove', label: 'Плита', w: 2, h: 2 },
+    oven: { type: 'stove', label: 'Печь', w: 2, h: 2 },
+    печь: { type: 'stove', label: 'Печь', w: 2, h: 2 },
+    плита: { type: 'stove', label: 'Плита', w: 2, h: 2 },
+    піч: { type: 'stove', label: 'Печь', w: 2, h: 2 },
+    fridge: { type: 'fridge', label: 'Холодильник', w: 2, h: 2 },
+    refrigerator: { type: 'fridge', label: 'Холодильник', w: 2, h: 2 },
+    холодильник: { type: 'fridge', label: 'Холодильник', w: 2, h: 2 },
+    washer: { type: 'washer', label: 'Стиральная машина', w: 2, h: 2 },
+    washing_machine: { type: 'washer', label: 'Стиральная машина', w: 2, h: 2 },
+    стиралка: { type: 'washer', label: 'Стиральная машина', w: 2, h: 2 },
+    boiler: { type: 'boiler', label: 'Бойлер', w: 2, h: 2 },
+    бойлер: { type: 'boiler', label: 'Бойлер', w: 2, h: 2 },
+    multicooker: { type: 'multicooker', label: 'Мультиварка', w: 1, h: 1 },
+    мультиварка: { type: 'multicooker', label: 'Мультиварка', w: 1, h: 1 },
+    sofa: { type: 'sofa', label: 'Диван', w: 4, h: 2 },
+    couch: { type: 'sofa', label: 'Диван', w: 4, h: 2 },
+    диван: { type: 'sofa', label: 'Диван', w: 4, h: 2 },
+    armchair: { type: 'armchair', label: 'Кресло', w: 2, h: 2 },
+    chair: { type: 'armchair', label: 'Кресло', w: 2, h: 2 },
+    кресло: { type: 'armchair', label: 'Кресло', w: 2, h: 2 },
+    крісло: { type: 'armchair', label: 'Кресло', w: 2, h: 2 },
+    bed: { type: 'bed', label: 'Кровать', w: 2, h: 2 },
+    кровать: { type: 'bed', label: 'Кровать', w: 2, h: 2 },
+    ліжко: { type: 'bed', label: 'Кровать', w: 2, h: 2 },
+    closet: { type: 'closet', label: 'Шкаф', w: 2, h: 2 },
+    wardrobe: { type: 'closet', label: 'Шкаф', w: 2, h: 2 },
+    cabinet: { type: 'closet', label: 'Шкаф', w: 2, h: 2 },
+    шкаф: { type: 'closet', label: 'Шкаф', w: 2, h: 2 },
+    шафа: { type: 'closet', label: 'Шкаф', w: 2, h: 2 },
+    tv: { type: 'tv', label: 'Телевизор', w: 2, h: 2 },
+    television: { type: 'tv', label: 'Телевизор', w: 2, h: 2 },
+    телевизор: { type: 'tv', label: 'Телевизор', w: 2, h: 2 },
+    тв: { type: 'tv', label: 'Телевизор', w: 2, h: 2 },
+    laptop: { type: 'laptop', label: 'Ноутбук', w: 1, h: 1 },
+    ноутбук: { type: 'laptop', label: 'Ноутбук', w: 1, h: 1 },
+    pc: { type: 'laptop', label: 'Ноутбук', w: 1, h: 1 },
+    computer: { type: 'laptop', label: 'Компьютер', w: 1, h: 1 },
+    router: { type: 'router', label: 'Роутер', w: 1, h: 1 },
+    роутер: { type: 'router', label: 'Роутер', w: 1, h: 1 },
+    radiator: { type: 'radiator', label: 'Батарея', w: 2, h: 1 },
+    батарея: { type: 'radiator', label: 'Батарея', w: 2, h: 1 },
+    window: { type: 'window', label: 'Окно', w: 1, h: 2 },
+    окно: { type: 'window', label: 'Окно', w: 1, h: 2 },
+    вікно: { type: 'window', label: 'Окно', w: 1, h: 2 },
+    conditioner: { type: 'conditioner', label: 'Кондиционер', w: 2, h: 1 },
+    ac: { type: 'conditioner', label: 'Кондиционер', w: 2, h: 1 },
+    кондиционер: { type: 'conditioner', label: 'Кондиционер', w: 2, h: 1 }
+};
+
+function getThingPreset(rawThingName) {
+    const clean = String(rawThingName || '').trim();
+    const key = clean.toLowerCase().replace(/\s+/g, '_');
+    const exact = THING_CATALOG_PRESETS[key] || THING_CATALOG_PRESETS[clean.toLowerCase()];
+    if (exact) {
+        return { ...exact, displayName: clean };
+    }
+    return { type: 'custom', label: clean, displayName: clean, w: 2, h: 2 };
+}
+
+function getRoomsForHouseGridGeometry(houseRecord) {
+    const rooms = Array.isArray(houseRecord && houseRecord.rooms) ? houseRecord.rooms : [];
+    const total = rooms.length;
+    if (total === 0) return { colsPerSide: 1, rowsPerSide: 1, gridW: 16, gridH: 16 };
+    if (total <= 4) return { colsPerSide: 2, rowsPerSide: 2, gridW: 16, gridH: 16 };
+    const colsPerSide = Math.max(2, Math.ceil(Math.sqrt(total)));
+    const rowsPerSide = Math.max(2, Math.ceil(total / colsPerSide));
+    return { colsPerSide, rowsPerSide, gridW: colsPerSide * 8, gridH: rowsPerSide * 8 };
+}
+
+function findRoomInHouseRecord(house, roomRef) {
+    if (!house || !Array.isArray(house.rooms)) return null;
+    const raw = String(roomRef || '').trim();
+    if (!raw) return null;
+    const lower = raw.toLowerCase();
+    // 1) Совпадение по id или имени
+    let match = house.rooms.find(r =>
+        String(r.id || '').toLowerCase() === lower ||
+        String(r.name || '').toLowerCase() === lower
+    );
+    if (match) return match;
+    // 2) Синонимы kitchen/hall/room/corridor
+    const roomSyn = {
+        kitchen: ['кухня', 'kitchen'],
+        hall: ['зал', 'зала', 'гостиная', 'hall', 'parlor'],
+        room: ['комната', 'спальня', 'room', 'bedroom'],
+        corridor: ['коридор', 'corridor', 'hallway']
+    };
+    for (const group of Object.values(roomSyn)) {
+        if (group.includes(lower)) {
+            match = house.rooms.find(r => group.includes(String(r.name || '').toLowerCase()));
+            if (match) return match;
+        }
+    }
+    // 3) Номер комнаты 1..N
+    if (/^\d+$/.test(raw)) {
+        const idx = parseInt(raw, 10) - 1;
+        if (idx >= 0 && idx < house.rooms.length) {
+            return house.rooms[idx];
+        }
+    }
+    return null;
+}
+
+async function syncUserHousesToDb(user, state) {
+    if (!user || user.isGuest || !user.id || user.id === 'guest' || !state) return false;
+    try {
+        localStorage.setItem(`${USER_HOUSES_PENDING_PREFIX}::${user.id}`, JSON.stringify(state));
+    } catch (e) {}
+    if (!window.supabaseClient || (typeof navigator !== 'undefined' && navigator.onLine === false)) return false;
+
+    try {
+        const dbUser = await resolveAuthenticatedDbUser();
+        const uid = (dbUser && dbUser.id) ? dbUser.id : user.id;
+        const email = (dbUser && dbUser.email) || user.email || '';
+        const tsNum = Number(state.ts || Date.now());
+        const updatedAt = state.updatedAt || new Date(tsNum).toISOString();
+        let ok = false;
+
+        if (!isUserHousesTableMissing()) {
+            const richRow = {
+                user_id: uid,
+                user_email: email,
+                houses: Array.isArray(state.houses) ? state.houses : [],
+                ts: tsNum,
+                updated_at: updatedAt
+            };
+            let { error: uhErr } = await window.supabaseClient
+                .from('user_houses')
+                .upsert([richRow], { onConflict: 'user_id' });
+
+            if (uhErr && isMissingColumnError(uhErr)) {
+                const retry = await window.supabaseClient
+                    .from('user_houses')
+                    .upsert([{
+                        user_id: uid,
+                        houses: Array.isArray(state.houses) ? state.houses : [],
+                        updated_at: updatedAt
+                    }], { onConflict: 'user_id' });
+                uhErr = retry.error;
+            }
+
+            if (!uhErr) {
+                clearUserHousesTableMissing();
+                ok = true;
+            } else if (isMissingTableError(uhErr)) {
+                markUserHousesTableMissing();
+            } else if (isOfflineNetworkError(uhErr)) {
+                return false;
+            }
+        }
+
+        if (!ok) {
+            const { data: existingRows, error: selErr } = await window.supabaseClient
+                .from('commands_history')
+                .select('id')
+                .eq('created_by', uid)
+                .eq('command', '__user_houses__')
+                .eq('raw_text', '__user_houses__')
+                .is('deleted_at', null)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            if (selErr && isOfflineNetworkError(selErr)) return false;
+
+            if (!selErr && existingRows && existingRows[0] && existingRows[0].id) {
+                const { data: updData, error: updErr } = await window.supabaseClient
+                    .from('commands_history')
+                    .update({
+                        parameters: state,
+                        created_at: updatedAt
+                    })
+                    .eq('id', existingRows[0].id)
+                    .select('id');
+                if (!updErr && updData && updData.length > 0) ok = true;
+            }
+            if (!ok) {
+                const { error: insErr } = await window.supabaseClient
+                    .from('commands_history')
+                    .insert([{
+                        raw_text: '__user_houses__',
+                        command: '__user_houses__',
+                        parameters: state,
+                        output: 'user_houses',
+                        result: 'OK',
+                        status: 'success',
+                        created_at: updatedAt,
+                        created_by: uid
+                    }]);
+                if (!insErr) ok = true;
+            }
+        }
+
+        if (ok) {
+            try {
+                const pendingRaw = localStorage.getItem(`${USER_HOUSES_PENDING_PREFIX}::${user.id}`);
+                const pendingParsed = pendingRaw ? JSON.parse(pendingRaw) : null;
+                if (pendingParsed && Number(pendingParsed.ts || 0) <= Number(state.ts || 0)) {
+                    localStorage.removeItem(`${USER_HOUSES_PENDING_PREFIX}::${user.id}`);
+                }
+            } catch (e) {}
+        }
+        return ok;
+    } catch (e) {
+        return false;
+    }
+}
+
+async function syncUserHousesFromDb(user) {
+    if (!user || user.isGuest || !user.id || user.id === 'guest') return null;
+    let localState = loadUserHousesState(user);
+
+    // Если есть неотправленные локальные изменения — сначала отправляем их в облако
+    try {
+        const pendingRaw = localStorage.getItem(`${USER_HOUSES_PENDING_PREFIX}::${user.id}`);
+        if (pendingRaw) {
+            const pendingState = JSON.parse(pendingRaw);
+            if (pendingState && Array.isArray(pendingState.houses)) {
+                await syncUserHousesToDb(user, pendingState);
+                localState = loadUserHousesState(user);
+            }
+        }
+    } catch (e) {}
+
+    if (!window.supabaseClient || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+        return localState;
+    }
+
+    try {
+        const dbUser = await resolveAuthenticatedDbUser();
+        const uid = (dbUser && dbUser.id) ? dbUser.id : user.id;
+
+        let tableState = null;
+        let tableTs = 0;
+        let userHousesTableReady = false;
+
+        if (!isUserHousesTableMissing()) {
+            const { data: uhRows, error: uhErr } = await window.supabaseClient
+                .from('user_houses')
+                .select('*')
+                .eq('user_id', uid)
+                .limit(1);
+
+            if (!uhErr && Array.isArray(uhRows)) {
+                clearUserHousesTableMissing();
+                userHousesTableReady = true;
+                if (uhRows[0] && Array.isArray(uhRows[0].houses)) {
+                    tableTs = Number(uhRows[0].ts || (uhRows[0].updated_at ? new Date(uhRows[0].updated_at).getTime() : 0));
+                    tableState = {
+                        version: 2,
+                        updatedAt: uhRows[0].updated_at || new Date(tableTs || Date.now()).toISOString(),
+                        ts: tableTs,
+                        houses: uhRows[0].houses
+                    };
+                }
+            } else if (uhErr && isMissingTableError(uhErr)) {
+                markUserHousesTableMissing();
+            }
+        }
+
+        let legacyState = null;
+        let legacyTs = 0;
+        const { data: rows, error } = await window.supabaseClient
+            .from('commands_history')
+            .select('parameters, created_at')
+            .eq('created_by', uid)
+            .eq('command', '__user_houses__')
+            .eq('raw_text', '__user_houses__')
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        if (!error && rows && rows[0] && rows[0].parameters && Array.isArray(rows[0].parameters.houses)) {
+            legacyState = rows[0].parameters;
+            legacyTs = Number(legacyState.ts || (legacyState.updatedAt ? new Date(legacyState.updatedAt).getTime() : 0) || (rows[0].created_at ? new Date(rows[0].created_at).getTime() : 0));
+        }
+
+        const remote = (legacyTs > tableTs && legacyState) ? legacyState : (tableState || legacyState);
+        const remoteTs = Math.max(tableTs, legacyTs);
+        const localTs = Number((localState && (localState.ts || (localState.updatedAt ? new Date(localState.updatedAt).getTime() : 0))) || 0);
+
+        if (remote && remoteTs > localTs) {
+            saveUserHousesStateLocal(user, remote);
+            localState = loadUserHousesState(user);
+            if (userHousesTableReady && (!tableState || legacyTs > tableTs)) {
+                await syncUserHousesToDb(user, localState);
+            }
+        } else if (localState && (!remote || localTs > remoteTs || (userHousesTableReady && !tableState))) {
+            // Записываем дома пользователя в таблицу БД, если в ней ещё нет записи или локальная новее
+            await syncUserHousesToDb(user, localState);
+        }
+    } catch (e) {}
+
+    applyHouseNavVisibility(user);
+    return localState;
+}
+
+window.UserHousesSync = {
+    getState: (user) => loadUserHousesState(user),
+    syncFromDb: syncUserHousesFromDb,
+    syncToDb: syncUserHousesToDb,
+    getSetupSql: getHousesDatabaseSetupSql,
+    isTableMissing: isUserHousesTableMissing,
+    findHouse: (user, ref) => {
+        const st = loadUserHousesState(user);
+        return findUserHouseByRef(st ? st.houses : [], ref);
+    },
+    findRoom: findRoomInHouseRecord,
+    getThingPreset,
+    getGridGeometry: getRoomsForHouseGridGeometry,
+    addHouse: async (user, houseRef) => {
+        if (!user || user.isGuest || !user.id || user.id === 'guest') {
+            throw new Error('Требуется авторизация через Google (`login`).');
+        }
+        const clean = String(houseRef || '').trim();
+        if (!clean) throw new Error('Укажите номер или название дома.');
+        const state = loadUserHousesState(user) || buildDefaultUserHousesState(user);
+        const existing = findUserHouseByRef(state.houses, clean);
+        if (existing) {
+            throw new Error(`Дом "${existing.name}" уже существует в вашем аккаунте.`);
+        }
+        const isNum = /^\d+$/.test(clean);
+        const numVal = isNum ? parseInt(clean, 10) : (state.houses.reduce((m, h) => Math.max(m, Number(h.number) || 0), 0) + 1);
+        const id = makeHouseSlugId(clean);
+        const name = isNum ? `Дом ${numVal}` : clean;
+        const newHouse = {
+            id,
+            number: numVal,
+            roomId: `${id}_square`,
+            name,
+            url: getHouseUrlByRecord({ id }),
+            builtin: false,
+            rooms: [],
+            things: [],
+            createdAt: new Date().toISOString()
+        };
+        state.houses.push(newHouse);
+        state.ts = Date.now();
+        state.updatedAt = new Date(state.ts).toISOString();
+        saveUserHousesStateLocal(user, state);
+        applyHouseNavVisibility(user);
+        const synced = await syncUserHousesToDb(user, state);
+        return { house: newHouse, synced };
+    },
+    addRoom: async (user, roomName, houseRef) => {
+        if (!user || user.isGuest || !user.id || user.id === 'guest') {
+            throw new Error('Требуется авторизация через Google (`login`).');
+        }
+        const cleanRoom = String(roomName || '').trim();
+        if (!cleanRoom) throw new Error('Укажите название комнаты.');
+        const state = loadUserHousesState(user) || buildDefaultUserHousesState(user);
+        const house = findUserHouseByRef(state.houses, houseRef);
+        if (!house) {
+            throw new Error(`Дом "${houseRef}" не найден в вашем аккаунте. Сначала создайте его: \`Add house\` ➔ \`${houseRef}\`.`);
+        }
+        if (!Array.isArray(house.rooms)) house.rooms = [];
+        const dup = house.rooms.find(r => String(r.name || '').toLowerCase() === cleanRoom.toLowerCase());
+        if (dup) {
+            throw new Error(`Комната "${dup.name}" уже есть в "${house.name}".`);
+        }
+        const slotIndex = house.rooms.length;
+        const roomSlug = cleanRoom.toLowerCase().replace(/[^a-z0-9а-яєіїё]+/gi, '_').replace(/^_+|_+$/g, '') || `r_${slotIndex + 1}`;
+        const newRoom = {
+            id: `room_${roomSlug}_${slotIndex + 1}`,
+            name: cleanRoom,
+            slotIndex,
+            createdAt: new Date().toISOString()
+        };
+        house.rooms.push(newRoom);
+        state.ts = Date.now();
+        state.updatedAt = new Date(state.ts).toISOString();
+        saveUserHousesStateLocal(user, state);
+        const synced = await syncUserHousesToDb(user, state);
+        return { house, room: newRoom, synced };
+    },
+    addThing: async (user, thingName, roomRef, houseRef, queueIdInput = 0) => {
+        if (!user || user.isGuest || !user.id || user.id === 'guest') {
+            throw new Error('Требуется авторизация через Google (`login`).');
+        }
+        const cleanThing = String(thingName || '').trim();
+        if (!cleanThing) throw new Error('Укажите название предмета.');
+        const state = loadUserHousesState(user) || buildDefaultUserHousesState(user);
+        const house = findUserHouseByRef(state.houses, houseRef);
+        if (!house) {
+            throw new Error(`Дом "${houseRef}" не найден в вашем аккаунте.`);
+        }
+        let room = findRoomInHouseRecord(house, roomRef);
+        if (!room && house.builtin) {
+            // Для встроенного дома root поддерживаем стандартные 4 зоны, создавая привязку виртуально
+            const builtinIdxMap = { kitchen: 0, hall: 1, room: 2, corridor: 3 };
+            const lowerRef = String(roomRef || '').trim().toLowerCase();
+            if (lowerRef in builtinIdxMap || ['кухня', 'зал', 'комната', 'коридор', '1', '2', '3', '4'].includes(lowerRef)) {
+                const idx = lowerRef === 'кухня' || lowerRef === '1' || lowerRef === 'kitchen' ? 0
+                    : (lowerRef === 'зал' || lowerRef === '2' || lowerRef === 'hall' ? 1
+                        : (lowerRef === 'комната' || lowerRef === '3' || lowerRef === 'room' ? 2 : 3));
+                const slotNames = ['kitchen', 'hall', 'room', 'corridor'];
+                room = { id: `builtin_${slotNames[idx]}`, name: slotNames[idx], slotIndex: idx };
+            }
+        }
+        if (!room) {
+            throw new Error(`Комната "${roomRef}" не найдена в "${house.name}". Сначала создайте комнату: \`Add room\` ➔ \`${roomRef}\` ➔ \`to house\` ➔ \`${house.number || house.name}\`.`);
+        }
+
+        if (!Array.isArray(house.things)) house.things = [];
+        const preset = getThingPreset(cleanThing);
+        const queueNum = parseInt(String(queueIdInput || '0').replace(/[^\d]/g, ''), 10) || 0;
+
+        // Вычисляем свободное место внутри подквадрата 8×8 этой комнаты
+        const effectiveRooms = (house.rooms && house.rooms.length > 0) ? house.rooms : [{ slotIndex: room.slotIndex || 0 }];
+        const colsPerSide = effectiveRooms.length <= 4 ? 2 : Math.max(2, Math.ceil(Math.sqrt(effectiveRooms.length)));
+        const slotIdx = Number(room.slotIndex) || 0;
+        const qCol = slotIdx % colsPerSide;
+        const qRow = Math.floor(slotIdx / colsPerSide);
+        const minC = qCol * 8;
+        const minR = qRow * 8;
+        const maxC = minC + 8;
+        const maxR = minR + 8;
+
+        const sameHouseThings = house.things;
+        let placedCol = minC + 1;
+        let placedRow = minR + 1;
+        let foundSpot = false;
+        for (let r = minR; r <= maxR - preset.h && !foundSpot; r++) {
+            for (let c = minC; c <= maxC - preset.w && !foundSpot; c++) {
+                const overlaps = sameHouseThings.some(t =>
+                    c < (t.col + t.w) && (c + preset.w) > t.col &&
+                    r < (t.row + t.h) && (r + preset.h) > t.row
+                );
+                if (!overlaps) {
+                    placedCol = c;
+                    placedRow = r;
+                    foundSpot = true;
+                }
+            }
+        }
+
+        const thingId = `thing_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const newThing = {
+            id: thingId,
+            type: preset.type,
+            name: cleanThing,
+            label: preset.label,
+            roomId: room.id,
+            roomName: room.name,
+            slotIndex: slotIdx,
+            queueId: queueNum,
+            w: preset.w,
+            h: preset.h,
+            col: placedCol,
+            row: placedRow,
+            createdAt: new Date().toISOString()
+        };
+
+        house.things.push(newThing);
+        state.ts = Date.now();
+        state.updatedAt = new Date(state.ts).toISOString();
+        saveUserHousesStateLocal(user, state);
+        const synced = await syncUserHousesToDb(user, state);
+        return { house, room, thing: newThing, synced };
+    },
+    updateThingPositionsFromLayout: (user, houseRef, layoutMap, asyncCloud = true) => {
+        if (!user || user.isGuest || !user.id || user.id === 'guest' || !layoutMap || typeof layoutMap !== 'object') return false;
+        const state = loadUserHousesState(user);
+        if (!state || !Array.isArray(state.houses)) return false;
+        const house = findUserHouseByRef(state.houses, houseRef);
+        if (!house || !Array.isArray(house.things) || house.things.length === 0) return false;
+        let changed = false;
+        house.things.forEach(t => {
+            const pos = layoutMap[t.id];
+            if (pos && Number.isInteger(pos.col) && Number.isInteger(pos.row)) {
+                const nextRot = ((Math.round((Number(pos.rot) || 0) / 90) * 90) % 360 + 360) % 360;
+                const nextHidden = Boolean(pos.hidden);
+                if (t.col !== pos.col || t.row !== pos.row || (Number(t.rot) || 0) !== nextRot || Boolean(t.hidden) !== nextHidden) {
+                    t.col = pos.col;
+                    t.row = pos.row;
+                    t.rot = nextRot;
+                    t.hidden = nextHidden;
+                    changed = true;
+                }
+            }
+        });
+        if (!changed) return false;
+        state.ts = Date.now();
+        state.updatedAt = new Date(state.ts).toISOString();
+        saveUserHousesStateLocal(user, state);
+        if (asyncCloud) {
+            syncUserHousesToDb(user, state).catch(() => {});
+            return true;
+        }
+        return syncUserHousesToDb(user, state);
+    }
+};
+
+// =========================================================================
+// Общее ядро геометрии, поворотов, скрытия и расстановки Домов (для консоли и UI)
+// =========================================================================
+const HOUSE_DOOR_WIDTH_TILES = 2;
+
+const BUILTIN_HOUSE_BLUEPRINTS = {
+    house1: {
+        id: 'house1_square',
+        storageKey: 'room_layout_house1_square_v1',
+        tsKey: 'room_layout_house1_square_v1_ts',
+        quadrants: true,
+        gridW: 16,
+        gridH: 16,
+        colsPerSide: 2,
+        rowsPerSide: 2,
+        items: [
+            { id: 'washer', label: 'Стиральная машина', w: 2, h: 2, col: 0, row: 0 },
+            { id: 'stove', label: 'Печь', w: 2, h: 2, col: 5, row: 0 },
+            { id: 'table', label: 'Стол', w: 2, h: 2, col: 0, row: 5 },
+            { id: 'multicooker', label: 'Мультиварка', w: 1, h: 1, col: 3, row: 5 },
+            { id: 'tv', label: 'Телевизор', w: 2, h: 2, col: 9, row: 0 },
+            { id: 'router', label: 'Роутер', w: 1, h: 1, col: 14, row: 0 },
+            { id: 'hall_table', label: 'Коричневый столик', w: 2, h: 2, col: 9, row: 3 },
+            { id: 'armchair', label: 'Кресло', w: 2, h: 2, col: 13, row: 3 },
+            { id: 'sofa', label: 'Диван', w: 5, h: 2, col: 8, row: 6 },
+            { id: 'armchair2', label: 'Кресло справа', w: 2, h: 2, col: 13, row: 6 }
+        ]
+    },
+    house2: {
+        id: 'house2_square',
+        storageKey: 'room_layout_house2_square_v1',
+        tsKey: 'room_layout_house2_square_v1_ts',
+        quadrants: true,
+        gridW: 16,
+        gridH: 16,
+        colsPerSide: 2,
+        rowsPerSide: 2,
+        items: [
+            { id: 'fridge2', label: 'Холодильник', w: 2, h: 2, col: 0, row: 0 },
+            { id: 'stove2', label: 'Печь', w: 2, h: 2, col: 2, row: 0 },
+            { id: 'boiler2', label: 'Бойлер', w: 2, h: 2, col: 0, row: 3 },
+            { id: 'table2', label: 'Стол', w: 2, h: 2, col: 2, row: 3 },
+            { id: 'closet2_1', label: 'Шкаф 1', w: 2, h: 2, col: 8, row: 0 },
+            { id: 'closet2_2', label: 'Шкаф 2', w: 2, h: 2, col: 10, row: 0 },
+            { id: 'closet2_3', label: 'Шкаф 3', w: 2, h: 2, col: 12, row: 0 },
+            { id: 'closet2_4', label: 'Шкаф 4', w: 2, h: 2, col: 8, row: 3 },
+            { id: 'hall2_table', label: 'Стол в зале', w: 2, h: 2, col: 11, row: 3 },
+            { id: 'armchair_h2', label: 'Кресло', w: 2, h: 2, col: 10, row: 5 },
+            { id: 'laptop2', label: 'Ноутбук', w: 1, h: 1, col: 13, row: 2 },
+            { id: 'desk2', label: 'Столик', w: 1, h: 2, col: 14, row: 2 },
+            { id: 'window2_1', label: 'Правое окно 1', w: 1, h: 2, col: 15, row: 2 },
+            { id: 'window2_2', label: 'Правое окно 2', w: 1, h: 2, col: 15, row: 5 },
+            { id: 'bed2', label: 'Двуспальная кровать', w: 2, h: 2, col: 1, row: 10 }
+        ]
+    },
+    house3: {
+        id: 'house3_square_v2',
+        storageKey: 'room_layout_house3_square_v2',
+        tsKey: 'room_layout_house3_square_v2_ts',
+        quadrants: true,
+        gridW: 16,
+        gridH: 16,
+        colsPerSide: 2,
+        rowsPerSide: 2,
+        items: [
+            { id: 'washer3', label: 'Стиральная машина', w: 2, h: 2, col: 0, row: 0 },
+            { id: 'stove3', label: 'Печь', w: 2, h: 2, col: 3, row: 0 },
+            { id: 'fridge3', label: 'Холодильник', w: 2, h: 2, col: 5, row: 0 },
+            { id: 'window3', label: 'Окно', w: 1, h: 2, col: 2, row: 2 },
+            { id: 'table3', label: 'Стол', w: 2, h: 2, col: 0, row: 4 },
+            { id: 'laptop3', label: 'Ноутбук', w: 1, h: 1, col: 0, row: 8 },
+            { id: 'conditioner3', label: 'Кондиционер', w: 2, h: 1, col: 2, row: 8 },
+            { id: 'radiator3', label: 'Батарея', w: 1, h: 2, col: 4, row: 8 },
+            { id: 'router3', label: 'Роутер', w: 1, h: 1, col: 6, row: 8 },
+            { id: 'hall3_table', label: 'Угловой стол', w: 2, h: 2, col: 0, row: 10 },
+            { id: 'bed3', label: 'Кровать', w: 3, h: 3, col: 4, row: 10 },
+            { id: 'room3_closet', label: 'Шкаф', w: 2, h: 2, col: 8, row: 8 },
+            { id: 'room3_radiator', label: 'Батарея в комнате', w: 2, h: 1, col: 13, row: 8 },
+            { id: 'room3_window', label: 'Окно в комнате', w: 1, h: 2, col: 15, row: 9 },
+            { id: 'room3_bed', label: 'Одноместная кровать', w: 1, h: 2, col: 9, row: 11 }
+        ]
+    }
+};
+
+function hlNormalizeRotationDeg(val) {
+    const n = Number(val);
+    if (!Number.isFinite(n)) return 0;
+    return ((Math.round(n / 90) * 90) % 360 + 360) % 360;
+}
+
+function hlGetRotatedDimensions(baseW, baseH, rotDeg) {
+    const rot = hlNormalizeRotationDeg(rotDeg);
+    const bw = Number(baseW) || 2;
+    const bh = Number(baseH) || 2;
+    if (rot === 90 || rot === 270) {
+        return { w: bh, h: bw, rot };
+    }
+    return { w: bw, h: bh, rot };
+}
+
+function hlRectanglesOverlap(a, b) {
+    return a.col < b.col + b.w &&
+           a.col + a.w > b.col &&
+           a.row < b.row + b.h &&
+           a.row + a.h > b.row;
+}
+
+function hlCanItemPassThroughDoor(item) {
+    if (!item) return false;
+    return Math.min(Number(item.w) || 0, Number(item.h) || 0) <= HOUSE_DOOR_WIDTH_TILES;
+}
+
+function hlStraddlesQuadrantWall(room, col, row, w, h) {
+    if (!room || !room.quadrants) return false;
+    const c1 = Math.floor(col / 8);
+    const c2 = Math.floor((col + w - 1) / 8);
+    const r1 = Math.floor(row / 8);
+    const r2 = Math.floor((row + h - 1) / 8);
+    return c1 !== c2 || r1 !== r2;
+}
+
+function hlGetItemQuadrant(room, col, row, w, h) {
+    if (!room || !room.quadrants) return 0;
+    if (hlStraddlesQuadrantWall(room, col, row, w, h)) return -1;
+    const colsPerSide = room.colsPerSide || Math.max(2, Math.round(room.gridW / 8));
+    const qCol = Math.floor(col / 8);
+    const qRow = Math.floor(row / 8);
+    return qRow * colsPerSide + qCol;
+}
+
+function hlCanPlaceItem(room, id, col, row, w, h, list = room.items) {
+    if (col < 0 || row < 0 || col + w > room.gridW || row + h > room.gridH) return false;
+    const candidate = { col, row, w, h };
+    for (const other of list) {
+        if (!other || other.id === id || other.hidden) continue;
+        if (hlRectanglesOverlap(candidate, other)) return false;
+    }
+    return true;
+}
+
+function hlCanMoveItemTo(room, item, originCol, originRow, targetCol, targetRow, list = room.items) {
+    if (!hlCanPlaceItem(room, item.id, targetCol, targetRow, item.w, item.h, list)) {
+        return { ok: false, reason: 'overlap_or_bounds' };
+    }
+    if (!room || !room.quadrants) {
+        return { ok: true, reason: '' };
+    }
+    if (hlStraddlesQuadrantWall(room, targetCol, targetRow, item.w, item.h)) {
+        return { ok: false, reason: 'wall' };
+    }
+    const origQuad = hlGetItemQuadrant(room, originCol, originRow, item.w, item.h);
+    const destQuad = hlGetItemQuadrant(room, targetCol, targetRow, item.w, item.h);
+    if (origQuad !== -1 && destQuad !== origQuad && !hlCanItemPassThroughDoor(item)) {
+        return { ok: false, reason: 'door_size' };
+    }
+    return { ok: true, reason: '' };
+}
+
+function hlFindFreePlacementInRoom(room, item, acceptedList) {
+    const prefQ = room.quadrants ? hlGetItemQuadrant(room, item.col, item.row, item.w, item.h) : 0;
+    const candidates = [];
+    for (let r = 0; r <= room.gridH - item.h; r++) {
+        for (let c = 0; c <= room.gridW - item.w; c++) {
+            if (!hlCanPlaceItem(room, item.id, c, r, item.w, item.h, acceptedList)) continue;
+            if (room.quadrants && hlStraddlesQuadrantWall(room, c, r, item.w, item.h)) continue;
+            const q = room.quadrants ? hlGetItemQuadrant(room, c, r, item.w, item.h) : 0;
+            const sameQuadPenalty = (prefQ !== -1 && q !== prefQ) ? 1000 : 0;
+            const dist = Math.abs(c - item.col) + Math.abs(r - item.row) + sameQuadPenalty;
+            candidates.push({ col: c, row: r, dist });
+        }
+    }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => a.dist - b.dist);
+    return { col: candidates[0].col, row: candidates[0].row };
+}
+
+function hlFindRotationSpot(room, item, newW, newH) {
+    const origQuad = room.quadrants ? hlGetItemQuadrant(room, item.col, item.row, item.w, item.h) : 0;
+    const origCenterX = item.col + item.w / 2;
+    const origCenterY = item.row + item.h / 2;
+
+    const isSpotValid = (c, r) => {
+        if (!hlCanPlaceItem(room, item.id, c, r, newW, newH, room.items)) return false;
+        if (room.quadrants && hlStraddlesQuadrantWall(room, c, r, newW, newH)) return false;
+        if (room.quadrants && origQuad !== -1 && hlGetItemQuadrant(room, c, r, newW, newH) !== origQuad) return false;
+        return true;
+    };
+
+    if (isSpotValid(item.col, item.row)) {
+        return { col: item.col, row: item.row };
+    }
+
+    const candidates = [];
+    for (let dr = -4; dr <= 4; dr++) {
+        for (let dc = -4; dc <= 4; dc++) {
+            const c = item.col + dc;
+            const r = item.row + dr;
+            if (!isSpotValid(c, r)) continue;
+            const cx = c + newW / 2;
+            const cy = r + newH / 2;
+            const dist = Math.hypot(cx - origCenterX, cy - origCenterY) + (Math.abs(dc) + Math.abs(dr)) * 0.05;
+            candidates.push({ col: c, row: r, dist });
+        }
+    }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => a.dist - b.dist);
+    return { col: candidates[0].col, row: candidates[0].row };
+}
+
+function hlApplyLayoutMap(room, savedMap) {
+    if (!savedMap || typeof savedMap !== 'object') return false;
+    const accepted = [];
+    let changed = false;
+
+    for (const item of room.items) {
+        const candidate = savedMap[item.id];
+        if (candidate && typeof candidate === 'object') {
+            const nextRot = hlNormalizeRotationDeg(candidate.rot);
+            const nextHidden = Boolean(candidate.hidden);
+            const dims = hlGetRotatedDimensions(item.baseW, item.baseH, nextRot);
+            if (item.rot !== dims.rot || item.hidden !== nextHidden || item.w !== dims.w || item.h !== dims.h) {
+                changed = true;
+            }
+            item.rot = dims.rot;
+            item.w = dims.w;
+            item.h = dims.h;
+            item.hidden = nextHidden;
+        }
+    }
+
+    for (const item of room.items) {
+        const candidate = savedMap[item.id];
+        if (item.hidden) {
+            if (candidate && Number.isInteger(candidate.col) && Number.isInteger(candidate.row)) {
+                const hCol = Math.max(0, Math.min(room.gridW - item.w, candidate.col));
+                const hRow = Math.max(0, Math.min(room.gridH - item.h, candidate.row));
+                if (item.col !== hCol || item.row !== hRow) changed = true;
+                item.col = hCol;
+                item.row = hRow;
+            }
+            accepted.push({ id: item.id, col: item.col, row: item.row, w: item.w, h: item.h, hidden: true });
+            continue;
+        }
+
+        if (candidate && Number.isInteger(candidate.col) && Number.isInteger(candidate.row)) {
+            const cCol = Math.max(0, Math.min(room.gridW - item.w, candidate.col));
+            const cRow = Math.max(0, Math.min(room.gridH - item.h, candidate.row));
+            const wallBlocked = room.quadrants && hlStraddlesQuadrantWall(room, cCol, cRow, item.w, item.h);
+            if (!wallBlocked && hlCanPlaceItem(room, item.id, cCol, cRow, item.w, item.h, accepted)) {
+                if (item.col !== cCol || item.row !== cRow) changed = true;
+                accepted.push({ id: item.id, col: cCol, row: cRow, w: item.w, h: item.h, hidden: false });
+                continue;
+            }
+        }
+        if (hlCanPlaceItem(room, item.id, item.col, item.row, item.w, item.h, accepted)) {
+            accepted.push({ id: item.id, col: item.col, row: item.row, w: item.w, h: item.h, hidden: false });
+        } else {
+            const fallback = hlFindFreePlacementInRoom(room, item, accepted);
+            if (fallback) {
+                changed = true;
+                accepted.push({ id: item.id, col: fallback.col, row: fallback.row, w: item.w, h: item.h, hidden: false });
+            } else {
+                accepted.push({ id: item.id, col: item.col, row: item.row, w: item.w, h: item.h, hidden: false });
+            }
+        }
+    }
+
+    const finalPositions = [];
+    for (const entry of accepted) {
+        if (entry.hidden) {
+            finalPositions.push(entry);
+            continue;
+        }
+        if (hlCanPlaceItem(room, entry.id, entry.col, entry.row, entry.w, entry.h, finalPositions)) {
+            finalPositions.push(entry);
+        } else {
+            const orig = room.items.find(i => i.id === entry.id);
+            if (orig && hlCanPlaceItem(room, orig.id, orig.col, orig.row, orig.w, orig.h, finalPositions)) {
+                finalPositions.push({ id: orig.id, col: orig.col, row: orig.row, w: orig.w, h: orig.h, hidden: false });
+            }
+        }
+    }
+
+    if (finalPositions.length === room.items.length) {
+        finalPositions.forEach(pos => {
+            const target = room.items.find(i => i.id === pos.id);
+            if (target) {
+                if (target.col !== pos.col || target.row !== pos.row) changed = true;
+                target.col = pos.col;
+                target.row = pos.row;
+            }
+        });
+    }
+    return changed;
+}
+
+function hlGetCurrentLayoutPayload(room) {
+    const payload = {};
+    (room && Array.isArray(room.items) ? room.items : []).forEach(item => {
+        const entry = { col: item.col, row: item.row };
+        if (item.rot) entry.rot = item.rot;
+        if (item.hidden) entry.hidden = true;
+        payload[item.id] = entry;
+    });
+    return payload;
+}
+
+function hlGetItemLabel(item) {
+    if (!item) return 'Предмет';
+    if (item.el) {
+        const svgLabel = item.el.querySelector && item.el.querySelector('.appliance-object')
+            ? item.el.querySelector('.appliance-object').getAttribute('aria-label')
+            : null;
+        const caption = item.el.querySelector && item.el.querySelector('.house-thing-caption')
+            ? item.el.querySelector('.house-thing-caption').textContent
+            : null;
+        if (svgLabel) return svgLabel;
+        if (caption) return caption;
+    }
+    return item.label || item.name || item.id || 'Предмет';
+}
+
+function hlResolveItemInRoom(room, itemRef) {
+    if (!room || !Array.isArray(room.items) || !itemRef) return null;
+    const raw = String(itemRef || '').trim();
+    if (!raw) return null;
+    const lower = raw.toLowerCase();
+
+    let match = room.items.find(i => String(i.id || '').toLowerCase() === lower);
+    if (match) return match;
+
+    match = room.items.find(i => hlGetItemLabel(i).toLowerCase() === lower || String(i.name || '').toLowerCase() === lower);
+    if (match) return match;
+
+    match = room.items.find(i =>
+        String(i.id || '').toLowerCase().includes(lower) ||
+        hlGetItemLabel(i).toLowerCase().includes(lower) ||
+        String(i.name || '').toLowerCase().includes(lower)
+    );
+    return match || null;
+}
+
+function hlLoadHeadlessHouseRoom(user, houseRecord) {
+    if (!user || !houseRecord) return null;
+    const uid = String(user.id || '').trim();
+    if (!uid || uid === 'guest') return null;
+
+    const blueprint = houseRecord.builtin ? BUILTIN_HOUSE_BLUEPRINTS[houseRecord.id] : null;
+    const roomId = (blueprint && blueprint.id) || houseRecord.roomId || `${houseRecord.id}_square`;
+    const baseStorageKey = (blueprint && blueprint.storageKey) || `room_layout_${roomId}_v1`;
+    const baseTsKey = (blueprint && blueprint.tsKey) || `${baseStorageKey}_ts`;
+    const scopedStorageKey = `${baseStorageKey}::${uid}`;
+    const scopedTsKey = `${baseTsKey}::${uid}`;
+
+    const geom = getRoomsForHouseGridGeometry(houseRecord);
+    const items = [];
+
+    if (blueprint && Array.isArray(blueprint.items)) {
+        blueprint.items.forEach(spec => {
+            items.push({
+                id: spec.id,
+                label: spec.label,
+                baseW: spec.w,
+                baseH: spec.h,
+                w: spec.w,
+                h: spec.h,
+                rot: 0,
+                hidden: false,
+                col: spec.col,
+                row: spec.row
+            });
+        });
+    }
+
+    const userThings = Array.isArray(houseRecord.things) ? houseRecord.things : [];
+    userThings.forEach(t => {
+        const bw = Number(t.w) || 2;
+        const bh = Number(t.h) || 2;
+        const rot = hlNormalizeRotationDeg(t.rot || 0);
+        const dims = hlGetRotatedDimensions(bw, bh, rot);
+        items.push({
+            id: t.id,
+            name: t.name,
+            label: t.label || t.name,
+            baseW: bw,
+            baseH: bh,
+            w: dims.w,
+            h: dims.h,
+            rot: dims.rot,
+            hidden: Boolean(t.hidden),
+            col: Number(t.col) || 0,
+            row: Number(t.row) || 0
+        });
+    });
+
+    const room = {
+        id: roomId,
+        storageKey: scopedStorageKey,
+        tsKey: scopedTsKey,
+        quadrants: blueprint ? blueprint.quadrants : (Array.isArray(houseRecord.rooms) && houseRecord.rooms.length > 0),
+        colsPerSide: blueprint ? blueprint.colsPerSide : geom.colsPerSide,
+        rowsPerSide: blueprint ? blueprint.rowsPerSide : geom.rowsPerSide,
+        gridW: blueprint ? blueprint.gridW : geom.gridW,
+        gridH: blueprint ? blueprint.gridH : geom.gridH,
+        items
+    };
+    items.forEach(it => { it.room = room; });
+
+    try {
+        const rawSaved = localStorage.getItem(scopedStorageKey);
+        if (rawSaved) {
+            const parsed = JSON.parse(rawSaved);
+            if (parsed && typeof parsed === 'object') {
+                hlApplyLayoutMap(room, parsed);
+            }
+        }
+    } catch (e) {}
+
+    return room;
+}
+
+function hlSaveRoomLayoutLocalOnly(user, room, customTs = null) {
+    try {
+        if (!user || user.isGuest || !user.id || user.id === 'guest') return null;
+        if (!room || !room.storageKey || !room.tsKey) return null;
+        const payload = hlGetCurrentLayoutPayload(room);
+        localStorage.setItem(room.storageKey, JSON.stringify(payload));
+        localStorage.setItem(room.tsKey, String(customTs !== null ? customTs : Date.now()));
+        return payload;
+    } catch (e) {
+        return null;
+    }
+}
+
+async function hlPersistRoomLayout(user, houseRecord, room, options = {}) {
+    if (!user || user.isGuest || !user.id || user.id === 'guest' || !room) {
+        return { payload: null, synced: false };
+    }
+    const nowTs = Date.now();
+    const payload = hlSaveRoomLayoutLocalOnly(user, room, nowTs);
+    if (!payload) return { payload: null, synced: false };
+
+    const asyncCloud = Boolean(options && options.asyncCloud);
+    const promises = [];
+
+    if (window.HouseLayoutSync && typeof window.HouseLayoutSync.saveAndSyncHouseLayout === 'function') {
+        promises.push(window.HouseLayoutSync.saveAndSyncHouseLayout(room.id, payload, user, nowTs));
+    }
+    if (houseRecord && window.UserHousesSync && typeof window.UserHousesSync.updateThingPositionsFromLayout === 'function') {
+        const res = window.UserHousesSync.updateThingPositionsFromLayout(user, houseRecord.id, payload, asyncCloud);
+        if (res && typeof res.then === 'function') promises.push(res);
+    }
+
+    if (asyncCloud || promises.length === 0) {
+        return { payload, synced: typeof navigator === 'undefined' || navigator.onLine !== false };
+    }
+    try {
+        await Promise.all(promises);
+        return { payload, synced: typeof navigator === 'undefined' || navigator.onLine !== false };
+    } catch (e) {
+        return { payload, synced: false };
+    }
+}
+
+window.HouseLayoutEngine = {
+    DOOR_WIDTH_TILES: HOUSE_DOOR_WIDTH_TILES,
+    BUILTIN_HOUSE_BLUEPRINTS,
+    normalizeRotationDeg: hlNormalizeRotationDeg,
+    getRotatedDimensions: hlGetRotatedDimensions,
+    rectanglesOverlap: hlRectanglesOverlap,
+    canItemPassThroughDoor: hlCanItemPassThroughDoor,
+    straddlesQuadrantWall: hlStraddlesQuadrantWall,
+    getItemQuadrant: hlGetItemQuadrant,
+    canPlaceItem: hlCanPlaceItem,
+    canMoveItemTo: hlCanMoveItemTo,
+    findFreePlacementInRoom: hlFindFreePlacementInRoom,
+    findRotationSpot: hlFindRotationSpot,
+    applyLayoutMap: hlApplyLayoutMap,
+    getCurrentLayoutPayload: hlGetCurrentLayoutPayload,
+    getItemLabel: hlGetItemLabel,
+    resolveItemInRoom: hlResolveItemInRoom,
+    loadHeadlessHouseRoom: hlLoadHeadlessHouseRoom,
+    saveRoomLayoutLocalOnly: hlSaveRoomLayoutLocalOnly,
+    persistRoomLayout: hlPersistRoomLayout
 };
 
 // =========================================================================
@@ -1234,6 +2856,11 @@ function describeTrackablePage(pathname, search = '', hash = '') {
         return { path: '/missions.html', title: '📋 Задания' };
     }
     if (cleanPath === '/house' || cleanPath === '/house/' || cleanPath === '/house/index.html') {
+        const qp = new URLSearchParams(search || '');
+        const hParam = qp.get('house');
+        if (hParam) {
+            return { path: `/house/index.html?house=${encodeURIComponent(hParam)}${hash || ''}`, title: `🏠 ${hParam}` };
+        }
         return { path: `/house/index.html${hash || ''}`, title: '🏠 Дом 1' };
     }
     if (cleanPath === '/house2' || cleanPath === '/house2/' || cleanPath === '/house2/index.html') {
@@ -1444,6 +3071,9 @@ window.LastPageSync = {
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     const autoTrackIfApplicable = () => {
+        const cleanPath = String(window.location.pathname || '').toLowerCase();
+        const isHousePath = cleanPath.startsWith('/house') || cleanPath === '/kitchen.html' || cleanPath === '/hall.html';
+        if (isHousePath) return; // Дома отслеживаются только после подтверждения авторизации и владельца в house-engine.js
         if (describeTrackablePage(window.location.pathname, window.location.search, window.location.hash)) {
             trackCurrentPage();
         }
@@ -2755,6 +4385,819 @@ window.TaskCooldowns = {
     syncFromSupabase: syncTaskCooldownsFromSupabase
 };
 
+// ==========================================
+// Расходы ресурсов при запуске задач (например: Ребёнок -> Покормить: -1 Сосиска, -1 Макароны)
+// ==========================================
+const TASK_LAUNCH_COST_RULES = [
+    {
+        key: 'ребенок_покормить',
+        taskLabel: 'Покормить',
+        taskAliases: ['покормить'],
+        buildingAliases: ['ребенок', 'ребёнок', 'уход'],
+        costs: [
+            {
+                key: 'сосиска',
+                label: 'Сосиска',
+                emoji: '🌭',
+                amount: 1,
+                itemAliases: ['сосиска', 'сосиски']
+            },
+            {
+                key: 'макароны',
+                label: 'Макароны',
+                emoji: '🍝',
+                amount: 1,
+                itemAliases: ['макароны', 'макарон']
+            }
+        ]
+    }
+];
+
+function normalizeTaskResourceName(str) {
+    return String(str || '')
+        .trim()
+        .toLowerCase()
+        .replace(/ё/g, 'е')
+        .replace(/\s+/g, ' ');
+}
+
+function getTaskLaunchCostRule(taskName, buildingName = null) {
+    const normTask = normalizeTaskResourceName(taskName);
+    if (!normTask) return null;
+    const normBuilding = normalizeTaskResourceName(buildingName);
+
+    for (const rule of TASK_LAUNCH_COST_RULES) {
+        const taskMatched = rule.taskAliases.some(alias => {
+            const normAlias = normalizeTaskResourceName(alias);
+            return normTask === normAlias || normTask.includes(normAlias);
+        });
+        if (!taskMatched) continue;
+
+        if (normBuilding && Array.isArray(rule.buildingAliases) && rule.buildingAliases.length > 0) {
+            const buildingMatched = rule.buildingAliases.some(bAlias => {
+                const normBAlias = normalizeTaskResourceName(bAlias);
+                return normBuilding === normBAlias || normBuilding.includes(normBAlias);
+            });
+            if (!buildingMatched) continue;
+        }
+        return rule;
+    }
+    return null;
+}
+
+function matchesTaskCostInventoryItem(invItemName, costItem) {
+    if (!invItemName || !costItem) return false;
+    const normInv = normalizeTaskResourceName(invItemName);
+    if (!normInv) return false;
+    const aliases = Array.isArray(costItem.itemAliases) && costItem.itemAliases.length > 0
+        ? costItem.itemAliases
+        : [costItem.label || costItem.key];
+    return aliases.some(a => normInv === normalizeTaskResourceName(a));
+}
+
+function getAvailableCountForCost(invList, costItem) {
+    if (!Array.isArray(invList) || !costItem) return 0;
+    return invList.reduce((sum, item) => {
+        if (item && matchesTaskCostInventoryItem(item.name, costItem)) {
+            return sum + Math.max(0, Number(item.count) || 0);
+        }
+        return sum;
+    }, 0);
+}
+
+function checkTaskLaunchCostAvailability(rule, invList) {
+    if (!rule || !Array.isArray(rule.costs) || rule.costs.length === 0) {
+        return { ok: true, items: [], missing: [] };
+    }
+    const items = rule.costs.map(cost => {
+        const needed = Math.max(1, Number(cost.amount) || 1);
+        const available = getAvailableCountForCost(invList, cost);
+        const missing = Math.max(0, needed - available);
+        return {
+            ...cost,
+            needed,
+            available,
+            missing,
+            ok: available >= needed
+        };
+    });
+    const missing = items.filter(i => !i.ok);
+    return {
+        ok: missing.length === 0,
+        items,
+        missing
+    };
+}
+
+function deductTaskLaunchCostsFromList(invList, rule) {
+    if (!rule || !Array.isArray(rule.costs) || rule.costs.length === 0) return true;
+    const check = checkTaskLaunchCostAvailability(rule, invList);
+    if (!check.ok) return false;
+
+    for (const cost of rule.costs) {
+        let leftToDeduct = Math.max(1, Number(cost.amount) || 1);
+        for (const item of invList) {
+            if (leftToDeduct <= 0) break;
+            if (!item || !matchesTaskCostInventoryItem(item.name, cost)) continue;
+            const avail = Math.max(0, Number(item.count) || 0);
+            if (avail <= 0) continue;
+            const take = Math.min(avail, leftToDeduct);
+            item.count = avail - take;
+            leftToDeduct -= take;
+        }
+    }
+    return true;
+}
+
+function restoreTaskLaunchCostsToList(invList, rule, userId = 'guest') {
+    if (!rule || !Array.isArray(rule.costs) || !Array.isArray(invList)) return;
+    for (const cost of rule.costs) {
+        const addAmt = Math.max(1, Number(cost.amount) || 1);
+        const existing = invList.find(i => i && matchesTaskCostInventoryItem(i.name, cost));
+        if (existing) {
+            existing.count = Math.max(0, Number(existing.count) || 0) + addAmt;
+        } else {
+            invList.push({ name: cost.label, count: addAmt, created_by: userId });
+        }
+    }
+}
+
+function getAllowedCostAliasesForBuildings(buildingsList) {
+    const allowed = new Set();
+    if (!Array.isArray(buildingsList)) return allowed;
+    buildingsList.forEach(b => {
+        const bName = b && b.building_name;
+        (b && b.tasks || []).forEach(t => {
+            const rule = getTaskLaunchCostRule(t && t.name, bName);
+            if (rule && Array.isArray(rule.costs)) {
+                rule.costs.forEach(c => {
+                    (c.itemAliases || [c.label]).forEach(a => allowed.add(normalizeTaskResourceName(a)));
+                });
+            }
+        });
+    });
+    return allowed;
+}
+
+function formatTaskCostBadge(rule) {
+    if (!rule || !Array.isArray(rule.costs) || rule.costs.length === 0) return '';
+    return rule.costs.map(c => `${c.emoji || '📦'}-${c.amount}`).join(' ');
+}
+
+function formatTaskCostText(rule) {
+    if (!rule || !Array.isArray(rule.costs) || rule.costs.length === 0) return '';
+    return rule.costs.map(c => `-${c.amount} ${c.label}`).join(', ');
+}
+
+function formatTaskMissingCostError(rule, availability) {
+    const taskLabel = (rule && rule.taskLabel) || 'задачи';
+    const missList = (availability && availability.missing || [])
+        .map(m => `${m.emoji || '📦'} ${m.label} (есть ${m.available}/${m.needed})`)
+        .join(', ');
+    return `❌ Недостаточно продуктов на складе для «${taskLabel}»! Не хватает: ${missList}.`;
+}
+
+window.TaskLaunchCosts = {
+    RULES: TASK_LAUNCH_COST_RULES,
+    normalizeName: normalizeTaskResourceName,
+    getRule: getTaskLaunchCostRule,
+    matchesInventoryItem: matchesTaskCostInventoryItem,
+    getAvailableForCost: getAvailableCountForCost,
+    checkAvailability: checkTaskLaunchCostAvailability,
+    deductFromList: deductTaskLaunchCostsFromList,
+    restoreToList: restoreTaskLaunchCostsToList,
+    getAllowedCostAliasesForBuildings,
+    formatCostBadge: formatTaskCostBadge,
+    formatCostText: formatTaskCostText,
+    formatMissingError: formatTaskMissingCostError
+};
+
+// ==========================================
+// Ежедневные ускорители (+1 в 09:00 и +2 в 21:00, всего 3/день) + синхронизация с Supabase
+// ==========================================
+const DAILY_FREE_ACCELERATORS_CONFIG = {
+    enabled: true, // Позже можно отключить халяву в 1 строку (false)
+    itemName: 'Ускорители',
+    slots: [
+        { key: 'morning', hour: 9, minute: 0, amount: 1, label: '09:00' },
+        { key: 'evening', hour: 21, minute: 0, amount: 2, label: '21:00' }
+    ]
+};
+
+const dailyBoostGrantLocks = new Map();
+let dailyBoostSchedulerTimer = null;
+let dailyBoostPollInterval = null;
+let dailyBoostSchedulerStarted = false;
+
+function getLocalDateKey(dateInput = new Date()) {
+    const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+function getDailyBoostStorageKeys(userIdOverride = null) {
+    const uid = userIdOverride || (typeof currentUser !== 'undefined' && currentUser && currentUser.id) || 'guest';
+    return {
+        uid,
+        claims: `terminal_daily_boost_claims_${uid}`,
+        pending: `terminal_pending_daily_boost_claims_${uid}`,
+        inventory: `terminal_inventory_${uid}`
+    };
+}
+
+function loadLocalDailyBoostClaims(userIdOverride = null) {
+    try {
+        const { claims } = getDailyBoostStorageKeys(userIdOverride);
+        const raw = localStorage.getItem(claims);
+        const parsed = raw ? JSON.parse(raw) : {};
+        return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function saveLocalDailyBoostClaims(map, userIdOverride = null) {
+    try {
+        const { claims } = getDailyBoostStorageKeys(userIdOverride);
+        const keys = Object.keys(map || {}).sort();
+        const trimmed = {};
+        const keepKeys = keys.slice(-35);
+        keepKeys.forEach(k => {
+            if (map[k] && typeof map[k] === 'object') trimmed[k] = map[k];
+        });
+        localStorage.setItem(claims, JSON.stringify(trimmed));
+    } catch (e) {}
+}
+
+function getPendingDailyBoostClaims(userIdOverride = null) {
+    try {
+        const { pending } = getDailyBoostStorageKeys(userIdOverride);
+        const raw = localStorage.getItem(pending);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function savePendingDailyBoostClaims(list, userIdOverride = null) {
+    try {
+        const { pending } = getDailyBoostStorageKeys(userIdOverride);
+        if (!list || list.length === 0) {
+            localStorage.removeItem(pending);
+        } else {
+            localStorage.setItem(pending, JSON.stringify(list));
+        }
+    } catch (e) {}
+}
+
+function loadLocalUserInventoryArray(userIdOverride = null) {
+    try {
+        const { inventory } = getDailyBoostStorageKeys(userIdOverride);
+        const raw = localStorage.getItem(inventory);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function incrementLocalAcceleratorInventory(userIdOverride, delta) {
+    const addAmount = Number(delta) || 0;
+    if (addAmount <= 0) return getLocalAcceleratorInventoryCount(userIdOverride);
+    const { uid, inventory } = getDailyBoostStorageKeys(userIdOverride);
+    const list = loadLocalUserInventoryArray(uid);
+    const targetLower = DAILY_FREE_ACCELERATORS_CONFIG.itemName.toLowerCase();
+    const existing = list.find(i => String(i && i.name || '').trim().toLowerCase() === targetLower);
+    if (existing) {
+        existing.count = Math.max(0, (Number(existing.count) || 0) + addAmount);
+    } else {
+        list.push({
+            name: DAILY_FREE_ACCELERATORS_CONFIG.itemName,
+            count: addAmount,
+            created_by: uid
+        });
+    }
+    try {
+        localStorage.setItem(inventory, JSON.stringify(list));
+    } catch (e) {}
+    return getLocalAcceleratorInventoryCount(uid);
+}
+
+function getLocalAcceleratorInventoryCount(userIdOverride = null) {
+    const list = loadLocalUserInventoryArray(userIdOverride);
+    const targetLower = DAILY_FREE_ACCELERATORS_CONFIG.itemName.toLowerCase();
+    return list.reduce((sum, item) => {
+        if (String(item && item.name || '').trim().toLowerCase() === targetLower) {
+            return sum + Math.max(0, Number(item.count) || 0);
+        }
+        return sum;
+    }, 0);
+}
+
+async function resolveDailyBoostUser(userOverride = null) {
+    if (userOverride && userOverride.id) {
+        return {
+            id: userOverride.id,
+            email: userOverride.email || '',
+            isGuest: Boolean(userOverride.isGuest || userOverride.id === 'guest')
+        };
+    }
+    try {
+        const u = await fetchCurrentUser(false);
+        if (u && u.id) {
+            return {
+                id: u.id,
+                email: u.email || '',
+                isGuest: Boolean(u.isGuest || u.id === 'guest')
+            };
+        }
+    } catch (e) {}
+    return { id: 'guest', email: 'guest@demo.terminal', isGuest: true };
+}
+
+async function fetchRemoteDailyBoostClaimsForDate(userId, dateKey) {
+    if (!window.supabaseClient || !userId || userId === 'guest') return null;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return null;
+
+    try {
+        const { data, error } = await window.supabaseClient
+            .from('commands_history')
+            .select('raw_text, parameters, created_at')
+            .eq('created_by', userId)
+            .eq('command', '__daily_accelerator_claim__')
+            .like('raw_text', `__daily_accelerator_claim__:${dateKey}:%`)
+            .is('deleted_at', null);
+
+        if (error) return null;
+        const found = {};
+        if (Array.isArray(data)) {
+            data.forEach(row => {
+                const p = row.parameters || {};
+                const slotKey = p.slot || String(row.raw_text || '').split(':')[2];
+                if (slotKey) {
+                    found[slotKey] = p.claimed_at || row.created_at || new Date().toISOString();
+                }
+            });
+        }
+        return found;
+    } catch (e) {
+        return null;
+    }
+}
+
+async function flushPendingDailyBoostClaims(userIdOverride = null) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return 0;
+    if (!window.supabaseClient) return 0;
+
+    let uid = userIdOverride;
+    if (!uid) {
+        const resolved = await resolveDailyBoostUser(null);
+        if (!resolved || resolved.isGuest || !resolved.id || resolved.id === 'guest') return 0;
+        uid = resolved.id;
+    }
+    if (!uid || uid === 'guest') return 0;
+
+    const pending = getPendingDailyBoostClaims(uid);
+    if (!pending.length) return 0;
+
+    let flushedCount = 0;
+    let networkFailed = false;
+    const remaining = [];
+
+    for (let idx = 0; idx < pending.length; idx++) {
+        const entry = { ...pending[idx] };
+        if (networkFailed) {
+            remaining.push(entry);
+            continue;
+        }
+        const markerRawText = `__daily_accelerator_claim__:${entry.dateKey}:${entry.slotKey}`;
+        try {
+            // Проверка в БД, не успело ли другое устройство уже зачислить этот слот
+            const { data: existingClaim, error: claimCheckErr } = await window.supabaseClient
+                .from('commands_history')
+                .select('id')
+                .eq('created_by', uid)
+                .eq('command', '__daily_accelerator_claim__')
+                .eq('raw_text', markerRawText)
+                .is('deleted_at', null)
+                .limit(1);
+
+            if (claimCheckErr) {
+                if (isOfflineNetworkError(claimCheckErr)) {
+                    networkFailed = true;
+                    remaining.push(entry);
+                    continue;
+                }
+            } else if (Array.isArray(existingClaim) && existingClaim.length > 0) {
+                // Слот уже зафиксирован в облаке — дубль пропускаем
+                flushedCount++;
+                continue;
+            }
+
+            if (entry.needsInventoryCredit) {
+                const { data: boosterRows, error: selErr } = await window.supabaseClient
+                    .from('completed_items')
+                    .select('*')
+                    .eq('created_by', uid)
+                    .ilike('name', DAILY_FREE_ACCELERATORS_CONFIG.itemName)
+                    .limit(1);
+
+                if (selErr) {
+                    if (isOfflineNetworkError(selErr)) {
+                        networkFailed = true;
+                        remaining.push(entry);
+                        continue;
+                    }
+                    throw selErr;
+                }
+
+                const nowIso = new Date().toISOString();
+                if (Array.isArray(boosterRows) && boosterRows[0]) {
+                    const row = boosterRows[0];
+                    const nextCount = Math.max(0, Number(row.count) || 0) + Math.max(1, Number(entry.amount) || 1);
+                    const { error: updErr } = await window.supabaseClient
+                        .from('completed_items')
+                        .update({ count: nextCount, updated_at: nowIso })
+                        .eq('id', row.id);
+                    if (updErr) {
+                        if (isOfflineNetworkError(updErr)) {
+                            networkFailed = true;
+                            remaining.push(entry);
+                            continue;
+                        }
+                        throw updErr;
+                    }
+                } else {
+                    const { error: insErr } = await window.supabaseClient
+                        .from('completed_items')
+                        .insert([{
+                            name: DAILY_FREE_ACCELERATORS_CONFIG.itemName,
+                            count: Math.max(1, Number(entry.amount) || 1),
+                            created_by: uid,
+                            updated_at: nowIso
+                        }]);
+                    if (insErr) {
+                        if (isOfflineNetworkError(insErr)) {
+                            networkFailed = true;
+                            remaining.push(entry);
+                            continue;
+                        }
+                        throw insErr;
+                    }
+                }
+
+                entry.needsInventoryCredit = false;
+                // Сохраняем промежуточный прогресс немедленно, чтобы повтор при сбое вставки маркера не начислил инвентарь дважды
+                const snapshot = [...remaining, entry, ...pending.slice(idx + 1)];
+                savePendingDailyBoostClaims(snapshot, uid);
+            }
+
+            if (entry.needsMarkerInsert) {
+                const { error: markerErr } = await window.supabaseClient
+                    .from('commands_history')
+                    .insert([{
+                        raw_text: markerRawText,
+                        command: '__daily_accelerator_claim__',
+                        parameters: {
+                            type: 'daily_accelerator_claim',
+                            date_key: entry.dateKey,
+                            slot: entry.slotKey,
+                            slot_label: entry.slotLabel,
+                            amount: entry.amount,
+                            claimed_at: entry.claimedAt
+                        },
+                        output: `+${entry.amount} ${DAILY_FREE_ACCELERATORS_CONFIG.itemName} (${entry.slotLabel})`,
+                        result: 'DAILY_ACCELERATOR_CLAIM',
+                        status: 'success',
+                        created_at: entry.claimedAt,
+                        created_by: uid
+                    }]);
+
+                if (markerErr) {
+                    if (isOfflineNetworkError(markerErr)) {
+                        networkFailed = true;
+                        remaining.push(entry);
+                        continue;
+                    }
+                    throw markerErr;
+                }
+                entry.needsMarkerInsert = false;
+            }
+
+            flushedCount++;
+        } catch (err) {
+            if (isOfflineNetworkError(err)) {
+                networkFailed = true;
+                remaining.push(entry);
+            } else {
+                console.warn('flushPendingDailyBoostClaims error:', err && err.message ? err.message : err);
+                remaining.push(entry);
+            }
+        }
+    }
+
+    const latestPending = getPendingDailyBoostClaims(uid);
+    const processedIds = new Set(pending.map(p => p.claimId));
+    const newlyAdded = latestPending.filter(p => !processedIds.has(p.claimId));
+    savePendingDailyBoostClaims([...remaining, ...newlyAdded], uid);
+    return flushedCount;
+}
+
+function showDailyBoostFloatingToast(message) {
+    if (typeof document === 'undefined' || !document.body || !message) return;
+    if (typeof window.showError === 'function') {
+        try {
+            window.showError(message, 'ready');
+            return;
+        } catch (e) {}
+    }
+    let toast = document.getElementById('daily-boost-global-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'daily-boost-global-toast';
+        toast.style.cssText = 'position:fixed;left:50%;bottom:22px;transform:translate(-50%,16px);max-width:min(92vw,440px);padding:10px 16px;border-radius:10px;background:#064e3b;border:1px solid #10b981;color:#a7f3d0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:13px;font-weight:600;box-shadow:0 10px 25px rgba(0,0,0,0.35);opacity:0;pointer-events:none;z-index:99999;transition:opacity 0.2s ease,transform 0.2s ease;';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.style.opacity = '1';
+    toast.style.transform = 'translate(-50%,0)';
+    clearTimeout(toast._hideTimer);
+    toast._hideTimer = setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translate(-50%,16px)';
+    }, 4500);
+}
+
+function notifyDailyAcceleratorsGranted(grantedList, options = {}) {
+    if (!Array.isArray(grantedList) || grantedList.length === 0) return;
+    const totalAdded = grantedList.reduce((s, g) => s + (Number(g.amount) || 0), 0);
+    const word = totalAdded === 1 ? 'ускоритель' : (totalAdded >= 2 && totalAdded <= 4 ? 'ускорителя' : 'ускорителей');
+    const timesText = grantedList.map(g => g.label).join(' и ');
+    const msg = `💊 Ежедневное начисление (${timesText}): +${totalAdded} ${word}!`;
+
+    if (options.triggerToast !== false && typeof document !== 'undefined') {
+        const isTerminalPage = Boolean(document.getElementById('terminal-output'));
+        if (!isTerminalPage) {
+            showDailyBoostFloatingToast(msg);
+        }
+    }
+
+    if (options.notifyBrowser !== false && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        const title = `💊 +${totalAdded} ${word}`;
+        const body = `Начислено за время ${timesText} на склад «Ускорители».`;
+        if (typeof navigator !== 'undefined' && navigator.serviceWorker && navigator.serviceWorker.ready) {
+            navigator.serviceWorker.ready.then(reg => {
+                reg.showNotification(title, {
+                    body,
+                    icon: '/icon-512.png',
+                    badge: '/badge.png',
+                    tag: 'daily-accelerators-drop',
+                    renotify: true
+                });
+            }).catch(() => {});
+        } else {
+            try {
+                new Notification(title, { body, icon: '/icon-512.png' });
+            } catch (e) {}
+        }
+    }
+}
+
+function getNextScheduledDropInfo(nowInput = new Date()) {
+    if (!DAILY_FREE_ACCELERATORS_CONFIG.enabled) return null;
+    const now = nowInput instanceof Date ? nowInput : new Date(nowInput);
+    const candidates = [];
+    for (let dayOffset = 0; dayOffset <= 1; dayOffset++) {
+        for (const slot of DAILY_FREE_ACCELERATORS_CONFIG.slots) {
+            const d = new Date(
+                now.getFullYear(),
+                now.getMonth(),
+                now.getDate() + dayOffset,
+                slot.hour,
+                slot.minute,
+                1,
+                0
+            );
+            if (d.getTime() > now.getTime()) {
+                candidates.push({ slot, date: d, msUntil: d.getTime() - now.getTime() });
+            }
+        }
+    }
+    candidates.sort((a, b) => a.date.getTime() - b.date.getTime());
+    return candidates[0] || null;
+}
+
+async function checkAndGrantDailyAccelerators(options = {}) {
+    if (!DAILY_FREE_ACCELERATORS_CONFIG.enabled) {
+        return { enabled: false, granted: [], totalAdded: 0 };
+    }
+
+    const user = await resolveDailyBoostUser(options.user || null);
+    const uid = user.id || 'guest';
+
+    if (dailyBoostGrantLocks.has(uid)) {
+        return dailyBoostGrantLocks.get(uid);
+    }
+
+    let settled = false;
+    const runPromise = (async () => {
+        await Promise.resolve();
+        try {
+            const nowDate = options.now instanceof Date ? options.now : (options.now ? new Date(options.now) : new Date());
+            const dateKey = getLocalDateKey(nowDate);
+            const nowMinutes = nowDate.getHours() * 60 + nowDate.getMinutes();
+
+            const dueSlots = DAILY_FREE_ACCELERATORS_CONFIG.slots.filter(
+                slot => nowMinutes >= (slot.hour * 60 + slot.minute)
+            );
+
+            let claimsMap = loadLocalDailyBoostClaims(uid);
+            const todayClaims = (claimsMap[dateKey] && typeof claimsMap[dateKey] === 'object') ? { ...claimsMap[dateKey] } : {};
+
+            const locallyMissing = dueSlots.filter(s => !todayClaims[s.key]);
+            if (locallyMissing.length === 0) {
+                if (!user.isGuest) {
+                    flushPendingDailyBoostClaims(uid).catch(() => {});
+                }
+                return { enabled: true, dateKey, granted: [], totalAdded: 0, uid };
+            }
+
+            // Если пользователь авторизован и онлайн — сначала подтягиваем сегодняшние клеймы из облака (защита от двойного начисления на втором устройстве)
+            if (!user.isGuest && window.supabaseClient && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+                await flushPendingDailyBoostClaims(uid).catch(() => {});
+                const remoteToday = await fetchRemoteDailyBoostClaimsForDate(uid, dateKey);
+                if (remoteToday && typeof remoteToday === 'object') {
+                    let syncedFromRemote = false;
+                    for (const [slotKey, claimedAtVal] of Object.entries(remoteToday)) {
+                        if (!todayClaims[slotKey]) {
+                            todayClaims[slotKey] = claimedAtVal;
+                            syncedFromRemote = true;
+                        }
+                    }
+                    if (syncedFromRemote) {
+                        claimsMap[dateKey] = todayClaims;
+                        saveLocalDailyBoostClaims(claimsMap, uid);
+                    }
+                }
+            }
+
+            const slotsToGrant = dueSlots.filter(s => !todayClaims[s.key]);
+            if (slotsToGrant.length === 0) {
+                return { enabled: true, dateKey, granted: [], totalAdded: 0, uid, syncedRemote: true };
+            }
+
+            // Повторное чтение claims из localStorage на случай параллельной вкладки браузера
+            claimsMap = loadLocalDailyBoostClaims(uid);
+            const freshTodayClaims = (claimsMap[dateKey] && typeof claimsMap[dateKey] === 'object') ? { ...claimsMap[dateKey] } : {};
+            const finalSlotsToGrant = slotsToGrant.filter(s => !freshTodayClaims[s.key]);
+            if (finalSlotsToGrant.length === 0) {
+                return { enabled: true, dateKey, granted: [], totalAdded: 0, uid };
+            }
+
+            const nowIso = nowDate.toISOString();
+            const granted = [];
+            let totalAdded = 0;
+
+            for (const slot of finalSlotsToGrant) {
+                freshTodayClaims[slot.key] = nowIso;
+                claimsMap[dateKey] = freshTodayClaims;
+                saveLocalDailyBoostClaims(claimsMap, uid);
+
+                incrementLocalAcceleratorInventory(uid, slot.amount);
+                totalAdded += slot.amount;
+
+                const grantRecord = {
+                    dateKey,
+                    slotKey: slot.key,
+                    label: slot.label,
+                    amount: slot.amount,
+                    claimedAt: nowIso
+                };
+                granted.push(grantRecord);
+
+                if (!user.isGuest) {
+                    const pending = getPendingDailyBoostClaims(uid);
+                    const claimId = `${dateKey}:${slot.key}`;
+                    if (!pending.some(p => p.claimId === claimId)) {
+                        pending.push({
+                            claimId,
+                            dateKey,
+                            slotKey: slot.key,
+                            slotLabel: slot.label,
+                            amount: slot.amount,
+                            claimedAt: nowIso,
+                            needsInventoryCredit: true,
+                            needsMarkerInsert: true
+                        });
+                        savePendingDailyBoostClaims(pending, uid);
+                    }
+                }
+
+                try {
+                    if (typeof window.recordCommandAction === 'function') {
+                        await window.recordCommandAction(
+                            `Daily boost +${slot.amount} (${slot.label})`,
+                            `Ежедневное начисление (${slot.label}): +${slot.amount} шт. «Ускорители»`,
+                            'success'
+                        );
+                    }
+                } catch (e) {}
+            }
+
+            if (!user.isGuest && window.supabaseClient && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+                await flushPendingDailyBoostClaims(uid).catch(() => {});
+            }
+
+            if (granted.length > 0) {
+                notifyDailyAcceleratorsGranted(granted, options);
+                if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+                    window.dispatchEvent(new CustomEvent('dailyAcceleratorsGranted', {
+                        detail: {
+                            uid,
+                            dateKey,
+                            granted,
+                            totalAdded,
+                            totalAccelerators: getLocalAcceleratorInventoryCount(uid),
+                            nextDrop: getNextScheduledDropInfo(nowDate)
+                        }
+                    }));
+                }
+            }
+
+            return {
+                enabled: true,
+                dateKey,
+                granted,
+                totalAdded,
+                uid,
+                totalAccelerators: getLocalAcceleratorInventoryCount(uid)
+            };
+        } finally {
+            settled = true;
+            if (dailyBoostGrantLocks.get(uid) === runPromise) {
+                dailyBoostGrantLocks.delete(uid);
+            }
+        }
+    })();
+
+    if (!settled) {
+        dailyBoostGrantLocks.set(uid, runPromise);
+    }
+    return runPromise;
+}
+
+function scheduleNextDailyAcceleratorTick() {
+    if (dailyBoostSchedulerTimer) {
+        clearTimeout(dailyBoostSchedulerTimer);
+        dailyBoostSchedulerTimer = null;
+    }
+    if (!DAILY_FREE_ACCELERATORS_CONFIG.enabled) return;
+    const next = getNextScheduledDropInfo(new Date());
+    if (!next) return;
+    // Ограничиваем timeout до 6 часов, чтобы перепланировать корректно при смене времени/сне ОС
+    const delayMs = Math.min(Math.max(1000, next.msUntil), 6 * 3600 * 1000);
+    dailyBoostSchedulerTimer = setTimeout(() => {
+        checkAndGrantDailyAccelerators()
+            .catch(() => {})
+            .finally(() => scheduleNextDailyAcceleratorTick());
+    }, delayMs);
+}
+
+function startDailyAcceleratorScheduler() {
+    if (dailyBoostSchedulerStarted || typeof window === 'undefined') return;
+    dailyBoostSchedulerStarted = true;
+    scheduleNextDailyAcceleratorTick();
+    // Подстраховка каждые 30 сек + моментальная проверка при возврате во вкладку
+    dailyBoostPollInterval = setInterval(() => {
+        checkAndGrantDailyAccelerators().catch(() => {});
+    }, 30000);
+    setTimeout(() => {
+        checkAndGrantDailyAccelerators().catch(() => {});
+    }, 250);
+}
+
+window.DailyAcceleratorsSync = {
+    CONFIG: DAILY_FREE_ACCELERATORS_CONFIG,
+    getLocalDateKey,
+    getNextScheduledDrop: getNextScheduledDropInfo,
+    getLocalClaims: loadLocalDailyBoostClaims,
+    getLocalAcceleratorsCount: getLocalAcceleratorInventoryCount,
+    flushPending: flushPendingDailyBoostClaims,
+    checkAndGrant: checkAndGrantDailyAccelerators,
+    startScheduler: startDailyAcceleratorScheduler
+};
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', startDailyAcceleratorScheduler);
+    } else {
+        startDailyAcceleratorScheduler();
+    }
+}
+
 async function flushAllOfflineConsoleQueues() {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     try {
@@ -2780,6 +5223,9 @@ async function flushAllOfflineConsoleQueues() {
         await flushPendingTaskCooldowns();
     } catch (e) {}
     try {
+        await flushPendingDailyBoostClaims();
+    } catch (e) {}
+    try {
         if (window.MissionsStore && typeof window.MissionsStore.trySyncSupabase === 'function') {
             await window.MissionsStore.trySyncSupabase(false);
         }
@@ -2791,8 +5237,10 @@ window.flushAllOfflineConsoleQueues = flushAllOfflineConsoleQueues;
 if (typeof window !== 'undefined') {
     window.addEventListener('online', () => {
         flushAllOfflineConsoleQueues().catch(() => {});
+        checkAndGrantDailyAccelerators().catch(() => {});
     });
     window.addEventListener('focus', () => {
+        checkAndGrantDailyAccelerators().catch(() => {});
         if (navigator.onLine !== false) {
             flushPendingActionsToCloud().catch(() => {});
             flushPendingNotes().catch(() => {});
@@ -2802,18 +5250,23 @@ if (typeof window !== 'undefined') {
             flushPendingSupportReportUpdates().catch(() => {});
             flushPendingCustomAliases().catch(() => {});
             flushPendingTaskCooldowns().catch(() => {});
+            flushPendingDailyBoostClaims().catch(() => {});
         }
     });
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && navigator.onLine !== false) {
-            flushPendingActionsToCloud().catch(() => {});
-            flushPendingNotes().catch(() => {});
-            flushPendingHouseLayouts().catch(() => {});
-            flushPendingLastPage().catch(() => {});
-            flushPendingSupportReports().catch(() => {});
-            flushPendingSupportReportUpdates().catch(() => {});
-            flushPendingCustomAliases().catch(() => {});
-            flushPendingTaskCooldowns().catch(() => {});
+        if (document.visibilityState === 'visible') {
+            checkAndGrantDailyAccelerators().catch(() => {});
+            if (navigator.onLine !== false) {
+                flushPendingActionsToCloud().catch(() => {});
+                flushPendingNotes().catch(() => {});
+                flushPendingHouseLayouts().catch(() => {});
+                flushPendingLastPage().catch(() => {});
+                flushPendingSupportReports().catch(() => {});
+                flushPendingSupportReportUpdates().catch(() => {});
+                flushPendingCustomAliases().catch(() => {});
+                flushPendingTaskCooldowns().catch(() => {});
+                flushPendingDailyBoostClaims().catch(() => {});
+            }
         }
     });
 }
@@ -2956,10 +5409,37 @@ if (typeof window !== 'undefined') {
     });
 
     if (typeof document !== 'undefined') {
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initTheme);
-        } else {
+        let globalAuthSyncAttached = false;
+        const attachGlobalAuthSync = () => {
+            if (globalAuthSyncAttached) return;
+            if (window.supabaseClient && window.supabaseClient.auth && typeof window.supabaseClient.auth.onAuthStateChange === 'function') {
+                globalAuthSyncAttached = true;
+                window.supabaseClient.auth.onAuthStateChange((event, session) => {
+                    if (event === 'SIGNED_OUT') {
+                        clearCurrentUserCache();
+                        applyHouseNavVisibility(null);
+                    } else if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') && session && session.user) {
+                        if (!currentUserCache || currentUserCache.isGuest || currentUserCache.id !== session.user.id) {
+                            clearCurrentUserCache();
+                        }
+                        fetchCurrentUser().then((u) => applyHouseNavVisibility(u)).catch(() => {});
+                    }
+                });
+            }
+        };
+        const initNavAndTheme = () => {
             initTheme();
+            attachGlobalAuthSync();
+            if (typeof fetchCurrentUser === 'function') {
+                fetchCurrentUser().then((u) => applyHouseNavVisibility(u)).catch(() => applyHouseNavVisibility(null));
+            } else {
+                applyHouseNavVisibility(null);
+            }
+        };
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initNavAndTheme);
+        } else {
+            initNavAndTheme();
         }
     }
 }

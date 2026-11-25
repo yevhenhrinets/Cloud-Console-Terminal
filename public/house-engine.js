@@ -1,22 +1,35 @@
-// house-engine.js — единый движок для всех Домов (16×16 = 4 подквадрата 8×8)
-// Без мерцания при входе и скролле, с удержанием 1.5 сек до начала перетаскивания,
-// свободным панорамированием поверх объектов до истечения 1.5 сек и надёжной синхронизацией с БД.
+// house-engine.js — единый движок для всех Домов (16×16+ из комнат 8×8)
+// Изолированный статичный <canvas> пола (без мерцания при входе и перемещении),
+// удержание 750 мс до перетаскивания, панорамирование поверх фигур,
+// строгая привязка к аккаунту (поддержка Add house / Add room / Add thing) и надёжная синхронизация с БД.
 
 (function () {
-    const HOLD_TO_DRAG_MS = 1500;
-    const HOLD_VISUAL_DELAY_MS = 250;
+    const HOLD_TO_DRAG_MS = 700;
+    const HOLD_VISUAL_DELAY_MS = 180;
     const MOVE_CANCEL_THRESHOLD_PX = 10;
+    const DOOR_WIDTH_TILES = 2;
 
     let tilePx = 44;
     let lastTilePx = 0;
     let lastViewportW = 0;
     let lastViewportH = 0;
-    let cachedFloorTileUrl = null;
+    let cachedFloorPatternCanvas = null;
     let justDraggedUntil = 0;
     let roomsState = [];
     let initialized = false;
+    let interactionsBound = false;
+    let authListenerAttached = false;
+    let activeHouseUser = null;
+    let activeHouseRecord = null;
+    let activeEffectiveCfg = null;
     let activeDragSession = null;
     let panSession = null;
+    let touchEmptySession = null;
+    let selectedItem = null;
+
+    function escapeHtml(str) {
+        return String(str || '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    }
 
     function logActionDirect(cmd, desc) {
         if (typeof window.recordCommandAction === 'function') {
@@ -67,6 +80,38 @@
     window.recordNav = recordNav;
     window.onApplianceClick = onApplianceClick;
 
+    function resolveEffectiveHouseConfig() {
+        const baseCfg = window.HOUSE_CONFIG || {};
+        const params = new URLSearchParams(window.location.search || '');
+        const queryHouse = params.get('house');
+        if (!queryHouse) return baseCfg;
+
+        const baseRoom = (baseCfg.rooms && baseCfg.rooms[0]) || {};
+        const norm = (typeof window.getHouseDefinition === 'function')
+            ? window.getHouseDefinition(queryHouse)
+            : { id: queryHouse, roomId: `${queryHouse}_square`, name: queryHouse };
+        const cleanId = norm.id || queryHouse;
+        return {
+            ...baseCfg,
+            homeId: cleanId,
+            isQueryHouse: true,
+            navCmd: `go to home ${queryHouse}`,
+            navDesc: `Переход в ${norm.name || queryHouse}`,
+            rooms: [
+                {
+                    id: norm.roomId || `${cleanId}_square`,
+                    boardId: baseRoom.boardId || 'board-house1',
+                    storageKey: `room_layout_${cleanId}_square_v1`,
+                    tsKey: `room_layout_${cleanId}_square_v1_ts`,
+                    quadrants: true,
+                    gridW: 16,
+                    gridH: 16,
+                    defaults: {}
+                }
+            ]
+        };
+    }
+
     function rectanglesOverlap(a, b) {
         return a.col < b.col + b.w &&
                a.col + a.w > b.col &&
@@ -74,14 +119,131 @@
                a.row + a.h > b.row;
     }
 
+    function canItemPassThroughDoor(item) {
+        if (!item) return false;
+        return Math.min(Number(item.w) || 0, Number(item.h) || 0) <= DOOR_WIDTH_TILES;
+    }
+
+    function straddlesQuadrantWall(room, col, row, w, h) {
+        if (!room || !room.quadrants) return false;
+        const c1 = Math.floor(col / 8);
+        const c2 = Math.floor((col + w - 1) / 8);
+        const r1 = Math.floor(row / 8);
+        const r2 = Math.floor((row + h - 1) / 8);
+        return c1 !== c2 || r1 !== r2;
+    }
+
+    function getItemQuadrant(room, col, row, w, h) {
+        if (!room || !room.quadrants) return 0;
+        if (straddlesQuadrantWall(room, col, row, w, h)) return -1;
+        const colsPerSide = room.colsPerSide || Math.max(2, Math.round(room.gridW / 8));
+        const qCol = Math.floor(col / 8);
+        const qRow = Math.floor(row / 8);
+        return qRow * colsPerSide + qCol;
+    }
+
+    function normalizeRotationDeg(val) {
+        const n = Number(val);
+        if (!Number.isFinite(n)) return 0;
+        return ((Math.round(n / 90) * 90) % 360 + 360) % 360;
+    }
+
+    function getRotatedDimensions(baseW, baseH, rotDeg) {
+        const rot = normalizeRotationDeg(rotDeg);
+        const bw = Number(baseW) || 2;
+        const bh = Number(baseH) || 2;
+        if (rot === 90 || rot === 270) {
+            return { w: bh, h: bw, rot };
+        }
+        return { w: bw, h: bh, rot };
+    }
+
     function canPlaceItem(room, id, col, row, w, h, list = room.items) {
         if (col < 0 || row < 0 || col + w > room.gridW || row + h > room.gridH) return false;
         const candidate = { col, row, w, h };
         for (const other of list) {
-            if (other.id === id) continue;
+            if (!other || other.id === id || other.hidden) continue;
             if (rectanglesOverlap(candidate, other)) return false;
         }
         return true;
+    }
+
+    function canMoveItemTo(room, item, originCol, originRow, targetCol, targetRow, list = room.items) {
+        if (!canPlaceItem(room, item.id, targetCol, targetRow, item.w, item.h, list)) {
+            return { ok: false, reason: 'overlap_or_bounds' };
+        }
+        if (!room || !room.quadrants) {
+            return { ok: true, reason: '' };
+        }
+        if (straddlesQuadrantWall(room, targetCol, targetRow, item.w, item.h)) {
+            return { ok: false, reason: 'wall' };
+        }
+        const origQuad = getItemQuadrant(room, originCol, originRow, item.w, item.h);
+        const destQuad = getItemQuadrant(room, targetCol, targetRow, item.w, item.h);
+        if (origQuad !== -1 && destQuad !== origQuad && !canItemPassThroughDoor(item)) {
+            return { ok: false, reason: 'door_size' };
+        }
+        return { ok: true, reason: '' };
+    }
+
+    let dragToastTimer = null;
+    function showHouseDragToast(message, undoCallback = null) {
+        try {
+            let el = document.getElementById('house-drag-toast');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'house-drag-toast';
+                el.className = 'house-drag-toast';
+                document.body.appendChild(el);
+            }
+            el.innerHTML = '';
+            const msgSpan = document.createElement('span');
+            msgSpan.textContent = message;
+            el.appendChild(msgSpan);
+
+            const hasUndo = typeof undoCallback === 'function';
+            el.classList.toggle('has-undo', hasUndo);
+            if (hasUndo) {
+                const undoBtn = document.createElement('button');
+                undoBtn.type = 'button';
+                undoBtn.className = 'house-toast-undo-btn';
+                undoBtn.textContent = '↩️ Вернуть';
+                undoBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    clearTimeout(dragToastTimer);
+                    el.classList.remove('visible', 'has-undo');
+                    undoCallback();
+                });
+                el.appendChild(undoBtn);
+            }
+
+            const bar = document.getElementById('house-item-action-bar');
+            el.classList.toggle('above-bar', Boolean(bar && bar.classList.contains('visible')));
+            el.classList.add('visible');
+            clearTimeout(dragToastTimer);
+            dragToastTimer = setTimeout(() => {
+                el.classList.remove('visible', 'has-undo');
+            }, hasUndo ? 4500 : 2400);
+        } catch (e) {}
+    }
+
+    function findFreePlacementInRoom(room, item, acceptedList) {
+        const prefQ = room.quadrants ? getItemQuadrant(room, item.col, item.row, item.w, item.h) : 0;
+
+        const candidates = [];
+        for (let r = 0; r <= room.gridH - item.h; r++) {
+            for (let c = 0; c <= room.gridW - item.w; c++) {
+                if (!canPlaceItem(room, item.id, c, r, item.w, item.h, acceptedList)) continue;
+                if (room.quadrants && straddlesQuadrantWall(room, c, r, item.w, item.h)) continue;
+                const q = room.quadrants ? getItemQuadrant(room, c, r, item.w, item.h) : 0;
+                const sameQuadPenalty = (prefQ !== -1 && q !== prefQ) ? 1000 : 0;
+                const dist = Math.abs(c - item.col) + Math.abs(r - item.row) + sameQuadPenalty;
+                candidates.push({ col: c, row: r, dist });
+            }
+        }
+        if (candidates.length === 0) return null;
+        candidates.sort((a, b) => a.dist - b.dist);
+        return { col: candidates[0].col, row: candidates[0].row };
     }
 
     function applyLayoutMap(room, savedMap) {
@@ -89,28 +251,72 @@
         const accepted = [];
         let changed = false;
 
+        // Сначала выставляем rot и hidden у каждого элемента, чтобы размеры w/h при проверке коллизий были актуальными
         for (const item of room.items) {
             const candidate = savedMap[item.id];
+            if (candidate && typeof candidate === 'object') {
+                const nextRot = normalizeRotationDeg(candidate.rot);
+                const nextHidden = Boolean(candidate.hidden);
+                const dims = getRotatedDimensions(item.baseW, item.baseH, nextRot);
+                if (item.rot !== dims.rot || item.hidden !== nextHidden || item.w !== dims.w || item.h !== dims.h) {
+                    changed = true;
+                }
+                item.rot = dims.rot;
+                item.w = dims.w;
+                item.h = dims.h;
+                item.hidden = nextHidden;
+            }
+        }
+
+        for (const item of room.items) {
+            const candidate = savedMap[item.id];
+            if (item.hidden) {
+                if (candidate && Number.isInteger(candidate.col) && Number.isInteger(candidate.row)) {
+                    const hCol = Math.max(0, Math.min(room.gridW - item.w, candidate.col));
+                    const hRow = Math.max(0, Math.min(room.gridH - item.h, candidate.row));
+                    if (item.col !== hCol || item.row !== hRow) changed = true;
+                    item.col = hCol;
+                    item.row = hRow;
+                }
+                accepted.push({ id: item.id, col: item.col, row: item.row, w: item.w, h: item.h, hidden: true });
+                continue;
+            }
+
             if (candidate && Number.isInteger(candidate.col) && Number.isInteger(candidate.row)) {
                 const cCol = Math.max(0, Math.min(room.gridW - item.w, candidate.col));
                 const cRow = Math.max(0, Math.min(room.gridH - item.h, candidate.row));
-                if (canPlaceItem(room, item.id, cCol, cRow, item.w, item.h, accepted)) {
+                const wallBlocked = room.quadrants && straddlesQuadrantWall(room, cCol, cRow, item.w, item.h);
+                if (!wallBlocked && canPlaceItem(room, item.id, cCol, cRow, item.w, item.h, accepted)) {
                     if (item.col !== cCol || item.row !== cRow) changed = true;
-                    accepted.push({ id: item.id, col: cCol, row: cRow, w: item.w, h: item.h });
+                    accepted.push({ id: item.id, col: cCol, row: cRow, w: item.w, h: item.h, hidden: false });
                     continue;
                 }
             }
-            accepted.push({ id: item.id, col: item.col, row: item.row, w: item.w, h: item.h });
+            if (canPlaceItem(room, item.id, item.col, item.row, item.w, item.h, accepted)) {
+                accepted.push({ id: item.id, col: item.col, row: item.row, w: item.w, h: item.h, hidden: false });
+            } else {
+                const fallback = findFreePlacementInRoom(room, item, accepted);
+                if (fallback) {
+                    changed = true;
+                    accepted.push({ id: item.id, col: fallback.col, row: fallback.row, w: item.w, h: item.h, hidden: false });
+                } else {
+                    accepted.push({ id: item.id, col: item.col, row: item.row, w: item.w, h: item.h, hidden: false });
+                }
+            }
         }
 
         const finalPositions = [];
         for (const entry of accepted) {
+            if (entry.hidden) {
+                finalPositions.push(entry);
+                continue;
+            }
             if (canPlaceItem(room, entry.id, entry.col, entry.row, entry.w, entry.h, finalPositions)) {
                 finalPositions.push(entry);
             } else {
                 const orig = room.items.find(i => i.id === entry.id);
                 if (orig && canPlaceItem(room, orig.id, orig.col, orig.row, orig.w, orig.h, finalPositions)) {
-                    finalPositions.push({ id: orig.id, col: orig.col, row: orig.row, w: orig.w, h: orig.h });
+                    finalPositions.push({ id: orig.id, col: orig.col, row: orig.row, w: orig.w, h: orig.h, hidden: false });
                 }
             }
         }
@@ -131,100 +337,577 @@
     function getCurrentLayoutPayload(room) {
         const payload = {};
         room.items.forEach(item => {
-            payload[item.id] = { col: item.col, row: item.row };
+            const entry = { col: item.col, row: item.row };
+            if (item.rot) entry.rot = item.rot;
+            if (item.hidden) entry.hidden = true;
+            payload[item.id] = entry;
         });
         return payload;
+    }
+
+    const DEFAULT_QUADRANT_LAYOUT = {
+        kitchen: [0, 0],
+        hall: [1, 0],
+        room: [0, 1],
+        corridor: [1, 1]
+    };
+
+    function resolveQuadrantLayout(customLayout) {
+        const result = {
+            kitchen: [...DEFAULT_QUADRANT_LAYOUT.kitchen],
+            hall: [...DEFAULT_QUADRANT_LAYOUT.hall],
+            room: [...DEFAULT_QUADRANT_LAYOUT.room],
+            corridor: [...DEFAULT_QUADRANT_LAYOUT.corridor]
+        };
+        if (customLayout && typeof customLayout === 'object') {
+            Object.keys(result).forEach(key => {
+                const coords = customLayout[key];
+                if (Array.isArray(coords) && coords.length === 2 &&
+                    (coords[0] === 0 || coords[0] === 1) &&
+                    (coords[1] === 0 || coords[1] === 1)) {
+                    result[key] = [coords[0], coords[1]];
+                }
+            });
+        }
+        return result;
     }
 
     function buildLegacyMergedMap(roomCfg, sourceGetter) {
         const legacies = Array.isArray(roomCfg.legacyRooms) ? roomCfg.legacyRooms : [];
         if (legacies.length === 0) return { layout: null, maxTs: 0 };
 
-        const merged = {};
-        let maxTs = 0;
-        let foundAny = false;
-
-        for (const leg of legacies) {
+        const resolvedEntries = [];
+        for (let idx = 0; idx < legacies.length; idx++) {
+            const leg = legacies[idx];
             const res = sourceGetter(leg);
             if (!res || !res.layout || typeof res.layout !== 'object') continue;
-            foundAny = true;
-            if (Number(res.ts || 0) > maxTs) maxTs = Number(res.ts || 0);
+            resolvedEntries.push({
+                leg,
+                layout: res.layout,
+                ts: Number(res.ts || 0),
+                order: idx
+            });
+        }
+        if (resolvedEntries.length === 0) return { layout: null, maxTs: 0 };
+
+        resolvedEntries.sort((a, b) => (a.ts - b.ts) || (a.order - b.order));
+
+        const merged = {};
+        let maxTs = 0;
+
+        for (const entry of resolvedEntries) {
+            const { leg, layout, ts } = entry;
+            if (ts > maxTs) maxTs = ts;
             const offCol = Number(leg.offsetCol) || 0;
             const offRow = Number(leg.offsetRow) || 0;
-            Object.keys(res.layout).forEach(itemId => {
-                const pos = res.layout[itemId];
+            const remap = leg.remapQuadrants && typeof leg.remapQuadrants === 'object' ? leg.remapQuadrants : null;
+            Object.keys(layout).forEach(itemId => {
+                const pos = layout[itemId];
                 if (pos && Number.isInteger(pos.col) && Number.isInteger(pos.row)) {
+                    let targetCol = pos.col + offCol;
+                    let targetRow = pos.row + offRow;
+                    if (remap) {
+                        const srcQCol = targetCol < 8 ? 0 : 1;
+                        const srcQRow = targetRow < 8 ? 0 : 1;
+                        const destCoords = remap[`${srcQCol},${srcQRow}`];
+                        if (Array.isArray(destCoords) && destCoords.length === 2) {
+                            targetCol = (targetCol - srcQCol * 8) + destCoords[0] * 8;
+                            targetRow = (targetRow - srcQRow * 8) + destCoords[1] * 8;
+                        }
+                    }
                     merged[itemId] = {
-                        col: pos.col + offCol,
-                        row: pos.row + offRow
+                        col: targetCol,
+                        row: targetRow,
+                        ...(pos.rot ? { rot: normalizeRotationDeg(pos.rot) } : {}),
+                        ...(pos.hidden ? { hidden: true } : {})
                     };
                 }
             });
         }
 
-        return foundAny ? { layout: merged, maxTs } : { layout: null, maxTs: 0 };
+        return { layout: merged, maxTs };
     }
 
-    function loadRoomLayoutState(roomCfg) {
+    function getScopedKey(baseKey, userId) {
+        if (!baseKey) return null;
+        const uid = String(userId || '').trim();
+        if (!uid || uid === 'guest') return null;
+        return `${baseKey}::${uid}`;
+    }
+
+    function migrateLegacyUnscopedKeysForRoot(roomCfg, user) {
+        if (!user || user.isGuest || !user.id || user.id === 'guest') return;
+        const isRoot = typeof window.isRootUser === 'function' ? window.isRootUser(user) : false;
+        if (!isRoot) return;
+
+        const keyPairs = [
+            { base: roomCfg.storageKey, tsBase: roomCfg.tsKey }
+        ];
+        if (Array.isArray(roomCfg.legacyRooms)) {
+            roomCfg.legacyRooms.forEach(leg => {
+                if (leg && leg.storageKey) {
+                    keyPairs.push({ base: leg.storageKey, tsBase: leg.tsKey });
+                }
+            });
+        }
+
+        keyPairs.forEach(pair => {
+            try {
+                if (!pair.base) return;
+                const scopedKey = getScopedKey(pair.base, user.id);
+                const scopedTsKey = getScopedKey(pair.tsBase, user.id);
+                const legacyVal = localStorage.getItem(pair.base);
+                if (legacyVal && scopedKey && !localStorage.getItem(scopedKey)) {
+                    localStorage.setItem(scopedKey, legacyVal);
+                    if (pair.tsBase && scopedTsKey) {
+                        const legacyTs = localStorage.getItem(pair.tsBase);
+                        if (legacyTs && !localStorage.getItem(scopedTsKey)) {
+                            localStorage.setItem(scopedTsKey, legacyTs);
+                        }
+                    }
+                }
+                if (legacyVal !== null) localStorage.removeItem(pair.base);
+                if (pair.tsBase && localStorage.getItem(pair.tsBase) !== null) {
+                    localStorage.removeItem(pair.tsBase);
+                }
+            } catch (e) {}
+        });
+    }
+
+    function buildThingInnerSvg(type) {
+        switch (String(type || '').toLowerCase()) {
+            case 'table':
+            case 'desk':
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 165 472 340" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                    <rect x="110" y="220" width="28" height="200" rx="6" fill="#78350F"/>
+                    <rect x="374" y="220" width="28" height="200" rx="6" fill="#78350F"/>
+                    <rect x="70" y="240" width="36" height="200" rx="8" fill="#92400E" stroke="#451A03" stroke-width="4"/>
+                    <rect x="406" y="240" width="36" height="200" rx="8" fill="#92400E" stroke="#451A03" stroke-width="4"/>
+                    <rect x="40" y="190" width="432" height="45" rx="12" fill="#B45309" stroke="#78350F" stroke-width="6"/>
+                    <rect x="52" y="200" width="408" height="8" rx="4" fill="#D97706" opacity="0.65"/>
+                </svg>`;
+            case 'stove':
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="48 48 416 448" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                    <rect x="64" y="64" width="384" height="416" rx="24" fill="#F8F9FA" stroke="#CBD5E1" stroke-width="8"/>
+                    <rect x="64" y="64" width="384" height="64" fill="#E5E7EB" stroke="#9CA3AF" stroke-width="6"/>
+                    <circle cx="160" cy="184" r="26" fill="#1F2937"/><circle cx="352" cy="184" r="26" fill="#1F2937"/>
+                    <rect x="96" y="256" width="320" height="192" rx="12" fill="#1F2937" stroke="#CBD5E1" stroke-width="6"/>
+                    <rect x="128" y="288" width="256" height="128" rx="8" fill="#111827"/>
+                </svg>`;
+            case 'fridge':
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="80 36 352 464" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                    <rect x="96" y="48" width="320" height="416" rx="32" fill="#e2e8f0" stroke="#1e293b" stroke-width="12"/>
+                    <line x1="96" y1="176" x2="416" y2="176" stroke="#1e293b" stroke-width="12"/>
+                    <rect x="344" y="104" width="16" height="48" rx="8" fill="#334155"/>
+                    <rect x="344" y="240" width="16" height="80" rx="8" fill="#334155"/>
+                </svg>`;
+            case 'washer':
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="48 48 416 448" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                    <rect x="64" y="64" width="384" height="416" rx="28" fill="#e2e8f0" stroke="#1e293b" stroke-width="12"/>
+                    <circle cx="256" cy="296" r="108" fill="#0f172a" stroke="#38bdf8" stroke-width="12"/>
+                    <circle cx="256" cy="296" r="76" fill="#0284c7" opacity="0.45"/>
+                </svg>`;
+            case 'boiler':
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="96 24 320 468" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                    <rect x="112" y="80" width="288" height="360" rx="24" fill="#e2e8f0" stroke="#1e293b" stroke-width="12"/>
+                    <rect x="144" y="128" width="224" height="128" rx="16" fill="#1e293b"/>
+                    <circle cx="200" cy="192" r="28" fill="#334155" stroke="#38bdf8" stroke-width="6"/>
+                    <circle cx="256" cy="336" r="16" fill="#ef4444" stroke="#1e293b" stroke-width="8"/>
+                </svg>`;
+            case 'bed':
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="36 36 440 440" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                    <rect x="80" y="48" width="352" height="416" rx="16" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+                    <rect x="80" y="48" width="352" height="84" rx="10" fill="#94a3b8" stroke="#1e293b" stroke-width="10"/>
+                    <rect x="108" y="340" width="136" height="96" rx="8" fill="#e2e8f0" stroke="#334155" stroke-width="8"/>
+                    <rect x="268" y="340" width="136" height="96" rx="8" fill="#e2e8f0" stroke="#334155" stroke-width="8"/>
+                </svg>`;
+            case 'sofa':
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="16 80 480 352" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                    <rect x="40" y="110" width="432" height="140" rx="24" fill="#64748b" stroke="#1e293b" stroke-width="12"/>
+                    <rect x="64" y="210" width="384" height="160" rx="20" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+                    <rect x="24" y="160" width="44" height="220" rx="16" fill="#94a3b8" stroke="#1e293b" stroke-width="10"/>
+                    <rect x="444" y="160" width="44" height="220" rx="16" fill="#94a3b8" stroke="#1e293b" stroke-width="10"/>
+                </svg>`;
+            case 'armchair':
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 96 448 384" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                    <rect x="96" y="272" width="320" height="144" rx="20" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+                    <rect x="112" y="112" width="288" height="180" rx="24" fill="#94a3b8" stroke="#1e293b" stroke-width="12"/>
+                </svg>`;
+            case 'closet':
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="64 36 384 440" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                    <rect x="80" y="48" width="352" height="416" rx="16" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+                    <line x1="256" y1="48" x2="256" y2="464" stroke="#1e293b" stroke-width="12"/>
+                    <rect x="232" y="220" width="12" height="64" rx="6" fill="#1e293b"/>
+                    <rect x="268" y="220" width="12" height="64" rx="6" fill="#1e293b"/>
+                </svg>`;
+            case 'laptop':
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 56 432 392" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                    <rect x="92" y="72" width="328" height="224" rx="22" fill="#1e293b" stroke="#0f172a" stroke-width="12"/>
+                    <rect x="112" y="92" width="288" height="184" rx="12" fill="#0f172a"/>
+                    <path d="M150 144h110M150 174h160" stroke="#38bdf8" stroke-width="12" stroke-linecap="round"/>
+                    <path d="M56 312h400l24 88H32l24-88z" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+                </svg>`;
+            case 'tv':
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 64 448 360" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                    <rect x="48" y="80" width="416" height="256" rx="18" fill="#0f172a" stroke="#334155" stroke-width="14"/>
+                    <rect x="72" y="104" width="368" height="208" rx="8" fill="#0284c7" opacity="0.3"/>
+                    <rect x="196" y="348" width="120" height="24" rx="8" fill="#475569"/>
+                </svg>`;
+            case 'router':
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="48 64 416 384" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                    <rect x="128" y="88" width="24" height="144" rx="12" fill="#334155"/>
+                    <rect x="360" y="88" width="24" height="144" rx="12" fill="#334155"/>
+                    <rect x="64" y="232" width="384" height="144" rx="24" fill="#1e293b" stroke="#0f172a" stroke-width="12"/>
+                    <circle cx="144" cy="304" r="14" fill="#22c55e"/><circle cx="204" cy="304" r="14" fill="#38bdf8"/>
+                </svg>`;
+            case 'radiator':
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="48 120 416 272" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                    <rect x="72" y="152" width="368" height="208" rx="22" fill="#e2e8f0" stroke="#1e293b" stroke-width="12"/>
+                    <line x1="140" y1="168" x2="140" y2="344" stroke="#64748b" stroke-width="16"/>
+                    <line x1="216" y1="168" x2="216" y2="344" stroke="#64748b" stroke-width="16"/>
+                    <line x1="292" y1="168" x2="292" y2="344" stroke="#64748b" stroke-width="16"/>
+                    <line x1="368" y1="168" x2="368" y2="344" stroke="#64748b" stroke-width="16"/>
+                </svg>`;
+            case 'window':
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="96 20 320 472" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                    <rect x="128" y="48" width="224" height="416" rx="14" fill="#e2e8f0" stroke="#1e293b" stroke-width="12"/>
+                    <rect x="150" y="72" width="180" height="176" rx="8" fill="#38bdf8" opacity="0.6" stroke="#1e293b" stroke-width="8"/>
+                    <rect x="150" y="264" width="180" height="176" rx="8" fill="#38bdf8" opacity="0.6" stroke="#1e293b" stroke-width="8"/>
+                </svg>`;
+            case 'conditioner':
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 128 448 256" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                    <rect x="48" y="144" width="416" height="168" rx="24" fill="#f8fafc" stroke="#1e293b" stroke-width="12"/>
+                    <rect x="88" y="256" width="336" height="28" rx="8" fill="#38bdf8" opacity="0.7"/>
+                </svg>`;
+            case 'multicooker':
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="64 48 384 416" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                    <ellipse cx="256" cy="144" rx="144" ry="44" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+                    <rect x="96" y="144" width="320" height="272" rx="36" fill="#475569" stroke="#1e293b" stroke-width="12"/>
+                    <rect x="176" y="216" width="160" height="72" rx="12" fill="#0f172a"/>
+                </svg>`;
+            default:
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 32 448 448" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                    <rect x="52" y="52" width="408" height="408" rx="44" fill="#334155" stroke="#38bdf8" stroke-width="16"/>
+                    <rect x="92" y="92" width="328" height="328" rx="28" fill="#1e293b" stroke="#64748b" stroke-width="8"/>
+                    <circle cx="256" cy="230" r="64" fill="#0284c7" opacity="0.45"/>
+                </svg>`;
+        }
+    }
+
+    function createCustomThingElement(thing, houseRecord) {
+        const hasQueue = Number(thing.queueId) > 0;
+        const tag = hasQueue ? 'a' : 'div';
+        const el = document.createElement(tag);
+        el.className = 'room-item';
+        el.setAttribute('data-user-thing', '1');
+        el.dataset.id = thing.id;
+        el.dataset.w = String(Number(thing.w) || 2);
+        el.dataset.h = String(Number(thing.h) || 2);
+        el.dataset.col = String(Number(thing.col) || 0);
+        el.dataset.row = String(Number(thing.row) || 0);
+        if (thing.rot) el.dataset.rot = String(normalizeRotationDeg(thing.rot));
+        if (thing.hidden) el.dataset.hidden = '1';
+        el.title = `${thing.name} (${el.dataset.w}×${el.dataset.h}${hasQueue ? ', Queue #' + thing.queueId : ''} — удерживайте 0.7с для действий и перемещения)`;
+
+        if (hasQueue) {
+            const url = `/dashboard.html?queue=${Number(thing.queueId)}`;
+            el.href = url;
+            el.setAttribute('draggable', 'false');
+            el.onclick = (e) => onApplianceClick(
+                e,
+                url,
+                `select ${thing.name} ${thing.queueId}`,
+                `Выбран предмет ${thing.name} (Queue #${thing.queueId}, ${houseRecord ? houseRecord.name : 'Дом'})`
+            );
+        }
+
+        el.innerHTML = buildThingInnerSvg(thing.type) +
+            `<span class="house-thing-caption">${escapeHtml(thing.name)}${hasQueue ? ' #' + Number(thing.queueId) : ''}</span>`;
+        return el;
+    }
+
+    function renderDynamicRoomsOverlay(boardEl, roomsList, colsPerSide, rowsPerSide) {
+        if (!boardEl) return;
+        const old = boardEl.querySelector('.house-quadrants-overlay');
+        if (old) old.remove();
+
+        const overlay = document.createElement('div');
+        overlay.className = 'house-quadrants-overlay';
+        overlay.setAttribute('aria-hidden', 'true');
+
+        const cellW = 100 / colsPerSide;
+        const cellH = 100 / rowsPerSide;
+        const roomAtSlot = new Map();
+        roomsList.forEach((r, idx) => {
+            const slotIdx = (r.slotIndex !== undefined && Number.isInteger(r.slotIndex)) ? r.slotIndex : idx;
+            roomAtSlot.set(slotIdx, r);
+        });
+
+        let html = '';
+        for (let rr = 0; rr < rowsPerSide; rr++) {
+            for (let cc = 0; cc < colsPerSide; cc++) {
+                const idx = rr * colsPerSide + cc;
+                const roomObj = roomAtSlot.get(idx);
+                const leftPct = (cc * cellW).toFixed(4);
+                const topPct = (rr * cellH).toFixed(4);
+                const borderR = cc < (colsPerSide - 1) ? 'border-right: 3px solid rgba(71, 85, 105, 0.78);' : '';
+                const borderB = rr < (rowsPerSide - 1) ? 'border-bottom: 3px solid rgba(71, 85, 105, 0.78);' : '';
+                const hasRightNeighbor = cc < (colsPerSide - 1) && roomAtSlot.has(idx + 1);
+                const hasBottomNeighbor = rr < (rowsPerSide - 1) && roomAtSlot.has(idx + colsPerSide);
+
+                let doorsHtml = '';
+                if (roomObj && hasRightNeighbor) {
+                    doorsHtml += '<div class="house-quad-door-v" title="Проход шириной 2 плитки"></div>';
+                }
+                if (roomObj && hasBottomNeighbor) {
+                    doorsHtml += '<div class="house-quad-door-h" title="Проход шириной 2 плитки"></div>';
+                }
+
+                const tagHtml = roomObj
+                    ? `<span class="house-quad-tag" style="left: 8px; bottom: 8px;">🚪 ${escapeHtml(roomObj.name)} (8×8)</span>`
+                    : '';
+
+                html += `<div class="house-dyn-quad" style="left:${leftPct}%;top:${topPct}%;width:${cellW.toFixed(4)}%;height:${cellH.toFixed(4)}%;${borderR}${borderB}">
+                    ${doorsHtml}
+                    ${tagHtml}
+                </div>`;
+            }
+        }
+        overlay.innerHTML = html;
+        boardEl.prepend(overlay);
+    }
+
+    function renderEmptyHouseOverlay(boardEl, houseRecord) {
+        if (!boardEl) return;
+        const oldQ = boardEl.querySelector('.house-quadrants-overlay');
+        if (oldQ) oldQ.remove();
+        const oldEmpty = boardEl.querySelector('.house-empty-state');
+        if (oldEmpty) oldEmpty.remove();
+
+        const box = document.createElement('div');
+        box.className = 'house-empty-state';
+        const houseRef = escapeHtml(houseRecord.number || houseRecord.name || '1');
+        box.innerHTML = `
+            <div class="house-empty-icon">🏠</div>
+            <div class="house-empty-title">${escapeHtml(houseRecord.name)} пока пустой</div>
+            <div class="house-empty-hint">
+                Этот дом привязан только к вашему аккаунту. Чтобы добавить комнаты и мебель, выполните в консоли пошаговые команды:
+            </div>
+            <div class="house-empty-code">
+                Add room ➔ kitchen ➔ to house ➔ ${houseRef}
+            </div>
+        `;
+        boardEl.appendChild(box);
+    }
+
+    function prepareBoardForAccount(roomCfg, houseRecord, user) {
+        const boardEl = document.getElementById(roomCfg.boardId);
+        if (!boardEl) return { ...roomCfg };
+
+        const cfgCopy = {
+            ...roomCfg,
+            defaults: { ...(roomCfg.defaults || {}) },
+            colsPerSide: 2,
+            rowsPerSide: 2
+        };
+
+        // Удаляем динамически созданные элементы от предыдущей инициализации
+        boardEl.querySelectorAll('.room-item[data-user-thing="1"], .house-empty-state').forEach(el => el.remove());
+
+        if (!houseRecord) return cfgCopy;
+
+        const isBuiltin = Boolean(houseRecord.builtin);
+        const labelEl = boardEl.closest('.room-section') ? boardEl.closest('.room-section').querySelector('.room-label') : null;
+        const userRooms = Array.isArray(houseRecord.rooms) ? houseRecord.rooms : [];
+        const userThings = Array.isArray(houseRecord.things) ? houseRecord.things : [];
+
+        if (!isBuiltin) {
+            // Для обычного аккаунта (или нового дома) убираем встроенную мебель root-шаблона
+            boardEl.querySelectorAll('.room-item:not([data-user-thing="1"])').forEach(el => el.remove());
+            cfgCopy.defaults = {};
+            cfgCopy.legacyRooms = [];
+
+            const geom = (window.UserHousesSync && typeof window.UserHousesSync.getGridGeometry === 'function')
+                ? window.UserHousesSync.getGridGeometry(houseRecord)
+                : { colsPerSide: 2, rowsPerSide: 2, gridW: 16, gridH: 16 };
+
+            cfgCopy.colsPerSide = geom.colsPerSide;
+            cfgCopy.rowsPerSide = geom.rowsPerSide;
+            cfgCopy.gridW = geom.gridW;
+            cfgCopy.gridH = geom.gridH;
+            cfgCopy.quadrants = userRooms.length > 0;
+            cfgCopy.dynamicRooms = userRooms;
+
+            if (userRooms.length === 0) {
+                renderEmptyHouseOverlay(boardEl, houseRecord);
+                if (labelEl) labelEl.textContent = `🏠 ${houseRecord.name} — пустой дом`;
+            } else {
+                renderDynamicRoomsOverlay(boardEl, userRooms, geom.colsPerSide, geom.rowsPerSide);
+                userThings.forEach(thing => {
+                    const el = createCustomThingElement(thing, houseRecord);
+                    boardEl.appendChild(el);
+                    cfgCopy.defaults[thing.id] = { col: Number(thing.col) || 0, row: Number(thing.row) || 0 };
+                });
+                if (labelEl) {
+                    labelEl.textContent = `🏠 ${houseRecord.name} — ${userRooms.length} комн. (${geom.gridW}×${geom.gridH})`;
+                }
+            }
+            document.title = `Cloud Terminal — ${houseRecord.name}`;
+        } else {
+            // Для встроенного дома root добавляем пользовательские вещи поверх встроенного плана
+            userThings.forEach(thing => {
+                const el = createCustomThingElement(thing, houseRecord);
+                boardEl.appendChild(el);
+                cfgCopy.defaults[thing.id] = { col: Number(thing.col) || 0, row: Number(thing.row) || 0 };
+            });
+            if (labelEl && houseRecord.name) {
+                // оставляем стандартный заголовок или обновляем, если это запрос
+                if (activeEffectiveCfg && activeEffectiveCfg.isQueryHouse) {
+                    labelEl.textContent = `🏠 ${houseRecord.name}`;
+                }
+            }
+        }
+
+        // Инвалидируем кеш размеров пола, если изменилась сетка
+        boardEl._floorDrawnKey = '';
+        return cfgCopy;
+    }
+
+    function updateHouseTopNav(user, cfg, houseRecord, activeRoom) {
+        const nav = document.querySelector('.top-nav');
+        if (!nav || !user) return;
+        const boundHouses = typeof window.getUserBoundHouses === 'function' ? window.getUserBoundHouses(user) : [];
+        const currentHouseId = houseRecord ? houseRecord.id : (cfg && cfg.homeId);
+
+        let html = `
+            <a href="/terminal.html" onclick="recordNav('/terminal.html', 'go to terminal', 'Переход в консоль')">💻 Консоль</a>
+            <a href="/dashboard.html" onclick="recordNav('/dashboard.html', 'go to dashboard', 'Переход в дашборд')">🎛️ Dashboard</a>
+            <a href="/missions.html" onclick="recordNav('/missions.html', 'go to missions', 'Переход в поручения')">📋 Поручения</a>
+            <span class="top-nav-sep"></span>
+        `;
+
+        boundHouses.forEach(h => {
+            const isActive = h.id === currentHouseId;
+            const icon = h.number === 2 ? '🏡' : (h.number === 3 ? '🏘️' : '🏠');
+            const url = h.url || '/house/index.html';
+            if (isActive) {
+                html += `<a href="${escapeHtml(url)}" class="active">${icon} ${escapeHtml(h.name)}</a>`;
+            } else {
+                html += `<a href="${escapeHtml(url)}" onclick="recordNav('${escapeHtml(url)}', 'go to home ${escapeHtml(h.number || h.id)}', 'Переход в ${escapeHtml(h.name)}')">${icon} ${escapeHtml(h.name)}</a>`;
+            }
+        });
+
+        const isBuiltin = !houseRecord || Boolean(houseRecord.builtin);
+        const dynRooms = houseRecord && Array.isArray(houseRecord.rooms) ? houseRecord.rooms : [];
+
+        if (isBuiltin) {
+            html += `
+                <span class="top-nav-sep"></span>
+                <button type="button" onclick="jumpToQuadrant('kitchen')">🍳 Кухня</button>
+                <button type="button" onclick="jumpToQuadrant('hall')">🛋️ Зал</button>
+                <button type="button" onclick="jumpToQuadrant('room')">🛏️ Комната</button>
+                <button type="button" onclick="jumpToQuadrant('corridor')">🚶 Коридор</button>
+            `;
+        } else if (dynRooms.length > 0) {
+            html += `<span class="top-nav-sep"></span>`;
+            dynRooms.forEach((r, idx) => {
+                html += `<button type="button" onclick="jumpToQuadrant(${idx})">🚪 ${escapeHtml(r.name)}</button>`;
+            });
+        }
+
+        nav.innerHTML = html;
+    }
+
+    function loadRoomLayoutState(roomCfg, user) {
+        const uid = user && !user.isGuest && user.id && user.id !== 'guest' ? String(user.id) : null;
+        migrateLegacyUnscopedKeysForRoot(roomCfg, user);
+
+        const scopedStorageKey = getScopedKey(roomCfg.storageKey, uid);
+        const scopedTsKey = getScopedKey(roomCfg.tsKey, uid);
+
         const boardEl = document.getElementById(roomCfg.boardId);
         const gridOverlay = boardEl ? boardEl.querySelector('.drag-grid-overlay') : null;
         const targetBox = boardEl ? boardEl.querySelector('.drag-target-box') : null;
         const domItems = boardEl ? Array.from(boardEl.querySelectorAll('.room-item')) : [];
 
         let saved = null;
-        try {
-            const raw = localStorage.getItem(roomCfg.storageKey);
-            if (raw) {
-                const parsed = JSON.parse(raw);
-                if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-                    saved = parsed;
+        if (scopedStorageKey) {
+            try {
+                const raw = localStorage.getItem(scopedStorageKey);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+                        saved = parsed;
+                    }
                 }
+            } catch (e) {
+                saved = null;
             }
-        } catch (e) {
-            saved = null;
         }
+
+        const quadrantLayout = resolveQuadrantLayout(roomCfg.quadrantLayout);
 
         const room = {
             id: roomCfg.id,
-            storageKey: roomCfg.storageKey,
-            tsKey: roomCfg.tsKey,
+            storageKey: scopedStorageKey,
+            tsKey: scopedTsKey,
             legacyRooms: Array.isArray(roomCfg.legacyRooms) ? roomCfg.legacyRooms : [],
             quadrants: roomCfg.quadrants !== false,
+            quadrantLayout,
+            colsPerSide: Number(roomCfg.colsPerSide) || 2,
+            rowsPerSide: Number(roomCfg.rowsPerSide) || 2,
             gridW: Number(roomCfg.gridW) || 16,
             gridH: Number(roomCfg.gridH) || 16,
+            dynamicRooms: Array.isArray(roomCfg.dynamicRooms) ? roomCfg.dynamicRooms : null,
             boardEl,
             gridOverlay,
             targetBox,
             items: []
         };
 
-        if (room.quadrants && boardEl) {
-            ensureQuadrantsOverlay(boardEl, roomCfg.quadrantLabels || null);
+        if (room.quadrants && boardEl && !room.dynamicRooms) {
+            ensureQuadrantsOverlay(boardEl, roomCfg.quadrantLabels || null, quadrantLayout);
         }
 
         room.items = domItems.map(el => {
             const id = el.dataset.id;
-            const w = Number(el.dataset.w) || 2;
-            const h = Number(el.dataset.h) || 2;
+            const baseW = Number(el.dataset.w) || 2;
+            const baseH = Number(el.dataset.h) || 2;
+            const rot = normalizeRotationDeg(el.dataset.rot || 0);
+            const hidden = el.dataset.hidden === '1';
+            const dims = getRotatedDimensions(baseW, baseH, rot);
             const def = (roomCfg.defaults && roomCfg.defaults[id]) || {
                 col: Number(el.dataset.col) || 0,
                 row: Number(el.dataset.row) || 0
             };
-            const itemObj = { id, el, w, h, col: def.col, row: def.row, room };
+            const itemObj = {
+                id,
+                el,
+                baseW,
+                baseH,
+                w: dims.w,
+                h: dims.h,
+                rot: dims.rot,
+                hidden,
+                col: def.col,
+                row: def.row,
+                room
+            };
             el._houseRoomItem = itemObj;
             return itemObj;
         });
 
         if (saved) {
             applyLayoutMap(room, saved);
-        } else {
-            // Миграция локального legacy-расположения (например house2_kitchen_v2 + house2_hall_v2 -> 16×16)
+        } else if (uid && room.legacyRooms.length > 0) {
             const localLegacy = buildLegacyMergedMap(roomCfg, (leg) => {
                 try {
-                    const raw = localStorage.getItem(leg.storageKey);
+                    const legKey = getScopedKey(leg.storageKey, uid);
+                    const legTsKey = getScopedKey(leg.tsKey, uid);
+                    const raw = legKey ? localStorage.getItem(legKey) : null;
                     if (!raw) return null;
                     const layout = JSON.parse(raw);
-                    const ts = Number(localStorage.getItem(leg.tsKey) || 0);
+                    const ts = Number((legTsKey ? localStorage.getItem(legTsKey) : 0) || 0);
                     return { layout, ts };
                 } catch (e) {
                     return null;
@@ -232,42 +915,67 @@
             });
             if (localLegacy.layout) {
                 applyLayoutMap(room, localLegacy.layout);
-                saveRoomLayoutLocalOnly(room, localLegacy.maxTs || 0);
+                saveRoomLayoutLocalOnly(room, localLegacy.maxTs || Date.now());
             }
         }
 
         return room;
     }
 
-    function ensureQuadrantsOverlay(boardEl, labels) {
+    function ensureQuadrantsOverlay(boardEl, labels, quadrantLayout) {
         if (!boardEl || boardEl.querySelector('.house-quadrants-overlay')) return;
         const lbl = labels || {};
+        const layout = resolveQuadrantLayout(quadrantLayout);
+
+        const meta = {
+            kitchen: { title: 'Кухня', tag: lbl.kitchen || '🍳 Кухня (8×8)' },
+            hall: { title: 'Зал', tag: lbl.hall || '🛋️ Зал (8×8)' },
+            room: { title: 'Комната', tag: lbl.room || '🛏️ Комната (8×8)' },
+            corridor: { title: 'Коридор', tag: lbl.corridor || '🚶 Коридор (8×8)' }
+        };
+
+        const slotDefs = [
+            { slot: 'tl', coords: [0, 0], tagStyle: 'left: 8px; bottom: 8px;' },
+            { slot: 'tr', coords: [1, 0], tagStyle: 'right: 8px; bottom: 8px;' },
+            { slot: 'bl', coords: [0, 1], tagStyle: 'left: 8px; bottom: 8px;' },
+            { slot: 'br', coords: [1, 1], tagStyle: 'right: 8px; bottom: 8px;' }
+        ];
+
+        const atSlot = {};
+        slotDefs.forEach(s => {
+            const matchKey = Object.keys(layout).find(k => layout[k][0] === s.coords[0] && layout[k][1] === s.coords[1]);
+            atSlot[s.slot] = matchKey || 'corridor';
+        });
+
         const overlay = document.createElement('div');
         overlay.className = 'house-quadrants-overlay';
         overlay.setAttribute('aria-hidden', 'true');
-        overlay.innerHTML = `
-            <div class="house-quad quad-kitchen">
-                <div class="house-quad-door-v" title="Проход Кухня ↔ Зал"></div>
-                <div class="house-quad-door-h" title="Проход Кухня ↔ Комната"></div>
-                <span class="house-quad-tag" style="left: 8px; bottom: 8px;">${lbl.kitchen || '🍳 Кухня (8×8)'}</span>
-            </div>
-            <div class="house-quad quad-hall">
-                <div class="house-quad-door-h" title="Проход Зал ↔ Коридор"></div>
-                <span class="house-quad-tag" style="right: 8px; bottom: 8px;">${lbl.hall || '🛋️ Зал (8×8)'}</span>
-            </div>
-            <div class="house-quad quad-room">
-                <div class="house-quad-door-v" title="Проход Комната ↔ Коридор"></div>
-                <span class="house-quad-tag" style="left: 8px; top: 8px;">${lbl.room || '🛏️ Комната (8×8)'}</span>
-            </div>
-            <div class="house-quad quad-corridor">
-                <span class="house-quad-tag" style="right: 8px; top: 8px;">${lbl.corridor || '🚶 Коридор (8×8)'}</span>
-            </div>
-        `;
+        overlay.innerHTML = slotDefs.map(s => {
+            const qKey = atSlot[s.slot];
+            let doorsHtml = '';
+            if (s.slot === 'tl') {
+                doorsHtml += `<div class="house-quad-door-v" title="Проход ${meta[atSlot.tl].title} ↔ ${meta[atSlot.tr].title}"></div>`;
+                doorsHtml += `<div class="house-quad-door-h" title="Проход ${meta[atSlot.tl].title} ↔ ${meta[atSlot.bl].title}"></div>`;
+            } else if (s.slot === 'tr') {
+                doorsHtml += `<div class="house-quad-door-h" title="Проход ${meta[atSlot.tr].title} ↔ ${meta[atSlot.br].title}"></div>`;
+            } else if (s.slot === 'bl') {
+                doorsHtml += `<div class="house-quad-door-v" title="Проход ${meta[atSlot.bl].title} ↔ ${meta[atSlot.br].title}"></div>`;
+            }
+            return `
+            <div class="house-quad quad-${qKey} quad-slot-${s.slot}">
+                ${doorsHtml}
+                <span class="house-quad-tag" style="${s.tagStyle}">${meta[qKey].tag}</span>
+            </div>`;
+        }).join('');
         boardEl.prepend(overlay);
     }
 
     function saveRoomLayoutLocalOnly(room, customTs = null) {
         try {
+            if (!activeHouseUser || activeHouseUser.isGuest || !activeHouseUser.id || activeHouseUser.id === 'guest') {
+                return null;
+            }
+            if (!room || !room.storageKey || !room.tsKey) return null;
             const payload = getCurrentLayoutPayload(room);
             localStorage.setItem(room.storageKey, JSON.stringify(payload));
             localStorage.setItem(room.tsKey, String(customTs !== null ? customTs : Date.now()));
@@ -278,19 +986,30 @@
     }
 
     function saveRoomLayoutState(room) {
-        const payload = saveRoomLayoutLocalOnly(room, Date.now());
+        if (!activeHouseUser || activeHouseUser.isGuest || !activeHouseUser.id || activeHouseUser.id === 'guest') {
+            return;
+        }
+        const nowTs = Date.now();
+        const payload = saveRoomLayoutLocalOnly(room, nowTs);
         if (payload && window.HouseLayoutSync && typeof window.HouseLayoutSync.saveAndSyncHouseLayout === 'function') {
-            window.HouseLayoutSync.saveAndSyncHouseLayout(room.id, payload);
+            window.HouseLayoutSync.saveAndSyncHouseLayout(room.id, payload, activeHouseUser, nowTs);
+        }
+        if (payload && activeHouseRecord && window.UserHousesSync && typeof window.UserHousesSync.updateThingPositionsFromLayout === 'function') {
+            window.UserHousesSync.updateThingPositionsFromLayout(activeHouseUser, activeHouseRecord.id, payload);
         }
     }
 
     async function syncAllRoomsWithDatabase() {
+        const syncUser = activeHouseUser;
+        if (!syncUser || syncUser.isGuest || !syncUser.id || syncUser.id === 'guest') return;
         if (!window.HouseLayoutSync || roomsState.length === 0) return;
         if (activeDragSession || panSession) return;
         try {
             if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
             await window.HouseLayoutSync.flushPendingHouseLayouts();
-            const pending = window.HouseLayoutSync.getPendingHouseLayouts();
+            if (!activeHouseUser || activeHouseUser.id !== syncUser.id || roomsState.length === 0) return;
+
+            const pending = window.HouseLayoutSync.getPendingHouseLayouts(syncUser.id);
 
             const allRoomIds = [];
             roomsState.forEach(r => {
@@ -301,47 +1020,63 @@
             const remoteMap = typeof window.HouseLayoutSync.fetchAllHouseLayoutsFromDb === 'function'
                 ? await window.HouseLayoutSync.fetchAllHouseLayoutsFromDb(allRoomIds)
                 : {};
+            if (!activeHouseUser || activeHouseUser.id !== syncUser.id || roomsState.length === 0) return;
 
             for (const room of roomsState) {
                 if (pending && pending[room.id]) continue;
 
-                const localTs = Number(localStorage.getItem(room.tsKey) || 0);
+                const hasLocalSaved = Boolean(room.storageKey && localStorage.getItem(room.storageKey));
+                const localTs = Number((room.tsKey ? localStorage.getItem(room.tsKey) : 0) || 0);
                 const remoteUnified = remoteMap[room.id];
-                const remoteUnifiedTs = (remoteUnified && remoteUnified.updatedAt)
-                    ? new Date(remoteUnified.updatedAt).getTime()
+                const remoteUnifiedTs = remoteUnified
+                    ? (Number(remoteUnified.ts) || (remoteUnified.updatedAt ? new Date(remoteUnified.updatedAt).getTime() : 0))
                     : 0;
 
-                // Проверяем и legacy-комнаты (если с прошлого раза сохранение шло в room_kitchen + room_hall)
-                const remoteLegacy = buildLegacyMergedMap(room, (leg) => {
-                    const entry = remoteMap[leg.id];
-                    if (!entry || !entry.layout) return null;
-                    return {
-                        layout: entry.layout,
-                        ts: entry.updatedAt ? new Date(entry.updatedAt).getTime() : 0
-                    };
-                });
+                // Legacy используем ТОЛЬКО как fallback, если ещё нет сохранённого единого формата (remoteUnified)
+                const remoteLegacy = (!remoteUnified || !remoteUnified.layout)
+                    ? buildLegacyMergedMap(room, (leg) => {
+                        const entry = remoteMap[leg.id];
+                        if (!entry || !entry.layout) return null;
+                        return {
+                            layout: entry.layout,
+                            ts: Number(entry.ts) || (entry.updatedAt ? new Date(entry.updatedAt).getTime() : 0)
+                        };
+                    })
+                    : { layout: null, maxTs: 0 };
 
                 let chosenLayout = null;
                 let chosenTs = 0;
                 let migratedFromLegacy = false;
 
-                if (remoteLegacy.layout && (!remoteUnified || remoteLegacy.maxTs > remoteUnifiedTs)) {
+                if (remoteUnified && remoteUnified.layout) {
+                    chosenLayout = remoteUnified.layout;
+                    chosenTs = remoteUnifiedTs;
+                } else if (remoteLegacy.layout) {
                     chosenLayout = remoteLegacy.layout;
                     chosenTs = remoteLegacy.maxTs || Date.now();
                     migratedFromLegacy = true;
-                } else if (remoteUnified && remoteUnified.layout) {
-                    chosenLayout = remoteUnified.layout;
-                    chosenTs = remoteUnifiedTs || Date.now();
                 }
 
-                if (chosenLayout && (!localTs || !chosenTs || chosenTs >= localTs)) {
+                if (chosenLayout && (!hasLocalSaved || (chosenTs > 0 && chosenTs > localTs))) {
                     const changed = applyLayoutMap(room, chosenLayout);
                     const savedPayload = saveRoomLayoutLocalOnly(room, chosenTs || Date.now());
                     if (changed) {
                         room.items.forEach(item => applyItemGeometry(item));
+                        if (selectedItem && selectedItem.hidden) {
+                            clearSelectedItem();
+                        }
                     }
                     if (migratedFromLegacy && savedPayload) {
-                        window.HouseLayoutSync.saveAndSyncHouseLayout(room.id, savedPayload);
+                        window.HouseLayoutSync.saveAndSyncHouseLayout(room.id, savedPayload, syncUser, chosenTs || Date.now());
+                    }
+                } else if (hasLocalSaved && localTs > chosenTs && window.HouseLayoutSync) {
+                    const localPayload = getCurrentLayoutPayload(room);
+                    window.HouseLayoutSync.saveAndSyncHouseLayout(room.id, localPayload, syncUser, localTs);
+                } else if (!chosenLayout && !hasLocalSaved && window.HouseLayoutSync && Array.isArray(room.items) && room.items.length > 0) {
+                    const initTs = Date.now();
+                    const initPayload = saveRoomLayoutLocalOnly(room, initTs);
+                    if (initPayload) {
+                        window.HouseLayoutSync.saveAndSyncHouseLayout(room.id, initPayload, syncUser, initTs);
                     }
                 }
             }
@@ -350,25 +1085,21 @@
         }
     }
 
-    function getFloorTileDataUrl() {
-        if (cachedFloorTileUrl !== null) return cachedFloorTileUrl;
+    function getFloorTilePatternCanvas() {
+        if (cachedFloorPatternCanvas) return cachedFloorPatternCanvas;
         try {
             const size = 128;
             const canvas = document.createElement('canvas');
             canvas.width = size;
             canvas.height = size;
             const ctx = canvas.getContext('2d');
-            if (!ctx) {
-                cachedFloorTileUrl = '';
-                return '';
-            }
+            if (!ctx) return null;
 
-            const s = size / 128;
             const drawPoly = (pts, fill, stroke, lineW) => {
                 ctx.beginPath();
                 pts.forEach(([x, y], idx) => {
-                    if (idx === 0) ctx.moveTo(x * s, y * s);
-                    else ctx.lineTo(x * s, y * s);
+                    if (idx === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
                 });
                 ctx.closePath();
                 if (fill) {
@@ -377,7 +1108,7 @@
                 }
                 if (stroke && lineW) {
                     ctx.strokeStyle = stroke;
-                    ctx.lineWidth = lineW * s;
+                    ctx.lineWidth = lineW;
                     ctx.stroke();
                 }
             };
@@ -406,24 +1137,72 @@
                 '#F8FAFC', '#CBD5E1', 1.5
             );
 
-            cachedFloorTileUrl = canvas.toDataURL('image/png');
-            return cachedFloorTileUrl;
+            cachedFloorPatternCanvas = canvas;
+            return canvas;
         } catch (e) {
-            cachedFloorTileUrl = '';
-            return '';
+            return null;
         }
     }
 
+    function drawStaticFloorCanvas(room) {
+        if (!room || !room.boardEl) return;
+        const drawKey = `${room.gridW}x${room.gridH}x${tilePx}`;
+        if (room.boardEl._floorDrawnKey === drawKey) return;
+
+        const widthCss = room.gridW * tilePx;
+        const heightCss = room.gridH * tilePx;
+
+        let canvas = room.boardEl.querySelector('canvas.house-floor-layer');
+        if (!canvas) {
+            canvas = document.createElement('canvas');
+            canvas.className = 'house-floor-layer';
+            canvas.setAttribute('aria-hidden', 'true');
+            room.boardEl.prepend(canvas);
+        }
+
+        const dpr = Math.min(2, (typeof window !== 'undefined' && window.devicePixelRatio) || 1);
+        canvas.style.width = `${widthCss}px`;
+        canvas.style.height = `${heightCss}px`;
+        canvas.width = Math.round(widthCss * dpr);
+        canvas.height = Math.round(heightCss * dpr);
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.fillStyle = '#526071';
+        ctx.fillRect(0, 0, widthCss, heightCss);
+
+        const tileCanvas = getFloorTilePatternCanvas();
+        if (tileCanvas) {
+            for (let r = 0; r < room.gridH; r++) {
+                for (let c = 0; c < room.gridW; c++) {
+                    ctx.drawImage(tileCanvas, c * tilePx, r * tilePx, tilePx, tilePx);
+                }
+            }
+        }
+
+        room.boardEl._floorDrawnKey = drawKey;
+    }
+
     function applyItemGeometry(item, pxLeft, pxTop) {
-        item.el.style.transform = 'translate3d(0, 0, 0)';
+        if (!item || !item.el) return;
+        item.el.classList.toggle('is-hidden', Boolean(item.hidden));
+        item.el.style.transform = '';
+        item.el.style.setProperty('--item-rot', `${normalizeRotationDeg(item.rot)}deg`);
         item.el.style.left = (pxLeft !== undefined ? pxLeft : item.col * tilePx) + 'px';
         item.el.style.top = (pxTop !== undefined ? pxTop : item.row * tilePx) + 'px';
         item.el.style.width = (item.w * tilePx) + 'px';
         item.el.style.height = (item.h * tilePx) + 'px';
+
+        const svgEl = item.el.querySelector('.appliance-object');
+        if (svgEl) {
+            svgEl.style.width = ((item.baseW || item.w) * tilePx) + 'px';
+            svgEl.style.height = ((item.baseH || item.h) * tilePx) + 'px';
+        }
     }
 
     function layoutAllBoards(force = false) {
-        // Никогда не пересчитываем макет во время перетаскивания или панорамирования
         if ((activeDragSession && activeDragSession.isDragging) || panSession) return;
 
         const viewport = document.getElementById('house-viewport');
@@ -434,7 +1213,6 @@
         const availH = Math.max(240, viewport.clientHeight - padY);
         const availW = Math.max(240, viewport.clientWidth - 32);
 
-        // Игнорируем мелкое дрожание высоты экрана при скролле на телефоне (адресная строка)
         if (!force && lastViewportW > 0 &&
             Math.abs(availW - lastViewportW) < 24 &&
             Math.abs(availH - lastViewportH) < 120) {
@@ -451,17 +1229,12 @@
         lastTilePx = nextTilePx;
         tilePx = nextTilePx;
 
-        const floorTileUrl = getFloorTileDataUrl();
-
         roomsState.forEach(room => {
             if (!room.boardEl) return;
             room.boardEl.style.width = (tilePx * room.gridW) + 'px';
             room.boardEl.style.height = (tilePx * room.gridH) + 'px';
-            room.boardEl.style.backgroundSize = `${tilePx}px ${tilePx}px`;
-            if (floorTileUrl && !room.boardEl.dataset.floorApplied) {
-                room.boardEl.style.backgroundImage = `url("${floorTileUrl}")`;
-                room.boardEl.dataset.floorApplied = '1';
-            }
+
+            drawStaticFloorCanvas(room);
 
             if (room.gridOverlay) {
                 room.gridOverlay.style.backgroundSize = `${tilePx}px ${tilePx}px`;
@@ -471,24 +1244,26 @@
         });
     }
 
-    function jumpToQuadrant(quadKey, smooth = true) {
+    function jumpToQuadrant(quadKeyOrIdx, smooth = true) {
         const viewport = document.getElementById('house-viewport');
         const room = roomsState[0];
         if (!viewport || !room || !room.boardEl) return;
 
-        const halfW = (room.gridW / 2) * tilePx;
-        const halfH = (room.gridH / 2) * tilePx;
+        const halfW = 8 * tilePx;
+        const halfH = 8 * tilePx;
+        let coords = [0, 0];
 
-        let targetOffsetX = 0;
-        let targetOffsetY = 0;
-        if (quadKey === 'hall') {
-            targetOffsetX = halfW;
-        } else if (quadKey === 'room') {
-            targetOffsetY = halfH;
-        } else if (quadKey === 'corridor') {
-            targetOffsetX = halfW;
-            targetOffsetY = halfH;
+        if (typeof quadKeyOrIdx === 'number' || /^\d+$/.test(String(quadKeyOrIdx))) {
+            const idx = Number(quadKeyOrIdx);
+            const colsPerSide = room.colsPerSide || 2;
+            coords = [idx % colsPerSide, Math.floor(idx / colsPerSide)];
+        } else {
+            const layout = room.quadrantLayout || DEFAULT_QUADRANT_LAYOUT;
+            coords = layout[quadKeyOrIdx] || DEFAULT_QUADRANT_LAYOUT[quadKeyOrIdx] || [0, 0];
         }
+
+        const targetOffsetX = coords[0] * halfW;
+        const targetOffsetY = coords[1] * halfH;
 
         const vpRect = viewport.getBoundingClientRect();
         const boardRect = room.boardEl.getBoundingClientRect();
@@ -546,6 +1321,239 @@
         }
     }
 
+    function getItemDisplayName(item) {
+        if (!item || !item.el) return 'Предмет';
+        const svgLabel = item.el.querySelector('.appliance-object')?.getAttribute('aria-label');
+        const caption = item.el.querySelector('.house-thing-caption')?.textContent;
+        if (svgLabel) return svgLabel;
+        if (caption) return caption;
+        return item.id || 'Предмет';
+    }
+
+    function ensureItemActionBar() {
+        let bar = document.getElementById('house-item-action-bar');
+        if (bar) return bar;
+        if (!document.body) return null;
+
+        bar = document.createElement('div');
+        bar.id = 'house-item-action-bar';
+        bar.className = 'house-item-action-bar';
+        bar.innerHTML = `
+            <button type="button" id="house-btn-rotate-ccw" class="house-action-btn" title="Повернуть против часовой стрелки (-90°)" aria-label="Повернуть против часовой стрелки">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 12a9 9 0 1 0 3-6.7L3 8"/>
+                    <path d="M3 3v5h5"/>
+                </svg>
+                <span>-90°</span>
+            </button>
+            <button type="button" id="house-btn-hide-item" class="house-action-btn house-action-btn-hide" title="Убрать (скрыть) предмет" aria-label="Скрыть предмет">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                </svg>
+                <span>Скрыть</span>
+            </button>
+            <button type="button" id="house-btn-rotate-cw" class="house-action-btn" title="Повернуть по часовой стрелке (+90°)" aria-label="Повернуть по часовой стрелке">
+                <span>+90°</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 12a9 9 0 1 1-3-6.7L21 8"/>
+                    <path d="M21 3v5h-5"/>
+                </svg>
+            </button>
+        `;
+
+        const stopEvt = (e) => { e.stopPropagation(); };
+        bar.addEventListener('touchstart', stopEvt, { passive: true });
+        bar.addEventListener('pointerdown', stopEvt);
+        bar.addEventListener('mousedown', stopEvt);
+
+        bar.querySelector('#house-btn-rotate-ccw').addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            rotateSelectedItem(-90);
+        });
+        bar.querySelector('#house-btn-hide-item').addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            hideSelectedItem();
+        });
+        bar.querySelector('#house-btn-rotate-cw').addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            rotateSelectedItem(90);
+        });
+
+        document.body.appendChild(bar);
+        return bar;
+    }
+
+    function selectRoomItem(item) {
+        if (!item || item.hidden) {
+            clearSelectedItem();
+            return;
+        }
+        if (selectedItem && selectedItem !== item && selectedItem.el) {
+            selectedItem.el.classList.remove('is-selected');
+        }
+        selectedItem = item;
+        if (item.el) {
+            item.el.classList.add('is-selected');
+        }
+        const bar = ensureItemActionBar();
+        if (bar) {
+            bar.classList.add('visible');
+        }
+        const toast = document.getElementById('house-drag-toast');
+        if (toast && toast.classList.contains('visible')) {
+            toast.classList.add('above-bar');
+        }
+    }
+
+    function clearSelectedItem() {
+        if (selectedItem && selectedItem.el) {
+            selectedItem.el.classList.remove('is-selected');
+        }
+        selectedItem = null;
+        const bar = document.getElementById('house-item-action-bar');
+        if (bar) {
+            bar.classList.remove('visible');
+        }
+        const toast = document.getElementById('house-drag-toast');
+        if (toast) {
+            toast.classList.remove('above-bar');
+        }
+    }
+
+    let consoleActionChain = Promise.resolve();
+
+    function enqueueConsoleAction(fn) {
+        consoleActionChain = consoleActionChain.then(fn, fn);
+        return consoleActionChain;
+    }
+
+    function getActiveHouseCmdRef() {
+        if (activeHouseRecord) {
+            return String(activeHouseRecord.name || activeHouseRecord.number || activeHouseRecord.id || '').trim() || '1';
+        }
+        const cfg = activeEffectiveCfg || window.HOUSE_CONFIG || {};
+        return String(cfg.homeId || '1');
+    }
+
+    async function runHouseConsoleCommand(baseCmd, middleSteps, finalPayload, room) {
+        if (typeof window.processCommand !== 'function') {
+            showHouseDragToast('❌ Модуль консоли не загружен');
+            return { style: 'output-error', response: 'Модуль консоли не загружен' };
+        }
+        const stepsSnapshot = [baseCmd, ...(Array.isArray(middleSteps) ? middleSteps : [])];
+        const combinedCommand = stepsSnapshot.length === 1
+            ? `${baseCmd} ${finalPayload}`
+            : `${baseCmd}: ${stepsSnapshot.slice(1).join(' ➔ ')} ➔ ${finalPayload}`;
+
+        return await window.processCommand(combinedCommand, {
+            fromTwoStepBar: true,
+            fromHouseUI: true,
+            pendingSteps: stepsSnapshot,
+            stepPayload: finalPayload,
+            houseRuntime: {
+                user: activeHouseUser,
+                house: activeHouseRecord || { id: (activeEffectiveCfg && activeEffectiveCfg.homeId) || 'house1', name: getActiveHouseCmdRef(), builtin: true, things: [] },
+                room: room || roomsState[0] || null
+            }
+        });
+    }
+
+    function findRotationSpot(room, item, newW, newH) {
+        if (window.HouseLayoutEngine && typeof window.HouseLayoutEngine.findRotationSpot === 'function') {
+            return window.HouseLayoutEngine.findRotationSpot(room, item, newW, newH);
+        }
+        return { col: item.col, row: item.row };
+    }
+
+    function rotateSelectedItem(deltaDeg) {
+        const item = selectedItem;
+        if (!item || !item.room || item.hidden) return Promise.resolve(false);
+        const deltaStr = Number(deltaDeg) > 0 ? '+90' : '-90';
+        const houseRef = getActiveHouseCmdRef();
+
+        return enqueueConsoleAction(async () => {
+            const res = await runHouseConsoleCommand('rotate thing', [item.id, deltaStr, 'of house'], houseRef, item.room);
+            applyItemGeometry(item);
+            if (!res || res.style === 'output-error') {
+                showHouseDragToast((res && res.response) || '⚠️ Нет свободного места для поворота на 90°');
+                return false;
+            }
+            showHouseDragToast(`↻ «${getItemDisplayName(item)}»: поворот ${deltaStr}° (${item.rot}°)`);
+            return true;
+        });
+    }
+
+    function unhideRoomItem(item) {
+        if (!item || !item.room) return Promise.resolve(false);
+        const houseRef = getActiveHouseCmdRef();
+
+        return enqueueConsoleAction(async () => {
+            const res = await runHouseConsoleCommand('unhide thing', [item.id, 'of house'], houseRef, item.room);
+            applyItemGeometry(item);
+            if (!res || res.style === 'output-error') {
+                showHouseDragToast((res && res.response) || '❌ Не удалось вернуть предмет');
+                return false;
+            }
+            selectRoomItem(item);
+            showHouseDragToast(`👁️ «${getItemDisplayName(item)}» возвращён`);
+            return true;
+        });
+    }
+
+    function hideSelectedItem() {
+        const item = selectedItem;
+        if (!item || !item.room) return Promise.resolve(false);
+        const itemName = getItemDisplayName(item);
+        const houseRef = getActiveHouseCmdRef();
+
+        return enqueueConsoleAction(async () => {
+            const res = await runHouseConsoleCommand('hide thing', [item.id, 'of house'], houseRef, item.room);
+            if (!res || res.style === 'output-error') {
+                applyItemGeometry(item);
+                showHouseDragToast((res && res.response) || '❌ Не удалось скрыть предмет');
+                return false;
+            }
+            clearSelectedItem();
+            applyItemGeometry(item);
+            showHouseDragToast(`🙈 «${itemName}» скрыт`, () => unhideRoomItem(item));
+            return true;
+        });
+    }
+
+    function restoreHiddenItems() {
+        const houseRef = getActiveHouseCmdRef();
+        return enqueueConsoleAction(async () => {
+            let restored = 0;
+            for (const room of roomsState) {
+                const res = await runHouseConsoleCommand('unhide thing', ['all', 'of house'], houseRef, room);
+                room.items.forEach(item => applyItemGeometry(item));
+                if (res && res.houseMutation && Number(res.houseMutation.restoredCount) > 0) {
+                    restored += Number(res.houseMutation.restoredCount);
+                }
+            }
+            return restored;
+        });
+    }
+
+    function moveRoomItemViaConsole(item, targetCol, targetRow) {
+        if (!item || !item.room) return Promise.resolve(false);
+        const houseRef = getActiveHouseCmdRef();
+        return enqueueConsoleAction(async () => {
+            const res = await runHouseConsoleCommand('move thing', [item.id, `${targetCol},${targetRow}`, 'of house'], houseRef, item.room);
+            applyItemGeometry(item);
+            if (!res || res.style === 'output-error') {
+                showHouseDragToast((res && res.response) || '❌ Не удалось переместить предмет');
+                return false;
+            }
+            return true;
+        });
+    }
+
     function updateDragVisuals(clientX, clientY) {
         const s = activeDragSession;
         if (!s) return;
@@ -564,7 +1572,9 @@
 
         s.targetCol = Math.max(0, Math.min(room.gridW - s.item.w, Math.round(rawLeft / tilePx)));
         s.targetRow = Math.max(0, Math.min(room.gridH - s.item.h, Math.round(rawTop / tilePx)));
-        s.canDrop = canPlaceItem(room, s.item.id, s.targetCol, s.targetRow, s.item.w, s.item.h);
+        const moveCheck = canMoveItemTo(room, s.item, s.origCol, s.origRow, s.targetCol, s.targetRow);
+        s.canDrop = moveCheck.ok;
+        s.blockReason = moveCheck.reason || '';
 
         if (room.targetBox) {
             room.targetBox.style.transform = `translate3d(${s.targetCol * tilePx}px, ${s.targetRow * tilePx}px, 0)`;
@@ -586,6 +1596,7 @@
         activeDragSession.boardRect = activeDragSession.room.boardEl.getBoundingClientRect();
         activeDragSession.item.el.classList.remove('is-holding');
         activeDragSession.item.el.classList.add('is-dragging');
+        selectRoomItem(activeDragSession.item);
 
         const viewport = document.getElementById('house-viewport');
         if (viewport) viewport.classList.add('is-dragging-item');
@@ -611,8 +1622,6 @@
             activeDragSession.movedPastTap = true;
         }
 
-        // КЛЮЧЕВОЕ ПРАВИЛО: Пока не прошло 1.5с неподвижного удержания, любое движение >= 10px
-        // немедленно отменяет удержание и позволяет свободно прокручивать/двигать экран!
         if (!activeDragSession.isDragging) {
             if (dist >= MOVE_CANCEL_THRESHOLD_PX) {
                 const canceledSession = activeDragSession;
@@ -642,15 +1651,25 @@
             if (s.room.targetBox) s.room.targetBox.classList.remove('visible', 'blocked');
 
             justDraggedUntil = Date.now() + 450;
-            if (commit && s.canDrop) {
-                s.item.col = s.targetCol;
-                s.item.row = s.targetRow;
-                saveRoomLayoutState(s.room);
+            if (commit && s.canDrop && (s.item.col !== s.targetCol || s.item.row !== s.targetRow)) {
+                const dx = (s.targetCol - s.origCol) * tilePx;
+                const dy = (s.targetRow - s.origRow) * tilePx;
+                s.item.el.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+                moveRoomItemViaConsole(s.item, s.targetCol, s.targetRow);
+            } else {
+                if (commit && !s.canDrop && s.blockReason === 'door_size') {
+                    showHouseDragToast(`🚪 Объект ${s.item.w}×${s.item.h} не проходит в двери (${DOOR_WIDTH_TILES} пл.): ширина или высота должна быть ≤ ${DOOR_WIDTH_TILES}`);
+                }
+                applyItemGeometry(s.item);
             }
-            applyItemGeometry(s.item);
+            if (!s.item.hidden) {
+                selectRoomItem(s.item);
+            }
         } else {
             if (allowTouchTap && s.mode === 'touch' && !s.movedPastTap) {
                 triggerLinkTap(s.item);
+            } else if (!s.movedPastTap && selectedItem && selectedItem !== s.item) {
+                clearSelectedItem();
             }
         }
     }
@@ -709,7 +1728,16 @@
     }
 
     function initInteractions() {
+        if (interactionsBound) return;
+        interactionsBound = true;
         const viewport = document.getElementById('house-viewport');
+        ensureItemActionBar();
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && selectedItem) {
+                clearSelectedItem();
+            }
+        });
 
         document.addEventListener('dragstart', e => {
             if (e.target && e.target.closest && e.target.closest('.room-item')) {
@@ -723,23 +1751,40 @@
             }
         });
 
-        // 1. Touch-обработчики:
-        // До 1.5с удержания НЕ блокируем нативный скролл — пользователь может свободно свайпать по фигурам.
-        // Только после 1.5с неподвижного удержания перехватываем палец и перетаскиваем объект.
         document.addEventListener('touchstart', (e) => {
             if (!e.touches || e.touches.length !== 1) return;
             const target = e.target;
             if (!target || !target.closest) return;
+            if (target.closest('.house-item-action-bar') || target.closest('.house-drag-toast') || target.closest('.top-nav')) {
+                return;
+            }
             const itemEl = target.closest('.room-item');
-            if (!itemEl || !target.closest('.appliance-object')) return;
-            const item = itemEl._houseRoomItem;
-            if (!item) return;
+            if (itemEl && target.closest('.appliance-object') && itemEl._houseRoomItem) {
+                touchEmptySession = null;
+                const t = e.touches[0];
+                startItemSession('touch', itemEl._houseRoomItem, t.clientX, t.clientY, t.identifier);
+                return;
+            }
 
-            const t = e.touches[0];
-            startItemSession('touch', item, t.clientX, t.clientY, t.identifier);
+            if (selectedItem && target.closest('.house-viewport')) {
+                const t = e.touches[0];
+                touchEmptySession = {
+                    touchId: t.identifier,
+                    startX: t.clientX,
+                    startY: t.clientY,
+                    moved: false
+                };
+            }
         }, { capture: true, passive: true });
 
         document.addEventListener('touchmove', (e) => {
+            if (touchEmptySession) {
+                const t = findTrackedTouch(e.touches, touchEmptySession.touchId) ||
+                          findTrackedTouch(e.changedTouches, touchEmptySession.touchId);
+                if (t && Math.hypot(t.clientX - touchEmptySession.startX, t.clientY - touchEmptySession.startY) >= MOVE_CANCEL_THRESHOLD_PX) {
+                    touchEmptySession.moved = true;
+                }
+            }
             if (!activeDragSession || activeDragSession.mode !== 'touch') return;
             const t = findTrackedTouch(e.touches, activeDragSession.touchId) ||
                       findTrackedTouch(e.changedTouches, activeDragSession.touchId);
@@ -753,6 +1798,15 @@
         }, { capture: true, passive: false });
 
         document.addEventListener('touchend', (e) => {
+            if (touchEmptySession) {
+                const te = findTrackedTouch(e.changedTouches, touchEmptySession.touchId);
+                if (te) {
+                    if (!touchEmptySession.moved && selectedItem) {
+                        clearSelectedItem();
+                    }
+                    touchEmptySession = null;
+                }
+            }
             if (!activeDragSession || activeDragSession.mode !== 'touch') return;
             const t = findTrackedTouch(e.changedTouches, activeDragSession.touchId);
             if (!t) return;
@@ -770,19 +1824,24 @@
         }, { capture: true, passive: false });
 
         document.addEventListener('touchcancel', (e) => {
+            if (touchEmptySession) {
+                const te = findTrackedTouch(e.changedTouches, touchEmptySession.touchId);
+                if (te) touchEmptySession = null;
+            }
             if (!activeDragSession || activeDragSession.mode !== 'touch') return;
             const t = findTrackedTouch(e.changedTouches, activeDragSession.touchId);
             if (!t) return;
             finishDragSession(Boolean(activeDragSession.isDragging && activeDragSession.canDrop), false);
         }, { capture: true });
 
-        // 2. Pointer-обработчики (мышь / стилус):
-        // Если мышь нажала на объект и сдвинулась >= 10px ДО 1.5с удержания — плавно панорамируем экран!
         document.addEventListener('pointerdown', (e) => {
             if (e.pointerType === 'touch') return;
             if (e.button !== undefined && e.button !== 0) return;
 
             const target = e.target;
+            if (target && target.closest && (target.closest('.house-item-action-bar') || target.closest('.house-drag-toast'))) {
+                return;
+            }
             const itemEl = target && target.closest ? target.closest('.room-item') : null;
             if (itemEl && target.closest('.appliance-object') && itemEl._houseRoomItem) {
                 startItemSession('pointer', itemEl._houseRoomItem, e.clientX, e.clientY, e.pointerId);
@@ -794,6 +1853,7 @@
                     pointerId: e.pointerId,
                     startX: e.clientX,
                     startY: e.clientY,
+                    moved: false,
                     startScrollLeft: viewport.scrollLeft,
                     startScrollTop: viewport.scrollTop
                 };
@@ -809,6 +1869,7 @@
                         pointerId: e.pointerId,
                         startX: canceled.startX,
                         startY: canceled.startY,
+                        moved: true,
                         startScrollLeft: viewport.scrollLeft,
                         startScrollTop: viewport.scrollTop
                     };
@@ -819,6 +1880,9 @@
                 return;
             }
             if (panSession && e.pointerId === panSession.pointerId && viewport) {
+                if (Math.hypot(e.clientX - panSession.startX, e.clientY - panSession.startY) >= MOVE_CANCEL_THRESHOLD_PX) {
+                    panSession.moved = true;
+                }
                 viewport.scrollLeft = panSession.startScrollLeft - (e.clientX - panSession.startX);
                 viewport.scrollTop = panSession.startScrollTop - (e.clientY - panSession.startY);
             }
@@ -829,8 +1893,10 @@
                 finishDragSession(isCancel ? Boolean(activeDragSession.isDragging && activeDragSession.canDrop) : true, false);
             }
             if (panSession && e.pointerId === panSession.pointerId) {
+                const shouldDeselect = !isCancel && !panSession.moved && selectedItem;
                 panSession = null;
                 if (viewport) viewport.classList.remove('is-panning');
+                if (shouldDeselect) clearSelectedItem();
             }
         }
 
@@ -838,35 +1904,244 @@
         window.addEventListener('pointercancel', (e) => endPointerOrPan(e, true));
     }
 
-    function initHousePage() {
-        if (initialized) return;
-        initialized = true;
-
-        const cfg = window.HOUSE_CONFIG || {};
-        if (cfg.navCmd) {
-            logActionDirect(cfg.navCmd, cfg.navDesc || 'Переход в Дом');
+    function getOrCreateAuthGate() {
+        let gate = document.getElementById('house-auth-gate');
+        if (!gate && document.body) {
+            gate = document.createElement('div');
+            gate.id = 'house-auth-gate';
+            gate.className = 'house-auth-gate';
+            document.body.appendChild(gate);
         }
+        return gate;
+    }
 
-        roomsState = (cfg.rooms || []).map(loadRoomLayoutState);
-        layoutAllBoards(true);
-        initInteractions();
-        syncAllRoomsWithDatabase();
+    function removeAuthGate() {
+        const gate = document.getElementById('house-auth-gate');
+        if (gate && gate.parentNode) {
+            gate.parentNode.removeChild(gate);
+        }
+    }
 
-        setTimeout(() => {
-            if (navigator.onLine !== false) syncAllRoomsWithDatabase();
-        }, 600);
+    async function startHouseGoogleAuth(switchExisting = false) {
+        const statusEl = document.getElementById('house-auth-status');
+        try {
+            if (!window.supabaseClient || !window.supabaseClient.auth) {
+                if (statusEl) statusEl.textContent = '❌ Модуль авторизации недоступен. Перейдите в консоль для входа.';
+                return;
+            }
+            if (switchExisting && typeof window.performLogout === 'function') {
+                await window.performLogout();
+            }
+            const inIframe = window.self !== window.top;
+            let redirectTarget = window.location.href.split('#')[0];
+            if (window.location.hostname.includes('google.com')) {
+                redirectTarget = 'https://ais-pre-chnak55kwbkbbooyikw4mw-618166997611.europe-west3.run.app/terminal.html';
+            }
+            const oauthOptions = {
+                redirectTo: redirectTarget,
+                queryParams: { prompt: 'select_account', access_type: 'offline' }
+            };
+            if (inIframe) {
+                oauthOptions.skipBrowserRedirect = true;
+                const { data, error } = await window.supabaseClient.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: oauthOptions
+                });
+                if (error) throw error;
+                if (data && data.url) {
+                    const authWin = window.open(data.url, '_blank');
+                    if (statusEl) {
+                        statusEl.innerHTML = authWin
+                            ? '🔗 Окно выбора аккаунта Google открыто в новой вкладке. После входа страница разблокируется автоматически.'
+                            : `⚠️ Всплывающее окно заблокировано. <a href="${data.url}" target="_blank" style="color:#38bdf8;text-decoration:underline;font-weight:bold;">Открыть вход через Google</a>`;
+                    }
+                }
+            } else {
+                const { error } = await window.supabaseClient.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: oauthOptions
+                });
+                if (error) throw error;
+            }
+        } catch (err) {
+            if (statusEl) statusEl.textContent = '❌ Ошибка входа: ' + (err && err.message ? err.message : String(err));
+        }
+    }
 
+    function renderAuthGateLoading() {
+        if (document.body) document.body.classList.remove('house-access-granted');
+        const gate = getOrCreateAuthGate();
+        if (!gate) return;
+        gate.innerHTML = `
+            <div class="house-auth-card">
+                <div class="house-auth-icon">🔐</div>
+                <div class="house-auth-title">Проверка доступа к Дому</div>
+                <div class="house-auth-text">Загружаем ваши дома и сохранённую расстановку...</div>
+            </div>
+        `;
+    }
+
+    function renderAuthGateDenied(access) {
+        if (document.body) document.body.classList.remove('house-access-granted');
+        const gate = getOrCreateAuthGate();
+        if (!gate) return;
+
+        const isUnauthed = !access || access.reason === 'unauthenticated';
+        const houseTitle = escapeHtml((access && access.house && access.house.name) ? access.house.name : 'Дом');
+        const title = isUnauthed
+            ? `🔒 ${houseTitle}: требуется авторизация`
+            : `🔒 ${houseTitle}: не создан в вашем аккаунте`;
+
+        const userEmail = escapeHtml((activeHouseUser && activeHouseUser.email) ? activeHouseUser.email : '');
+        const text = isUnauthed
+            ? 'Дома доступны только авторизованным пользователям.\nВойдите в свой аккаунт Google, чтобы открыть свои дома и расстановку.'
+            : `Вы вошли как ${userEmail || 'пользователь'}, но "${houseTitle}" ещё не создан в этом аккаунте.\nСоздайте его в консоли пошагово: Add house ➔ ${houseTitle}`;
+
+        const primaryLabel = isUnauthed ? '🔑 Войти через Google' : '🔄 Сменить аккаунт';
+
+        gate.innerHTML = `
+            <div class="house-auth-card">
+                <div class="house-auth-icon">${isUnauthed ? '🔐' : '🏘️'}</div>
+                <div class="house-auth-title">${title}</div>
+                <div class="house-auth-text">${text}</div>
+                <div class="house-auth-actions">
+                    <button type="button" id="house-auth-primary-btn" class="house-auth-btn house-auth-btn-primary">${primaryLabel}</button>
+                    <a href="/terminal.html" class="house-auth-btn">💻 Перейти в консоль</a>
+                    ${!isUnauthed ? '<a href="/house/index.html" class="house-auth-btn">🏠 Открыть свой Дом 1</a>' : ''}
+                </div>
+                <div id="house-auth-status" class="house-auth-status"></div>
+            </div>
+        `;
+        const primaryBtn = document.getElementById('house-auth-primary-btn');
+        if (primaryBtn) {
+            primaryBtn.addEventListener('click', () => startHouseGoogleAuth(!isUnauthed));
+        }
+    }
+
+    async function verifyHouseAccess(houseId) {
+        let user = null;
+        if (typeof window.fetchCurrentUser === 'function') {
+            try {
+                user = await window.fetchCurrentUser(true);
+            } catch (e) {
+                user = null;
+            }
+        }
+        if (user && !user.isGuest && window.UserHousesSync && typeof window.UserHousesSync.syncFromDb === 'function') {
+            try {
+                await Promise.race([
+                    window.UserHousesSync.syncFromDb(user),
+                    new Promise(resolve => setTimeout(resolve, 450))
+                ]);
+            } catch (e) {}
+        }
+        if (typeof window.canAccessHouse === 'function') {
+            return { user, access: window.canAccessHouse(user, houseId) };
+        }
+        const ok = Boolean(user && !user.isGuest && user.id && user.id !== 'guest');
+        return {
+            user,
+            access: ok
+                ? { allowed: true, reason: 'ok', user }
+                : { allowed: false, reason: 'unauthenticated', message: '🔒 Требуется авторизация.' }
+        };
+    }
+
+    function attachAuthWatcher() {
+        if (authListenerAttached) return;
+        authListenerAttached = true;
         if (window.supabaseClient && window.supabaseClient.auth && typeof window.supabaseClient.auth.onAuthStateChange === 'function') {
-            window.supabaseClient.auth.onAuthStateChange((event) => {
+            window.supabaseClient.auth.onAuthStateChange(async (event, session) => {
+                if (event === 'SIGNED_OUT') {
+                    if (typeof window.clearCurrentUserCache === 'function') window.clearCurrentUserCache();
+                    activeHouseUser = null;
+                    activeHouseRecord = null;
+                    initialized = false;
+                    roomsState = [];
+                    renderAuthGateDenied({ reason: 'unauthenticated', house: (window.getHouseDefinition ? window.getHouseDefinition((activeEffectiveCfg || window.HOUSE_CONFIG || {}).homeId) : null) });
+                    return;
+                }
                 if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-                    syncAllRoomsWithDatabase();
+                    const sessionUid = session && session.user ? session.user.id : null;
+                    if (!sessionUid || (activeHouseUser && activeHouseUser.id !== sessionUid)) {
+                        if (typeof window.clearCurrentUserCache === 'function') window.clearCurrentUserCache();
+                    }
+                    const cfg = activeEffectiveCfg || resolveEffectiveHouseConfig();
+                    const { user, access } = await verifyHouseAccess(cfg.homeId);
+                    if (!access.allowed) {
+                        activeHouseUser = user;
+                        activeHouseRecord = null;
+                        initialized = false;
+                        roomsState = [];
+                        renderAuthGateDenied(access);
+                    } else if (!initialized || !activeHouseUser || activeHouseUser.id !== user.id) {
+                        initialized = false;
+                        await initHousePage();
+                    } else {
+                        syncAllRoomsWithDatabase();
+                    }
                 }
             });
         }
+    }
+
+    async function initHousePage() {
+        if (initialized) return;
+
+        const cfg = resolveEffectiveHouseConfig();
+        activeEffectiveCfg = cfg;
+        renderAuthGateLoading();
+        attachAuthWatcher();
+
+        const { user, access } = await verifyHouseAccess(cfg.homeId);
+        activeHouseUser = user;
+
+        if (!access || !access.allowed) {
+            renderAuthGateDenied(access);
+            return;
+        }
+
+        if (initialized) return;
+        initialized = true;
+
+        activeHouseRecord = access.house || (window.UserHousesSync ? window.UserHousesSync.findHouse(user, cfg.homeId) : null);
+
+        if (window.HouseLayoutSync && typeof window.HouseLayoutSync.syncUserHouseRegistryLocal === 'function') {
+            window.HouseLayoutSync.syncUserHouseRegistryLocal(user);
+        }
+        if (window.HouseLayoutSync && typeof window.HouseLayoutSync.migrateLegacyPendingHouseLayoutsForRoot === 'function') {
+            window.HouseLayoutSync.migrateLegacyPendingHouseLayoutsForRoot(user);
+        }
+
+        const preparedRoomsCfg = (cfg.rooms || []).map(rc => prepareBoardForAccount(rc, activeHouseRecord, user));
+        roomsState = preparedRoomsCfg.map(rc => loadRoomLayoutState(rc, user));
+        updateHouseTopNav(user, cfg, activeHouseRecord, roomsState[0]);
+
+        // Сначала дожидаемся быстрой синхронизации расстановки с БД, вычисляем размеры и рисуем пол ДО показа экрана (убирает мерцание при входе!)
+        await Promise.race([
+            syncAllRoomsWithDatabase(),
+            new Promise(resolve => setTimeout(resolve, 480))
+        ]);
+
+        layoutAllBoards(true);
+        initInteractions();
 
         const hash = String(window.location.hash || '').replace(/^#/, '').toLowerCase();
         if (hash === 'hall' || hash === 'kitchen' || hash === 'room' || hash === 'corridor') {
-            setTimeout(() => jumpToQuadrant(hash, false), 40);
+            jumpToQuadrant(hash, false);
+        }
+
+        removeAuthGate();
+        if (document.body) {
+            document.body.classList.add('house-access-granted');
+            document.body.dataset.houseOwner = user.email || user.id || '';
+        }
+
+        if (window.LastPageSync && typeof window.LastPageSync.trackCurrentPage === 'function') {
+            window.LastPageSync.trackCurrentPage();
+        }
+        if (cfg.navCmd) {
+            logActionDirect(cfg.navCmd, cfg.navDesc || 'Переход в Дом');
         }
     }
 
@@ -880,7 +2155,7 @@
             window.location.reload();
         });
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/service-worker.js?v=20261122_3', { updateViaCache: 'none' })
+            navigator.serviceWorker.register('/service-worker.js?v=20261125_4', { updateViaCache: 'none' })
                 .then((reg) => {
                     if (reg && typeof reg.update === 'function') reg.update().catch(() => {});
                 })
@@ -888,20 +2163,28 @@
         });
     }
 
+    function flushHouseChangesWithKeepalive() {
+        if (!activeHouseUser || !window.HouseLayoutSync) return;
+        if (typeof window.HouseLayoutSync.flushPendingHouseLayoutsKeepalive === 'function') {
+            window.HouseLayoutSync.flushPendingHouseLayoutsKeepalive(activeHouseUser);
+        }
+        if (typeof window.HouseLayoutSync.flushPendingHouseLayouts === 'function') {
+            window.HouseLayoutSync.flushPendingHouseLayouts();
+        }
+    }
+
     window.addEventListener('online', syncAllRoomsWithDatabase);
     window.addEventListener('focus', () => {
         if (navigator.onLine !== false) syncAllRoomsWithDatabase();
     });
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && navigator.onLine !== false) {
+        if (document.visibilityState === 'hidden') {
+            flushHouseChangesWithKeepalive();
+        } else if (document.visibilityState === 'visible' && navigator.onLine !== false) {
             syncAllRoomsWithDatabase();
         }
     });
-    window.addEventListener('pagehide', () => {
-        if (window.HouseLayoutSync && typeof window.HouseLayoutSync.flushPendingHouseLayouts === 'function') {
-            window.HouseLayoutSync.flushPendingHouseLayouts();
-        }
-    });
+    window.addEventListener('pagehide', flushHouseChangesWithKeepalive);
     window.addEventListener('resize', () => layoutAllBoards(false));
     if (window.visualViewport) {
         window.visualViewport.addEventListener('resize', () => layoutAllBoards(false));
@@ -910,9 +2193,24 @@
     window.HouseEngine = {
         HOLD_TO_DRAG_MS,
         MOVE_CANCEL_THRESHOLD_PX,
+        DOOR_WIDTH_TILES,
         getRoomsState: () => roomsState,
+        getActiveUser: () => activeHouseUser,
+        getActiveHouseRecord: () => activeHouseRecord,
+        getSelectedItem: () => selectedItem,
+        selectRoomItem,
+        clearSelectedItem,
+        rotateSelectedItem,
+        hideSelectedItem,
+        unhideRoomItem,
+        restoreHiddenItems,
+        runHouseConsoleCommand,
         canPlaceItem,
+        canItemPassThroughDoor,
+        getItemQuadrant,
+        canMoveItemTo,
         applyLayoutMap,
+        drawStaticFloorCanvas,
         layoutAllBoards,
         jumpToQuadrant,
         syncAllRoomsWithDatabase

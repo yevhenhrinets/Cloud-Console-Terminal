@@ -42,6 +42,7 @@ async function processCommand(rawText, options = {}) {
     let commandSteps = null;
     let inputPlaceholder = null;
     let isHtml = false;
+    let houseMutation = null;
 
     if (!handler) {
         response = `Команда не найдена: '${String(rawText || '').trim()}'. Введите 'commands list' для списка команд или 'support' для обращения в поддержку.`;
@@ -60,6 +61,7 @@ async function processCommand(rawText, options = {}) {
                 commandSteps = Array.isArray(res.commandSteps) ? res.commandSteps : null;
                 inputPlaceholder = res.inputPlaceholder || null;
                 isHtml = Boolean(res.isHtml);
+                houseMutation = res.houseMutation || null;
             }
         } catch (err) {
             console.error('Ошибка выполнения команды:', err);
@@ -75,5 +77,9 @@ async function processCommand(rawText, options = {}) {
         await saveToCloud(rawText, parsed.cmd, parameters, response, consoleResultLog, status);
     }
 
-    return { response, style, action, editedEntity, inputValue, commandPrefix, commandSteps, inputPlaceholder, isHtml };
+    return { response, style, action, editedEntity, inputValue, commandPrefix, commandSteps, inputPlaceholder, isHtml, houseMutation };
+}
+
+if (typeof window !== 'undefined') {
+    window.processCommand = processCommand;
 }

@@ -68,9 +68,46 @@
 
             text += `-----------------------------------------\n`;
             text += `💡 Быстрый переход на страницу: введите \`go to missions\` или \`missions.html\`\n`;
-            text += `💡 Выполнить из консоли (2 этапа): \`done mission\` ➔ номер | \`add mission\` ➔ текст`;
+            text += `💡 Выполнить из консоли (2 этапа): \`done mission\` ➔ номер | \`add mission\` ➔ текст | \`completed missions\``;
 
             return { response: text, style: 'output-info' };
+        }
+    });
+
+    // 1.1. Команда просмотра выполненных поручений с точным временем и сквозной нумерацией после активных
+    CommandRegistry.register({
+        names: ['completed missions', 'done missions', 'выполненные поручения', 'виконані завдання'],
+        description: 'Список выполненных поручений с точным временем выполнения и нумерацией после активных',
+        category: '📋 Задания',
+        usage: 'completed missions',
+        handler: async (parameters, options = {}) => {
+            const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+            if (!(options && options.fromTwoStepBar) && rawArgs) {
+                return rejectInlineParamsError(parameters.matchedCmd || 'completed missions', '');
+            }
+            if (!window.MissionsStore) {
+                return { response: '❌ Ошибка: модуль MissionsStore не загружен.', style: 'output-error' };
+            }
+            const activeCount = window.MissionsStore.getActiveMissions().length;
+            const completed = window.MissionsStore.getCompletedMissions();
+            if (!completed || completed.length === 0) {
+                return { response: '🗄️ Выполненных поручений пока нет.', style: 'output-info' };
+            }
+            let text = `🗄️ Выполненные и отменённые поручения (${completed.length}, от новых к старым):\n`;
+            text += `-----------------------------------------\n`;
+            completed.slice(0, 20).forEach((m, idx) => {
+                const num = activeCount + idx + 1;
+                const isCancelled = m.status === 'cancelled';
+                const d = m.completed_at ? new Date(m.completed_at) : null;
+                const timeStr = (d && !isNaN(d.getTime()))
+                    ? `${d.toLocaleDateString('ru-RU')} в ${d.toLocaleTimeString('ru-RU')}`
+                    : (m.completed_display || m.completed_at || '—');
+                text += `[#${num}] ${isCancelled ? '🚫' : '✅'} ${m.title}\n    ${isCancelled ? 'Отменено' : 'Выполнено'}: ${timeStr}\n`;
+            });
+            if (completed.length > 20) {
+                text += `... и ещё ${completed.length - 20} (откройте \`go to missions\` для полного списка).\n`;
+            }
+            return { response: text.trim(), style: 'output-info' };
         }
     });
 
@@ -193,6 +230,77 @@
             } catch (err) {
                 return {
                     response: `❌ Ошибка выполнения: ${err.message}`,
+                    style: 'output-error'
+                };
+            }
+        }
+    });
+
+    // 3.1. Команда отмены поручения из консоли (строго в 2 этапа: cancel mission -> 1)
+    CommandRegistry.register({
+        names: ['cancel mission', 'отменить поручение', 'отменить задание', 'скасувати завдання'],
+        description: 'Отменить поручение (строго в 2 этапа)',
+        category: '📋 Задания',
+        usage: 'cancel mission -> <номер>',
+        handler: async (parameters, options = {}) => {
+            if (!window.MissionsStore) {
+                return { response: '❌ Ошибка: модуль MissionsStore не загружен.', style: 'output-error' };
+            }
+
+            const matchedCmd = String((parameters && parameters.matchedCmd) || 'cancel mission').trim().toLowerCase();
+            const rawArgs = (parameters && parameters.raw_args ? String(parameters.raw_args) : '').trim();
+
+            if (!(options && options.fromTwoStepBar)) {
+                if (rawArgs) {
+                    return rejectInlineParamsError(matchedCmd, '1');
+                }
+                return {
+                    response: `🚫 Режим отмены поручения (\`${matchedCmd}\`) активирован. Введите номер поручения (например: 1) и нажмите Enter (или ✕ для отмены).`,
+                    style: 'output-info',
+                    commandPrefix: matchedCmd,
+                    inputValue: '',
+                    inputPlaceholder: 'Введите номер поручения (напр: 1)...'
+                };
+            }
+
+            const target = parameters.args && parameters.args[0];
+            if (!target) {
+                return {
+                    response: '❌ Укажите номер поручения для отмены (например: `1`).',
+                    style: 'output-error'
+                };
+            }
+
+            const activeMissions = window.MissionsStore.getActiveMissions();
+            const posNum = parseInt(target, 10);
+            let mission = null;
+
+            if (!isNaN(posNum)) {
+                mission = activeMissions.find(m => m.position === posNum) || activeMissions[posNum - 1];
+            } else {
+                mission = activeMissions.find(m => String(m.id) === String(target));
+            }
+
+            if (!mission) {
+                return {
+                    response: `❌ Поручение под номером или ID "${target}" не найдено в активном списке.`,
+                    style: 'output-error'
+                };
+            }
+
+            try {
+                const cancelled = await window.MissionsStore.cancelMission(mission.id);
+                const offlineHint = (typeof navigator !== 'undefined' && navigator.onLine === false)
+                    ? '\n📡 Офлайн-режим: отметка сохранена локально и уйдёт в базу при подключении.'
+                    : '';
+                return {
+                    response: `🚫 Поручение отменено!\n🎯 "${cancelled.title}"\n⏰ Время отмены: ${cancelled.completed_display}\n🗄️ Задание убрано из активного списка и зафиксировано как отменённое в таблице.${offlineHint}`,
+                    style: 'output-success',
+                    editedEntity: 'mission'
+                };
+            } catch (err) {
+                return {
+                    response: `❌ Ошибка отмены: ${err.message}`,
                     style: 'output-error'
                 };
             }

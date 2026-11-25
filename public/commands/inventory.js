@@ -14,18 +14,34 @@ CommandRegistry.register({
             return rejectInlineParamsError(parameters.matchedCmd || 'inventory', '');
         }
 
-        if (currentUser.isGuest) {
-            const response = "📦 Склад готових виробів (Демо/Offline):\n" +
-                "  • Залізна руда: 30 шт.\n" +
-                "  • Дубові дошки: 45 шт.\n" +
-                "  • Сталевий злиток: 12 шт.\n" +
-                "  • Свіжий гарячий суп: 3 шт.\n" +
-                "  • Мідний кабель: 15 шт.";
-            return { response, style: 'output-info' };
+        if (window.DailyAcceleratorsSync && typeof window.DailyAcceleratorsSync.checkAndGrant === 'function') {
+            await window.DailyAcceleratorsSync.checkAndGrant({ user: currentUser }).catch(() => null);
         }
 
-        if (!window.supabaseClient || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
-            return { response: '📡 Офлайн-режим: склад готовых изделий синхронизируется при подключении к интернету.', style: 'output-info' };
+        const dailyHint = (window.DailyAcceleratorsSync && window.DailyAcceleratorsSync.CONFIG && window.DailyAcceleratorsSync.CONFIG.enabled)
+            ? '\n💡 Ежедневно начисляются ускорители: +1 в 09:00 и +2 в 21:00 (всего 3/день).'
+            : '';
+
+        const readLocalInventory = (uid) => {
+            try {
+                const raw = localStorage.getItem(`terminal_inventory_${uid}`);
+                const parsed = raw ? JSON.parse(raw) : [];
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+                return [];
+            }
+        };
+
+        if (currentUser.isGuest || currentUser.id === 'guest' || !window.supabaseClient || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+            const localItems = readLocalInventory(currentUser.id || 'guest').filter(i => (Number(i.count) || 0) > 0 || String(i.name || '').trim().toLowerCase() === 'ускорители');
+            if (localItems.length === 0) {
+                return { response: '📦 Склад пуст.' + dailyHint, style: 'output-info' };
+            }
+            const labelMode = currentUser.isGuest ? 'Демо' : 'Офлайн';
+            const response = `📦 Склад готовых изделий (${labelMode}):\n` +
+                localItems.map(i => `  • ${i.name}: ${Number(i.count) || 0} шт.`).join('\n') +
+                dailyHint;
+            return { response, style: 'output-info' };
         }
 
         try {
@@ -36,10 +52,11 @@ CommandRegistry.register({
                 .order('name', { ascending: true });
 
             if (error) throw error;
-            if (!items || items.length === 0) return { response: '📦 Склад пуст. Сварите что-нибудь!', style: 'output-info' };
+            if (!items || items.length === 0) return { response: '📦 Склад пуст. Сварите что-нибудь!' + dailyHint, style: 'output-info' };
 
             const response = "📦 Склад готовых изделий:\n" +
-                items.map(i => `  • ${i.name}: ${i.count} шт.`).join('\n');
+                items.map(i => `  • ${i.name}: ${i.count} шт.`).join('\n') +
+                dailyHint;
 
             return { response, style: 'output-info' };
         } catch (err) {

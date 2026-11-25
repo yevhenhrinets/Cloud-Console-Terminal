@@ -420,7 +420,7 @@ async function downloadCloudflareProjectZip() {
         'house/table.svg', 'house/tv.svg', 'house/washing_machine.svg', 'house/window.svg',
         'commands/fs.js', 'commands/add.js', 'commands/aliases.js', 'commands/auth.js', 'commands/building.js',
         'commands/del.js', 'commands/edit.js', 'commands/go_to.js',
-        'commands/help.js', 'commands/history.js', 'commands/inventory.js',
+        'commands/help.js', 'commands/history.js', 'commands/houses.js', 'commands/inventory.js',
         'commands/lang.js', 'commands/missions.js',
         'commands/note_history.js', 'commands/pin.js', 'commands/read.js',
         'commands/restore.js', 'commands/show.js', 'commands/support.js', 'commands/system.js',

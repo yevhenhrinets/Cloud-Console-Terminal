@@ -139,6 +139,57 @@ async function addTimerHandler(parameters, options = {}) {
             }
         }
 
+        let consumedSuffix = '';
+        const launchCostRule = (window.TaskLaunchCosts && typeof window.TaskLaunchCosts.getRule === 'function')
+            ? window.TaskLaunchCosts.getRule(template.name, null)
+            : null;
+
+        if (launchCostRule) {
+            const { data: invRows, error: invErr } = await window.supabaseClient
+                .from('completed_items')
+                .select('*')
+                .eq('created_by', currentUser.id);
+            if (invErr) throw invErr;
+
+            const invCheck = window.TaskLaunchCosts.checkAvailability(launchCostRule, invRows || []);
+            if (!invCheck.ok) {
+                return {
+                    response: window.TaskLaunchCosts.formatMissingError(launchCostRule, invCheck),
+                    style: 'output-error'
+                };
+            }
+
+            const nowIso = new Date().toISOString();
+            for (const cost of launchCostRule.costs) {
+                let leftToDeduct = Math.max(1, Number(cost.amount) || 1);
+                for (const row of (invRows || [])) {
+                    if (leftToDeduct <= 0) break;
+                    if (!window.TaskLaunchCosts.matchesInventoryItem(row.name, cost)) continue;
+                    const curCount = Math.max(0, Number(row.count) || 0);
+                    if (curCount <= 0) continue;
+                    const take = Math.min(curCount, leftToDeduct);
+                    const { error: updInvErr } = await window.supabaseClient
+                        .from('completed_items')
+                        .update({ count: curCount - take, updated_at: nowIso })
+                        .eq('id', row.id);
+                    if (updInvErr) throw updInvErr;
+                    row.count = curCount - take;
+                    leftToDeduct -= take;
+                }
+            }
+
+            try {
+                const invCacheKey = `terminal_inventory_${currentUser.id}`;
+                const cachedInv = JSON.parse(localStorage.getItem(invCacheKey) || '[]');
+                if (Array.isArray(cachedInv) && cachedInv.length > 0) {
+                    window.TaskLaunchCosts.deductFromList(cachedInv, launchCostRule);
+                    localStorage.setItem(invCacheKey, JSON.stringify(cachedInv));
+                }
+            } catch (e) {}
+
+            consumedSuffix = `\n📦 Списано со склада: ${window.TaskLaunchCosts.formatCostText(launchCostRule)}`;
+        }
+
         const { data: existingTimers, error: qError } = await window.supabaseClient
             .from('active_timers')
             .select('*')
@@ -194,7 +245,7 @@ async function addTimerHandler(parameters, options = {}) {
 
         const statusMsg = status === 'running' ? '🟢 Запущен в работу!' : '⏳ Встал в очередь (время суммировано).';
         return {
-            response: `⏱️ Таймер "${template.name}" добавлен в очередь #${queueGroupId}. ${statusMsg}`,
+            response: `⏱️ Таймер "${template.name}" добавлен в очередь #${queueGroupId}. ${statusMsg}${consumedSuffix}`,
             style: 'output-success'
         };
     } catch (err) {
@@ -242,9 +293,45 @@ CommandRegistry.register({
 
         if (!subCmd) {
             return {
-                response: '➕ Выберите словесную команду (все параметры вводятся на 2-м этапе):\n  • `add note` / `write note` — новая заметка\n  • `add timer` / `timer` — запуск таймера\n  • `add mission` — новое поручение\n  • `add building` — новая постройка\n  • `add task` — новая задача в постройку\n  • `add alias` — новый псевдоним команды',
+                response: '➕ Выберите словесную команду (все параметры вводятся поэтапно):\n  • `add note` / `write note` — новая заметка\n  • `add timer` / `timer` — запуск таймера\n  • `add mission` — новое поручение\n  • `add building` — новая постройка\n  • `add task` — новая задача в постройку\n  • `add alias` — новый псевдоним команды\n  • `Add house` — создать новый дом\n  • `Add room` — добавить комнату в дом\n  • `add thing` — добавить предмет в комнату',
                 style: 'output-info'
             };
+        }
+
+        if (['house', 'home', 'дом', 'дім', 'будинок'].includes(subCmd)) {
+            const hHandler = window.CommandRegistry.getHandler('add house');
+            if (hHandler) {
+                return await hHandler({
+                    ...parameters,
+                    args: args.slice(1),
+                    raw_args: args.slice(1).join(' ').trim(),
+                    matchedCmd: subCmd === 'home' ? 'add home' : 'Add house'
+                }, options);
+            }
+        }
+
+        if (['room', 'комната', 'комнату', 'кімната', 'кімнату'].includes(subCmd)) {
+            const rHandler = window.CommandRegistry.getHandler('add room');
+            if (rHandler) {
+                return await rHandler({
+                    ...parameters,
+                    args: args.slice(1),
+                    raw_args: args.slice(1).join(' ').trim(),
+                    matchedCmd: 'Add room'
+                }, options);
+            }
+        }
+
+        if (['thing', 'item', 'предмет', 'вещь', 'річ'].includes(subCmd)) {
+            const tHandler = window.CommandRegistry.getHandler('add thing');
+            if (tHandler) {
+                return await tHandler({
+                    ...parameters,
+                    args: args.slice(1),
+                    raw_args: args.slice(1).join(' ').trim(),
+                    matchedCmd: 'add thing'
+                }, options);
+            }
         }
 
         if (subCmd === 'note' || subCmd === 'заметка' || subCmd === 'нотатка' || subCmd === 'заметку' || subCmd === 'нотатку') {
@@ -306,7 +393,7 @@ CommandRegistry.register({
         }
 
         if (!(options && options.fromTwoStepBar)) {
-            return rejectInlineParamsError('add timer', 'Сосиска 1', '💡 Или используйте: `add note`, `add mission`, `add building`, `add task`, `add alias`.');
+            return rejectInlineParamsError('add timer', 'Сосиска 1', '💡 Или используйте: `add note`, `add mission`, `add building`, `add task`, `add alias`, `Add house`, `Add room`, `add thing`.');
         }
 
         return await addTimerHandler(parameters, options);

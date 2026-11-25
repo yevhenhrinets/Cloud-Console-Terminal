@@ -8,10 +8,14 @@
     <meta http-equiv="Expires" content="0">
     <title>Cloud Terminal — Дом 3 (16×16: 4 квадрата 8×8)</title>
 
-    <link rel="stylesheet" href="/house.css?v=20261122_3">
+    <link rel="stylesheet" href="/house.css?v=20261125_4">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="/api.js?v=20261122_3"></script>
-    <script src="/helpers.js?v=20261122_3"></script>
+    <script src="/api.js?v=20261124_1"></script>
+    <script src="/localization.js?v=20261125_4"></script>
+    <script src="/registry.js?v=20261125_4"></script>
+    <script src="/helpers.js?v=20261125_4"></script>
+    <script src="/commands/houses.js?v=20261125_4"></script>
+    <script src="/commands.js?v=20261125_4"></script>
 </head>
 <body>
 
@@ -41,7 +45,7 @@
 
                     <!-- КУХНЯ (верхний левый 8×8: col 0..7, row 0..7) -->
                     <!-- Стиральная машина: 2×2 -->
-                    <a href="/dashboard.html?queue=3" draggable="false" class="room-item" data-id="washer3" data-w="2" data-h="2" data-col="0" data-row="0" title="Стиральная машина (2×2 — удерживайте 1.5с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=3', 'select Стиральная машина 3', 'Выбрана постройка Стиральная машина (Дом 3)')">
+                    <a href="/dashboard.html?queue=3" draggable="false" class="room-item" data-id="washer3" data-w="2" data-h="2" data-col="0" data-row="0" title="Стиральная машина (2×2 — удерживайте 0.75с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=3', 'select Стиральная машина 3', 'Выбрана постройка Стиральная машина (Дом 3)')">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="48 48 416 448" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Стиральная машина" class="appliance-object">
                             <rect x="64" y="64" width="384" height="416" rx="24" fill="#F8F9FA" stroke="#D1D5DB" stroke-width="6"/>
                             <rect x="64" y="64" width="384" height="72" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="4"/>
@@ -62,7 +66,7 @@
                     </a>
 
                     <!-- Печь: 2×2 -->
-                    <a href="/dashboard.html?queue=1" draggable="false" class="room-item" data-id="stove3" data-w="2" data-h="2" data-col="3" data-row="0" title="Печь (2×2 — удерживайте 1.5с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=1', 'select Печь 1', 'Выбрана постройка Печь (Дом 3)')">
+                    <a href="/dashboard.html?queue=1" draggable="false" class="room-item" data-id="stove3" data-w="2" data-h="2" data-col="3" data-row="0" title="Печь (2×2 — удерживайте 0.75с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=1', 'select Печь 1', 'Выбрана постройка Печь (Дом 3)')">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="48 48 416 448" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Печь" class="appliance-object">
                             <rect x="64" y="64" width="384" height="416" rx="24" fill="#F8F9FA" stroke="#D1D5DB" stroke-width="6"/>
                             <rect x="64" y="64" width="384" height="64" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="4"/>
@@ -79,7 +83,7 @@
                     </a>
 
                     <!-- Холодильник: 2×2 -->
-                    <div class="room-item" data-id="fridge3" data-w="2" data-h="2" data-col="5" data-row="0" title="Холодильник (2×2 — удерживайте 1.5с для перемещения)">
+                    <div class="room-item" data-id="fridge3" data-w="2" data-h="2" data-col="5" data-row="0" title="Холодильник (2×2 — удерживайте 0.75с для перемещения)">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="80 36 352 464" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Холодильник" class="appliance-object">
                             <rect x="96" y="48" width="320" height="416" rx="32" fill="#e2e8f0" stroke="#1e293b" stroke-width="12"/>
                             <line x1="96" y1="176" x2="416" y2="176" stroke="#1e293b" stroke-width="12" stroke-linecap="round"/>
@@ -92,20 +96,20 @@
                         </svg>
                     </div>
 
-                    <!-- Окно: 2×1 -->
-                    <div class="room-item" data-id="window3" data-w="2" data-h="1" data-col="2" data-row="2" title="Окно (2×1 — удерживайте 1.5с для перемещения)">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="48 48 416 416" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Окно" class="appliance-object">
-                            <rect x="64" y="416" width="384" height="32" rx="8" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
-                            <rect x="96" y="64" width="320" height="360" rx="16" fill="#e2e8f0" stroke="#1e293b" stroke-width="12"/>
-                            <rect x="120" y="88" width="128" height="152" rx="8" fill="#38bdf8" opacity="0.5" stroke="#1e293b" stroke-width="8"/>
-                            <rect x="264" y="88" width="128" height="152" rx="8" fill="#38bdf8" opacity="0.5" stroke="#1e293b" stroke-width="8"/>
-                            <rect x="120" y="256" width="128" height="144" rx="8" fill="#38bdf8" opacity="0.5" stroke="#1e293b" stroke-width="8"/>
-                            <rect x="264" y="256" width="128" height="144" rx="8" fill="#38bdf8" opacity="0.5" stroke="#1e293b" stroke-width="8"/>
+                    <!-- Окно в кухне: развёрнуто на 270° — подоконником вправо (1×2) -->
+                    <div class="room-item" data-id="window3" data-w="1" data-h="2" data-col="2" data-row="2" title="Окно (1×2, развёрнуто 270° — подоконником вправо; удерживайте 0.75с)">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="96 20 320 472" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Окно (подоконником вправо)" class="appliance-object">
+                            <rect x="356" y="40" width="36" height="432" rx="10" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+                            <rect x="116" y="64" width="248" height="384" rx="16" fill="#e2e8f0" stroke="#1e293b" stroke-width="12"/>
+                            <rect x="136" y="88" width="96" height="156" rx="8" fill="#38bdf8" opacity="0.5" stroke="#1e293b" stroke-width="8"/>
+                            <rect x="248" y="88" width="96" height="156" rx="8" fill="#38bdf8" opacity="0.5" stroke="#1e293b" stroke-width="8"/>
+                            <rect x="136" y="268" width="96" height="156" rx="8" fill="#38bdf8" opacity="0.5" stroke="#1e293b" stroke-width="8"/>
+                            <rect x="248" y="268" width="96" height="156" rx="8" fill="#38bdf8" opacity="0.5" stroke="#1e293b" stroke-width="8"/>
                         </svg>
                     </div>
 
                     <!-- Кухонный стол: 2×2 -->
-                    <div class="room-item" data-id="table3" data-w="2" data-h="2" data-col="0" data-row="4" title="Стол (2×2 — удерживайте 1.5с для перемещения)">
+                    <div class="room-item" data-id="table3" data-w="2" data-h="2" data-col="0" data-row="4" title="Стол (2×2 — удерживайте 0.75с для перемещения)">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="20 165 472 340" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Стол" class="appliance-object">
                             <ellipse cx="256" cy="450" rx="200" ry="30" fill="#000000" opacity="0.25" class="non-hit-shadow"/>
                             <rect x="110" y="220" width="28" height="200" rx="6" fill="#15803D"/>
@@ -118,40 +122,25 @@
                         </svg>
                     </div>
 
-                    <!-- Мультиварка: 1×1 -->
-                    <a href="/dashboard.html?queue=8" draggable="false" class="room-item" data-id="multicooker3" data-w="1" data-h="1" data-col="3" data-row="4" title="Мультиварка (1×1 — удерживайте 1.5с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=8', 'select Мультиварка 8', 'Выбрана постройка Мультиварка (Дом 3)')">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="72 64 368 388" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Мультиварка" class="appliance-object">
-                            <rect x="140" y="420" width="40" height="16" rx="6" fill="#111827"/>
-                            <rect x="332" y="420" width="40" height="16" rx="6" fill="#111827"/>
-                            <rect x="96" y="160" width="320" height="260" rx="60" fill="#1F2937" stroke="#111827" stroke-width="6"/>
-                            <path d="M 100 230 C 100 200, 412 200, 412 230 L 412 370 C 412 400, 100 400, 100 370 Z" fill="#9CA3AF" stroke="#6B7280" stroke-width="4"/>
-                            <rect x="176" y="240" width="160" height="110" rx="16" fill="#111827" stroke="#374151" stroke-width="4"/>
-                            <rect x="206" y="255" width="100" height="36" rx="6" fill="#065F46"/>
-                            <text x="220" y="280" font-family="monospace" font-size="20" fill="#34D399" font-weight="bold">00:45</text>
-                            <circle cx="216" cy="320" r="12" fill="#374151" stroke="#6B7280" stroke-width="2"/>
-                            <circle cx="256" cy="320" r="14" fill="#EF4444" stroke="#991B1B" stroke-width="2"/>
-                            <circle cx="296" cy="320" r="12" fill="#374151" stroke="#6B7280" stroke-width="2"/>
-                            <path d="M 110 170 C 110 90, 402 90, 402 170 Z" fill="#111827"/>
-                            <rect x="206" y="80" width="100" height="24" rx="10" fill="#9CA3AF" stroke="#4B5563" stroke-width="4"/>
-                        </svg>
-                    </a>
+                    <!-- КОРИДОР (верхний правый 8×8: col 8..15, row 0..7) -->
 
-                    <!-- ЗАЛ (верхний правый 8×8: col 8..15, row 0..7) -->
-                    <!-- Телевизор: 2×2 -->
-                    <a href="/dashboard.html?queue=6" draggable="false" class="room-item" data-id="tv3" data-w="2" data-h="2" data-col="8" data-row="0" title="Телевизор (2×2 — удерживайте 1.5с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=6', 'select Телевизор 6', 'Выбрана постройка Телевизор (Дом 3)')">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="32 68 448 408" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Телевизор" class="appliance-object">
-                            <path d="M192 432h128l32 32H160l32-32z" fill="#334155" stroke="#1e293b" stroke-width="10" stroke-linejoin="round"/>
-                            <rect x="224" y="368" width="64" height="64" fill="#cbd5e1" stroke="#1e293b" stroke-width="10"/>
-                            <rect x="48" y="80" width="416" height="288" rx="24" fill="#1e293b" stroke="#1e293b" stroke-width="12"/>
-                            <rect x="64" y="96" width="384" height="240" rx="12" fill="#0f172a"/>
-                            <path d="M64 240l96-96 96 96 96-64 96 96v12H64v-44z" fill="#0284c7" opacity="0.4"/>
-                            <circle cx="160" cy="160" r="24" fill="#38bdf8" opacity="0.6"/>
-                            <circle cx="256" cy="350" r="6" fill="#10b981"/>
+                    <!-- ЗАЛ (нижний левый 8×8: col 0..7, row 8..15) -->
+                    <!-- Ноутбук (вместо телевизора): 1×1 -->
+                    <a href="/dashboard.html?queue=6" draggable="false" class="room-item" data-id="laptop3" data-w="1" data-h="1" data-col="0" data-row="8" title="Ноутбук (1×1 — удерживайте 0.75с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=6', 'select Ноутбук 6', 'Выбрана постройка Ноутбук (Дом 3)')">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="40 56 432 392" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Ноутбук" class="appliance-object">
+                            <rect x="92" y="72" width="328" height="224" rx="22" fill="#1e293b" stroke="#0f172a" stroke-width="12"/>
+                            <rect x="112" y="92" width="288" height="184" rx="12" fill="#0f172a"/>
+                            <rect x="128" y="108" width="256" height="152" rx="8" fill="#0284c7" opacity="0.32"/>
+                            <path d="M150 144h110M150 174h160M150 204h88" stroke="#38bdf8" stroke-width="12" stroke-linecap="round"/>
+                            <circle cx="256" cy="82" r="5" fill="#22c55e"/>
+                            <path d="M56 312h400l24 88c4 14-6 28-20 28H52c-14 0-24-14-20-28l24-88z" fill="#cbd5e1" stroke="#1e293b" stroke-width="12" stroke-linejoin="round"/>
+                            <rect x="96" y="330" width="320" height="44" rx="8" fill="#475569"/>
+                            <rect x="208" y="384" width="96" height="24" rx="6" fill="#94a3b8" stroke="#334155" stroke-width="4"/>
                         </svg>
                     </a>
 
                     <!-- Кондиционер: 2×1 -->
-                    <div class="room-item" data-id="conditioner3" data-w="2" data-h="1" data-col="10" data-row="0" title="Кондиционер (2×1 — удерживайте 1.5с для перемещения)">
+                    <div class="room-item" data-id="conditioner3" data-w="2" data-h="1" data-col="2" data-row="8" title="Кондиционер (2×1 — удерживайте 0.75с для перемещения)">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="48 120 416 176" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Кондиционер" class="appliance-object">
                             <rect x="64" y="132" width="384" height="148" rx="22" fill="#f8fafc" stroke="#1e293b" stroke-width="10"/>
                             <rect x="96" y="230" width="320" height="26" rx="8" fill="#cbd5e1" stroke="#334155" stroke-width="6"/>
@@ -162,22 +151,24 @@
                         </svg>
                     </div>
 
-                    <!-- Радиатор: 2×1 -->
-                    <div class="room-item" data-id="radiator3" data-w="2" data-h="1" data-col="12" data-row="0" title="Радиатор (2×1 — удерживайте 1.5с для перемещения)">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="80 110 384 290" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Радиатор" class="appliance-object">
-                            <rect x="96" y="128" width="320" height="48" rx="16" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
-                            <rect x="96" y="336" width="320" height="48" rx="16" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
-                            <rect x="120" y="160" width="48" height="192" rx="12" fill="#e2e8f0" stroke="#1e293b" stroke-width="10"/>
-                            <rect x="184" y="160" width="48" height="192" rx="12" fill="#e2e8f0" stroke="#1e293b" stroke-width="10"/>
-                            <rect x="248" y="160" width="48" height="192" rx="12" fill="#e2e8f0" stroke="#1e293b" stroke-width="10"/>
-                            <rect x="312" y="160" width="48" height="192" rx="12" fill="#e2e8f0" stroke="#1e293b" stroke-width="10"/>
-                            <circle cx="424" cy="152" r="24" fill="#334155" stroke="#1e293b" stroke-width="8"/>
-                            <rect x="412" y="120" width="24" height="16" rx="4" fill="#10b981"/>
+                    <!-- Батарея в зале: развёрнута на 90° (1×2) -->
+                    <div class="room-item" data-id="radiator3" data-w="1" data-h="2" data-col="4" data-row="8" title="Батарея (1×2, развёрнута 90° — удерживайте 0.75с для перемещения)">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="112 76 292 392" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Батарея (90 градусов)" class="appliance-object">
+                            <g transform="rotate(90 256 256)">
+                                <rect x="96" y="128" width="320" height="48" rx="16" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+                                <rect x="96" y="336" width="320" height="48" rx="16" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+                                <rect x="120" y="160" width="48" height="192" rx="12" fill="#e2e8f0" stroke="#1e293b" stroke-width="10"/>
+                                <rect x="184" y="160" width="48" height="192" rx="12" fill="#e2e8f0" stroke="#1e293b" stroke-width="10"/>
+                                <rect x="248" y="160" width="48" height="192" rx="12" fill="#e2e8f0" stroke="#1e293b" stroke-width="10"/>
+                                <rect x="312" y="160" width="48" height="192" rx="12" fill="#e2e8f0" stroke="#1e293b" stroke-width="10"/>
+                                <circle cx="424" cy="152" r="24" fill="#334155" stroke="#1e293b" stroke-width="8"/>
+                                <rect x="412" y="120" width="24" height="16" rx="4" fill="#10b981"/>
+                            </g>
                         </svg>
                     </div>
 
                     <!-- Роутер: 1×1 -->
-                    <a href="/dashboard.html?queue=10" draggable="false" class="room-item" data-id="router3" data-w="1" data-h="1" data-col="14" data-row="0" title="Роутер (1×1 — удерживайте 1.5с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=10', 'select Роутер 10', 'Выбрана постройка Роутер (Дом 3)')">
+                    <a href="/dashboard.html?queue=10" draggable="false" class="room-item" data-id="router3" data-w="1" data-h="1" data-col="6" data-row="8" title="Роутер (1×1 — удерживайте 0.75с для перемещения)" onclick="return onApplianceClick(event, '/dashboard.html?queue=10', 'select Роутер 10', 'Выбрана постройка Роутер (Дом 3)')">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="48 64 416 336" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Роутер" class="appliance-object">
                             <rect x="128" y="96" width="24" height="192" rx="12" fill="#334155" stroke="#1e293b" stroke-width="10"/>
                             <rect x="360" y="96" width="24" height="192" rx="12" fill="#334155" stroke="#1e293b" stroke-width="10"/>
@@ -190,43 +181,79 @@
                         </svg>
                     </a>
 
-                    <!-- Журнальный столик: 2×2 -->
-                    <div class="room-item" data-id="hall3_table" data-w="2" data-h="2" data-col="8" data-row="2" title="Журнальный столик (2×2 — удерживайте 1.5с для перемещения)">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="20 165 472 340" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Журнальный столик" class="appliance-object">
-                            <ellipse cx="256" cy="450" rx="200" ry="30" fill="#000000" opacity="0.25" class="non-hit-shadow"/>
-                            <rect x="110" y="220" width="28" height="200" rx="6" fill="#78350F"/>
-                            <rect x="374" y="220" width="28" height="200" rx="6" fill="#78350F"/>
-                            <rect x="70" y="240" width="36" height="200" rx="8" fill="#92400E" stroke="#451A03" stroke-width="4"/>
-                            <rect x="406" y="240" width="36" height="200" rx="8" fill="#92400E" stroke="#451A03" stroke-width="4"/>
-                            <rect x="80" y="230" width="352" height="40" fill="#92400E"/>
-                            <rect x="40" y="190" width="432" height="45" rx="12" fill="#B45309" stroke="#78350F" stroke-width="6"/>
-                            <rect x="52" y="200" width="408" height="8" rx="4" fill="#D97706" opacity="0.65"/>
+                    <!-- Угловой стол в зале: 2×2 -->
+                    <div class="room-item" data-id="hall3_table" data-w="2" data-h="2" data-col="0" data-row="10" title="Угловой стол (2×2 — удерживайте 0.75с для перемещения)">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="24 24 464 464" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Угловой стол" class="appliance-object">
+                            <rect x="232" y="218" width="224" height="32" rx="6" fill="#92400E" stroke="#451A03" stroke-width="6"/>
+                            <rect x="58" y="424" width="32" height="44" rx="6" fill="#78350F" stroke="#451A03" stroke-width="5"/>
+                            <rect x="196" y="424" width="32" height="44" rx="6" fill="#78350F" stroke="#451A03" stroke-width="5"/>
+                            <rect x="424" y="218" width="32" height="48" rx="6" fill="#78350F" stroke="#451A03" stroke-width="5"/>
+                            <path d="M56 48 H456 A16 16 0 0 1 472 64 V212 A16 16 0 0 1 456 228 H252 Q232 228 232 248 V436 A16 16 0 0 1 216 452 H56 A16 16 0 0 1 40 436 V64 A16 16 0 0 1 56 48 Z" fill="#B45309" stroke="#78350F" stroke-width="10" stroke-linejoin="round"/>
+                            <path d="M68 68 H444 V82 H82 V424 H68 Z" fill="#D97706" opacity="0.65"/>
+                            <rect x="108" y="102" width="128" height="72" rx="10" fill="#92400E" opacity="0.45" stroke="#78350F" stroke-width="4"/>
                         </svg>
                     </div>
 
-                    <!-- Кровать: 3×2 -->
-                    <div class="room-item" data-id="bed3" data-w="3" data-h="2" data-col="12" data-row="2" title="Кровать (3×2 — удерживайте 1.5с для перемещения)">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="48 64 416 384" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Кровать" class="appliance-object">
-                            <rect x="64" y="80" width="64" height="352" rx="16" fill="#334155" stroke="#1e293b" stroke-width="12"/>
-                            <rect x="96" y="160" width="352" height="272" rx="20" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
-                            <rect x="144" y="192" width="276" height="208" rx="16" fill="#f8fafc" stroke="#1e293b" stroke-width="10"/>
-                            <rect x="176" y="216" width="96" height="72" rx="16" fill="#e2e8f0" stroke="#1e293b" stroke-width="8"/>
-                            <rect x="288" y="216" width="96" height="72" rx="16" fill="#e2e8f0" stroke="#1e293b" stroke-width="8"/>
-                            <path d="M144 304h276v96a16 16 0 0 1-16 16H160a16 16 0 0 1-16-16v-96z" fill="#0284c7" opacity="0.28" stroke="#1e293b" stroke-width="10"/>
+                    <!-- Кровать в зале: примерно 3×3 -->
+                    <div class="room-item" data-id="bed3" data-w="3" data-h="3" data-col="4" data-row="10" title="Кровать (3×3 — удерживайте 0.75с для перемещения)">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="32 32 448 448" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Кровать" class="appliance-object">
+                            <rect x="56" y="48" width="400" height="58" rx="16" fill="#334155" stroke="#1e293b" stroke-width="12"/>
+                            <rect x="64" y="88" width="384" height="368" rx="22" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+                            <rect x="88" y="112" width="336" height="320" rx="16" fill="#f8fafc" stroke="#1e293b" stroke-width="10"/>
+                            <rect x="112" y="132" width="132" height="84" rx="18" fill="#e2e8f0" stroke="#1e293b" stroke-width="8"/>
+                            <rect x="268" y="132" width="132" height="84" rx="18" fill="#e2e8f0" stroke="#1e293b" stroke-width="8"/>
+                            <path d="M88 238h336v178a16 16 0 0 1-16 16H104a16 16 0 0 1-16-16V238z" fill="#0284c7" opacity="0.28" stroke="#1e293b" stroke-width="10"/>
+                            <rect x="88" y="232" width="336" height="28" rx="8" fill="#bae6fd" opacity="0.7" stroke="#1e293b" stroke-width="8"/>
                         </svg>
                     </div>
 
-                    <!-- Диван: 4×2 -->
-                    <div class="room-item" data-id="sofa3" data-w="4" data-h="2" data-col="9" data-row="5" title="Диван (4×2 — удерживайте 1.5с для перемещения)">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 112 760 376" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Диван" class="appliance-object">
-                            <g transform="rotate(180 380 300)">
-                                <rect x="16" y="224" width="728" height="192" rx="36" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
-                                <rect x="32" y="128" width="696" height="112" rx="28" fill="#64748b" stroke="#1e293b" stroke-width="12"/>
-                                <rect x="64" y="240" width="308" height="160" rx="24" fill="#e2e8f0" stroke="#1e293b" stroke-width="10"/>
-                                <rect x="388" y="240" width="308" height="160" rx="24" fill="#e2e8f0" stroke="#1e293b" stroke-width="10"/>
-                                <rect x="16" y="176" width="64" height="256" rx="24" fill="#94a3b8" stroke="#1e293b" stroke-width="12"/>
-                                <rect x="680" y="176" width="64" height="256" rx="24" fill="#94a3b8" stroke="#1e293b" stroke-width="12"/>
-                            </g>
+                    <!-- КОМНАТА (нижний правый 8×8: col 8..15, row 8..15) -->
+                    <!-- Шкаф как в Доме 2: 2×2 -->
+                    <div class="room-item" data-id="room3_closet" data-w="2" data-h="2" data-col="8" data-row="8" title="Шкаф (2×2 — удерживайте 0.75с для перемещения)">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="64 36 384 440" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Шкаф" class="appliance-object">
+                            <rect x="80" y="48" width="352" height="416" rx="16" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+                            <line x1="256" y1="48" x2="256" y2="464" stroke="#1e293b" stroke-width="12"/>
+                            <rect x="232" y="220" width="12" height="64" rx="6" fill="#1e293b"/>
+                            <rect x="268" y="220" width="12" height="64" rx="6" fill="#1e293b"/>
+                            <rect x="80" y="440" width="352" height="24" fill="#94a3b8" stroke="#1e293b" stroke-width="12"/>
+                        </svg>
+                    </div>
+
+                    <!-- Батарея в комнате: 2×1 -->
+                    <div class="room-item" data-id="room3_radiator" data-w="2" data-h="1" data-col="13" data-row="8" title="Батарея в комнате (2×1 — удерживайте 0.75с для перемещения)">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="80 110 384 290" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Батарея в комнате" class="appliance-object">
+                            <rect x="96" y="128" width="320" height="48" rx="16" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+                            <rect x="96" y="336" width="320" height="48" rx="16" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+                            <rect x="120" y="160" width="48" height="192" rx="12" fill="#e2e8f0" stroke="#1e293b" stroke-width="10"/>
+                            <rect x="184" y="160" width="48" height="192" rx="12" fill="#e2e8f0" stroke="#1e293b" stroke-width="10"/>
+                            <rect x="248" y="160" width="48" height="192" rx="12" fill="#e2e8f0" stroke="#1e293b" stroke-width="10"/>
+                            <rect x="312" y="160" width="48" height="192" rx="12" fill="#e2e8f0" stroke="#1e293b" stroke-width="10"/>
+                            <circle cx="424" cy="152" r="24" fill="#334155" stroke="#1e293b" stroke-width="8"/>
+                            <rect x="412" y="120" width="24" height="16" rx="4" fill="#10b981"/>
+                        </svg>
+                    </div>
+
+                    <!-- Окно в комнате как в Доме 2: 1×2 -->
+                    <div class="room-item" data-id="room3_window" data-w="1" data-h="2" data-col="15" data-row="9" title="Окно в комнате (1×2 — удерживайте 0.75с для перемещения)">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="96 20 320 472" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Окно в комнате" class="appliance-object">
+                            <rect x="348" y="36" width="44" height="440" rx="10" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+                            <rect x="128" y="48" width="224" height="416" rx="14" fill="#e2e8f0" stroke="#1e293b" stroke-width="12"/>
+                            <rect x="150" y="72" width="180" height="176" rx="8" fill="#38bdf8" opacity="0.58" stroke="#1e293b" stroke-width="8"/>
+                            <rect x="150" y="264" width="180" height="176" rx="8" fill="#38bdf8" opacity="0.58" stroke="#1e293b" stroke-width="8"/>
+                            <line x1="172" y1="104" x2="218" y2="150" stroke="#ffffff" stroke-width="10" stroke-linecap="round" opacity="0.75"/>
+                            <line x1="172" y1="296" x2="218" y2="342" stroke="#ffffff" stroke-width="10" stroke-linecap="round" opacity="0.75"/>
+                        </svg>
+                    </div>
+
+                    <!-- Одноместная кровать в комнате: 1×2 -->
+                    <div class="room-item" data-id="room3_bed" data-w="1" data-h="2" data-col="9" data-row="11" title="Одноместная кровать (1×2 — удерживайте 0.75с для перемещения)">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="96 20 320 472" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Одноместная кровать" class="appliance-object">
+                            <rect x="128" y="36" width="256" height="52" rx="14" fill="#334155" stroke="#1e293b" stroke-width="12"/>
+                            <rect x="136" y="72" width="240" height="396" rx="20" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+                            <rect x="156" y="96" width="200" height="348" rx="14" fill="#f8fafc" stroke="#1e293b" stroke-width="10"/>
+                            <rect x="180" y="114" width="152" height="78" rx="16" fill="#e2e8f0" stroke="#1e293b" stroke-width="8"/>
+                            <path d="M156 218h200v212a14 14 0 0 1-14 14H170a14 14 0 0 1-14-14V218z" fill="#0284c7" opacity="0.3" stroke="#1e293b" stroke-width="10"/>
+                            <rect x="156" y="212" width="200" height="24" rx="6" fill="#bae6fd" opacity="0.75" stroke="#1e293b" stroke-width="8"/>
                         </svg>
                     </div>
                 </div>
@@ -238,15 +265,24 @@
 <script>
     window.HOUSE_CONFIG = {
         homeId: 'house3',
+        requireAuth: true,
+        ownerRole: 'root',
+        ownerEmails: ['yevhenhrinets@gmail.com', 'e.grinec@gmail.com'],
         navCmd: 'go to home 3',
         navDesc: 'Переход в Дом 3 (16×16: 4 квадрата 8×8)',
         rooms: [
             {
-                id: 'house3_square',
+                id: 'house3_square_v2',
                 boardId: 'board-house3',
-                storageKey: 'room_layout_house3_square_v1',
-                tsKey: 'room_layout_house3_square_v1_ts',
+                storageKey: 'room_layout_house3_square_v2',
+                tsKey: 'room_layout_house3_square_v2_ts',
                 quadrants: true,
+                quadrantLayout: {
+                    kitchen: [0, 0],
+                    corridor: [1, 0],
+                    hall: [0, 1],
+                    room: [1, 1]
+                },
                 gridW: 16,
                 gridH: 16,
                 legacyRooms: [
@@ -259,10 +295,23 @@
                     },
                     {
                         id: 'house3_hall',
-                        offsetCol: 8,
-                        offsetRow: 0,
+                        offsetCol: 0,
+                        offsetRow: 8,
                         storageKey: 'room_layout_house3_hall_v1',
                         tsKey: 'room_layout_house3_hall_v1_ts'
+                    },
+                    {
+                        id: 'house3_square',
+                        offsetCol: 0,
+                        offsetRow: 0,
+                        storageKey: 'room_layout_house3_square_v1',
+                        tsKey: 'room_layout_house3_square_v1_ts',
+                        remapQuadrants: {
+                            '0,0': [0, 0],
+                            '1,0': [0, 1],
+                            '0,1': [1, 1],
+                            '1,1': [1, 0]
+                        }
                     }
                 ],
                 defaults: {
@@ -271,20 +320,22 @@
                     fridge3: { col: 5, row: 0 },
                     window3: { col: 2, row: 2 },
                     table3: { col: 0, row: 4 },
-                    multicooker3: { col: 3, row: 4 },
-                    tv3: { col: 8, row: 0 },
-                    conditioner3: { col: 10, row: 0 },
-                    radiator3: { col: 12, row: 0 },
-                    router3: { col: 14, row: 0 },
-                    hall3_table: { col: 8, row: 2 },
-                    bed3: { col: 12, row: 2 },
-                    sofa3: { col: 9, row: 5 }
+                    laptop3: { col: 0, row: 8 },
+                    conditioner3: { col: 2, row: 8 },
+                    radiator3: { col: 4, row: 8 },
+                    router3: { col: 6, row: 8 },
+                    hall3_table: { col: 0, row: 10 },
+                    bed3: { col: 4, row: 10 },
+                    room3_closet: { col: 8, row: 8 },
+                    room3_radiator: { col: 13, row: 8 },
+                    room3_window: { col: 15, row: 9 },
+                    room3_bed: { col: 9, row: 11 }
                 }
             }
         ]
     };
 </script>
-<script src="/house-engine.js?v=20261122_3"></script>
+<script src="/house-engine.js?v=20261125_4"></script>
 
 </body>
 </html>
