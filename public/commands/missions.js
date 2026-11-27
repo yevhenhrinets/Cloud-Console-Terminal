@@ -150,7 +150,12 @@
                 return {
                     response: `🟢 Поручение успешно создано!\n📋 [#${newMission.position}] "${newMission.title}"\n⏱️ Время фиксации: ${newMission.created_display}${offlineHint}\n🔗 Открыть страницу заданий: /missions.html`,
                     style: 'output-success',
-                    editedEntity: 'mission'
+                    editedEntity: 'mission',
+                    undoAction: newMission && newMission.id ? {
+                        type: 'missions_delete',
+                        missionId: newMission.id,
+                        description: `добавление поручения "${newMission.title}"`
+                    } : undefined
                 };
             } catch (err) {
                 return {
@@ -225,7 +230,12 @@
                 return {
                     response: `✅ Поручение выполнено!\n🎯 "${completed.title}"\n⏰ Отметка выполнения: ${completed.completed_display}${agoPart}\n🗄️ Задание убрано из активного списка и зафиксировано в таблице архива.${offlineHint}`,
                     style: 'output-success',
-                    editedEntity: 'mission'
+                    editedEntity: 'mission',
+                    undoAction: {
+                        type: 'missions_reopen',
+                        missionId: mission.id,
+                        description: `выполнение поручения "${completed.title}"`
+                    }
                 };
             } catch (err) {
                 return {
@@ -296,7 +306,12 @@
                 return {
                     response: `🚫 Поручение отменено!\n🎯 "${cancelled.title}"\n⏰ Время отмены: ${cancelled.completed_display}\n🗄️ Задание убрано из активного списка и зафиксировано как отменённое в таблице.${offlineHint}`,
                     style: 'output-success',
-                    editedEntity: 'mission'
+                    editedEntity: 'mission',
+                    undoAction: {
+                        type: 'missions_reopen',
+                        missionId: mission.id,
+                        description: `отмена поручения "${cancelled.title}"`
+                    }
                 };
             } catch (err) {
                 return {

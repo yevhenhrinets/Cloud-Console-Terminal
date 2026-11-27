@@ -1,62 +1,235 @@
-// commands/task.js — обработчик задач (Add task, Del task, Filter tasks — строго в 2 этапа; Show tasks — без параметров)
+// commands/task.js — обработчик задач (Add task: пошагово building -> task -> time с сохранением совместимости; Del task / Show tasks)
+
+function isExplicitDurationWithUnit(str) {
+    return /^\d+\s*(?:ч|час(?:а|ов)?|h|hr|hrs|м|мин(?:ут(?:а|ы)?)?|m|min|mins|с|сек(?:унд(?:а|ы)?)?|s|sec|secs)$/i.test(String(str || '').trim());
+}
+
+function isValidTaskDuration(str) {
+    const clean = String(str || '').trim().toLowerCase();
+    if (!clean) return false;
+    if (/^(?:\d+\s*(?:ч|час(?:а|ов)?|h|hr|hrs|м|мин(?:ут(?:а|ы)?)?|m|min|mins|с|сек(?:унд(?:а|ы)?)?|s|sec|secs)\s*)+$/i.test(clean)) {
+        return parseTaskDuration(clean) > 0;
+    }
+    if (/^\d+$/.test(clean)) {
+        return parseInt(clean, 10) > 0;
+    }
+    return false;
+}
 
 function parseTaskDuration(str) {
     if (!str) return 60;
-    const lowerStr = String(str).toLowerCase();
-    const num = parseInt(str, 10) || 1;
-    if (lowerStr.includes('м') || lowerStr.includes('m')) return num * 60;
-    if (lowerStr.includes('ч') || lowerStr.includes('h')) return num * 3600;
-    if (lowerStr.includes('с') || lowerStr.includes('s')) return num;
+    const clean = String(str).trim().toLowerCase();
+    const compoundMatches = [...clean.matchAll(/(\d+)\s*(ч|час(?:а|ов)?|h|hr|hrs|м|мин(?:ут(?:а|ы)?)?|m|min|mins|с|сек(?:унд(?:а|ы)?)?|s|sec|secs)/gi)];
+    if (compoundMatches.length > 0) {
+        let total = 0;
+        for (const m of compoundMatches) {
+            const n = parseInt(m[1], 10) || 0;
+            const unit = m[2].toLowerCase();
+            if (unit.startsWith('ч') || unit.startsWith('h')) total += n * 3600;
+            else if (unit.startsWith('м') || unit.startsWith('m')) total += n * 60;
+            else total += n;
+        }
+        return total > 0 ? total : 60;
+    }
+    const num = parseInt(clean, 10) || 1;
+    if (clean.includes('м') || clean.includes('m')) return num * 60;
+    if (clean.includes('ч') || clean.includes('h')) return num * 3600;
+    if (clean.includes('с') || clean.includes('s')) return num;
     return num;
 }
 
-// 1. Добавление задачи: Add task (строго в 2 этапа)
+function tokenizeTaskPayload(str) {
+    const tokens = [];
+    const regex = /"([^"]*)"|'([^']*)'|([^\s]+)/g;
+    let match;
+    while ((match = regex.exec(String(str || ''))) !== null) {
+        tokens.push(match[1] !== undefined ? match[1] : (match[2] !== undefined ? match[2] : match[3]));
+    }
+    return tokens;
+}
+
+function stripLeadingWords(words, stopList) {
+    let idx = 0;
+    while (idx < words.length && stopList.includes(String(words[idx]).toLowerCase())) {
+        idx++;
+    }
+    return words.slice(idx);
+}
+
+async function findBuildingMatch(userId, buildingQuery) {
+    const q = String(buildingQuery || '').trim();
+    if (!q) return { ok: false, error: '❌ Укажите название постройки.' };
+
+    if (userId === 'guest') {
+        const buildings = typeof getDemoBuildings === 'function' ? getDemoBuildings() : [];
+        const qLower = q.toLowerCase();
+        const target = buildings.find(b => b.building_name.trim().toLowerCase() === qLower)
+            || buildings.find(b => b.building_name.toLowerCase().includes(qLower));
+        if (!target) {
+            return {
+                ok: false,
+                error: `❌ Постройка "${q}" не найдена. Доступны: Печь, Кухня, Лесопилка.`
+            };
+        }
+        return { ok: true, buildingName: target.building_name };
+    }
+
+    try {
+        const { data: buildings, error: fetchErr } = await window.supabaseClient
+            .from('terminal_buildings')
+            .select('id, building_name, queue_group_id')
+            .eq('created_by', userId)
+            .ilike('building_name', q);
+
+        if (fetchErr) throw fetchErr;
+        if (!buildings || buildings.length === 0) {
+            return {
+                ok: false,
+                error: `❌ Ошибка: Постройка с именем "${q}" не найдена в базе!\nПроверьте точное название через команду \`show buildings\`.`
+            };
+        }
+        return { ok: true, buildingName: buildings[0].building_name };
+    } catch (err) {
+        return { ok: false, error: '❌ Ошибка проверки постройки: ' + (err && err.message ? err.message : err) };
+    }
+}
+
+// 1. Добавление задачи: Add task (пошагово: building -> task -> time; совместимость со строкой <Постройка> <Задача> <Время>)
 async function handleAddTask(parameters, options = {}) {
     const currentUser = await fetchCurrentUser();
     if (!currentUser) return { response: t('not_authorized'), style: 'output-error' };
 
     const rawArgs = parameters.args || [];
-    const cleanArgs = rawArgs.filter(w => !['add', 'create', 'task', 'tasks', 'задача', 'задачи', 'завдання', 'добавить', 'создать', 'додати', 'в', 'на'].includes(w.toLowerCase()));
+    const leadStop = ['add', 'create', 'task', 'tasks', 'задача', 'задачи', 'завдання', 'добавить', 'создать', 'додати'];
+    const cleanLeadArgs = stripLeadingWords(rawArgs, leadStop);
 
-    if (cleanArgs.length > 0 && !(options && options.fromTwoStepBar)) {
-        return rejectInlineParamsError('add task', 'Печь Пирог 10м');
-    }
-
-    if (cleanArgs.length === 0) {
+    if (!(options && options.fromTwoStepBar)) {
+        if (cleanLeadArgs.length > 0) {
+            return rejectInlineParamsError('add task', 'Таблетки');
+        }
         return {
-            response: '📋 Режим добавления задачи активирован. Введите `<Постройка> <Задача> <Время>` (например: `Печь Пирог 10м`) и нажмите Enter (или ✕ для отмены).',
+            response: '📋 Режим добавления задачи (Шаг 1/3 — Постройка).\nВведите название постройки (например: `Таблетки` или `Печь`) — либо для совместимости `<Постройка> <Задача> <Время>` — и нажмите Enter (или ✕ для отмены).',
             style: 'output-info',
-            commandPrefix: 'add task',
+            commandSteps: ['add task'],
+            nextStepLabel: 'building',
             inputValue: '',
-            inputPlaceholder: 'Постройка Задача Время (напр: Печь Пирог 10м)...'
+            inputPlaceholder: 'building: название постройки (напр: Таблетки или Печь)...'
         };
     }
 
-    if (cleanArgs.length < 3) {
+    const steps = (Array.isArray(options.pendingSteps) && options.pendingSteps.length > 0)
+        ? options.pendingSteps
+        : ['add task'];
+    const baseCmd = steps[0] || 'add task';
+    const payload = String(options.stepPayload !== undefined ? options.stepPayload : (parameters.raw_args || '')).trim();
+
+    // Шаг 2: ввод постройки (или обратная совместимость "<Постройка> <Задача> <Время>")
+    if (steps.length === 1) {
+        if (!payload) {
+            return {
+                response: '⚠️ Введите название постройки (например: `Таблетки` или `Печь`).',
+                style: 'output-error',
+                commandSteps: [baseCmd],
+                nextStepLabel: 'building',
+                inputValue: '',
+                inputPlaceholder: 'building: название постройки (напр: Таблетки или Печь)...'
+            };
+        }
+
+        // Обратная совместимость: если ввели в 1 строку "<Постройка> <Задача> <Время>" (минимум 3 токена и последний — время с единицей измерения)
+        const tokens = tokenizeTaskPayload(payload);
+        if (tokens.length >= 3 && isExplicitDurationWithUnit(tokens[tokens.length - 1])) {
+            const buildingQuery = tokens[0];
+            const durationStr = tokens[tokens.length - 1];
+            const taskName = tokens.slice(1, tokens.length - 1).join(' ').trim();
+
+            if (!buildingQuery || !taskName || !durationStr) {
+                return { response: '❌ Неверный формат. Пример: `Печь Макароны 10м`', style: 'output-error' };
+            }
+
+            const res = await modifyTaskInBuilding(currentUser.id, buildingQuery, taskName, durationStr, 'add');
+            res.stepEchoText = `last command:~$ ${payload}`;
+            return res;
+        }
+
+        const lookup = await findBuildingMatch(currentUser.id, payload);
+        if (!lookup.ok) {
+            return {
+                response: lookup.error,
+                style: 'output-error',
+                commandSteps: [baseCmd],
+                nextStepLabel: 'building',
+                inputValue: '',
+                inputPlaceholder: 'building: название постройки (напр: Таблетки или Печь)...'
+            };
+        }
+
+        const matchedBuildingName = lookup.buildingName || payload;
         return {
-            response: '❓ Формат данных после `add task`:\n  • `<Постройка> <Задача> <Время>`\nПример: `Печь Макароны 10м`',
-            style: 'output-error'
+            response: `🏭 Постройка: **${matchedBuildingName}** (Шаг 2/3 — Задача).\nВведите название задачи (например: \`Отнести на кухню\`) и нажмите Enter (или ✕ для отмены).`,
+            style: 'output-info',
+            isHtml: true,
+            commandSteps: [baseCmd, matchedBuildingName],
+            nextStepLabel: 'task',
+            inputValue: '',
+            inputPlaceholder: 'task: название задачи (напр: Отнести на кухню)...'
         };
     }
 
-    const buildingQuery = cleanArgs[0];
-    const durationStr = cleanArgs[cleanArgs.length - 1];
-    const taskName = cleanArgs.slice(1, cleanArgs.length - 1).join(' ');
+    // Шаг 3: ввод названия задачи (без вырезания предлогов "в", "на" и т.д.)
+    if (steps.length === 2) {
+        const buildingQuery = steps[1];
+        const taskName = payload;
 
-    if (!buildingQuery || !taskName || !durationStr) {
-        return { response: '❌ Неверный формат. Пример: `Печь Макароны 10м`', style: 'output-error' };
+        if (!taskName) {
+            return {
+                response: '⚠️ Введите название задачи (например: `Отнести на кухню`).',
+                style: 'output-error',
+                commandSteps: [baseCmd, buildingQuery],
+                nextStepLabel: 'task',
+                inputValue: '',
+                inputPlaceholder: 'task: название задачи (напр: Отнести на кухню)...'
+            };
+        }
+
+        return {
+            response: `📝 Задача: **${taskName}** (Шаг 3/3 — Время).\nВведите длительность (например: \`45м\`, \`10m\`, \`1ч\`, \`30с\`) и нажмите Enter (или ✕ для отмены).`,
+            style: 'output-info',
+            isHtml: true,
+            commandSteps: [baseCmd, buildingQuery, taskName],
+            nextStepLabel: 'time',
+            inputValue: '',
+            inputPlaceholder: 'time: длительность (напр: 45м, 10m, 1ч, 30с)...'
+        };
+    }
+
+    // Шаг 4: ввод времени и сохранение задачи
+    const buildingQuery = steps[1];
+    const taskName = steps[2];
+    const durationStr = payload;
+
+    if (!durationStr || !isValidTaskDuration(durationStr)) {
+        return {
+            response: `❌ Неверный формат времени${durationStr ? ` "${durationStr}"` : ''}. Введите длительность (например: \`45м\`, \`10m\`, \`1ч\`, \`30с\`).`,
+            style: 'output-error',
+            commandSteps: [baseCmd, buildingQuery, taskName],
+            nextStepLabel: 'time',
+            inputValue: '',
+            inputPlaceholder: 'time: длительность (напр: 45м, 10m, 1ч, 30с)...'
+        };
     }
 
     return await modifyTaskInBuilding(currentUser.id, buildingQuery, taskName, durationStr, 'add');
 }
 
-// 2. Удаление задачи: Del task (строго в 2 этапа)
+// 2. Удаление задачи: Del task (строго в 2 этапа, с сохранением предлогов внутри названия задачи)
 async function handleDeleteTask(parameters, options = {}) {
     const currentUser = await fetchCurrentUser();
     if (!currentUser) return { response: t('not_authorized'), style: 'output-error' };
 
     const rawArgs = parameters.args || [];
-    const cleanWords = rawArgs.filter(w => !['del', 'delete', 'remove', 'task', 'tasks', 'задача', 'задачи', 'завдання', 'удалить', 'удали', 'видалити', 'rm', 'из', 'в', 'з'].includes(w.toLowerCase()));
+    const delLeadStop = ['del', 'delete', 'remove', 'task', 'tasks', 'задача', 'задачи', 'завдання', 'удалить', 'удали', 'видалити', 'rm', 'из', 'в', 'з'];
+    const cleanWords = stripLeadingWords(rawArgs, delLeadStop);
 
     if (!(options && options.fromTwoStepBar)) {
         if (cleanWords.length > 0) {
@@ -183,7 +356,9 @@ async function modifyTaskInBuilding(userId, buildingQuery, taskName, durationStr
     try {
         if (userId === 'guest') {
             const buildings = typeof getDemoBuildings === 'function' ? getDemoBuildings() : [];
-            const targetBuilding = buildings.find(b => b.building_name.toLowerCase().includes(buildingQuery.toLowerCase()));
+            const qLower = buildingQuery.trim().toLowerCase();
+            const targetBuilding = buildings.find(b => b.building_name.trim().toLowerCase() === qLower)
+                || buildings.find(b => b.building_name.toLowerCase().includes(qLower));
             if (!targetBuilding) {
                 return { response: `❌ Постройка "${buildingQuery}" не найдена. Доступны: Печь, Кухня, Лесопилка.`, style: 'output-error' };
             }
@@ -220,11 +395,16 @@ async function modifyTaskInBuilding(userId, buildingQuery, taskName, durationStr
             };
         }
 
+        const prevSnapshots = buildings.map(b => ({
+            id: b.id,
+            tasks: JSON.parse(JSON.stringify(b.tasks || []))
+        }));
+
         if (action === 'add') {
             const durationSeconds = parseTaskDuration(durationStr);
 
             for (const building of buildings) {
-                let tasks = building.tasks || [];
+                let tasks = JSON.parse(JSON.stringify(building.tasks || []));
                 const existingIdx = tasks.findIndex(t => t.name.toLowerCase() === taskName.toLowerCase());
 
                 if (existingIdx !== -1) {
@@ -249,10 +429,18 @@ async function modifyTaskInBuilding(userId, buildingQuery, taskName, durationStr
                     }], { onConflict: 'name,created_by' });
             }
 
-            return { response: `🟢 Задача "${taskName}" (${durationStr}) успешно закреплена за постройкой "${buildings[0].building_name}" (Очередь #${buildings[0].queue_group_id})!`, style: 'output-success' };
+            return {
+                response: `🟢 Задача "${taskName}" (${durationStr}) успешно закреплена за постройкой "${buildings[0].building_name}" (Очередь #${buildings[0].queue_group_id})!`,
+                style: 'output-success',
+                undoAction: {
+                    type: 'supabase_restore_building_tasks',
+                    snapshots: prevSnapshots,
+                    description: `добавление задачи "${taskName}" в "${buildings[0].building_name}"`
+                }
+            };
         } else if (action === 'del') {
             for (const building of buildings) {
-                let tasks = building.tasks || [];
+                let tasks = JSON.parse(JSON.stringify(building.tasks || []));
                 tasks = tasks.filter(t => t.name.toLowerCase() !== taskName.toLowerCase());
 
                 const { error: updateErr } = await window.supabaseClient
@@ -263,7 +451,15 @@ async function modifyTaskInBuilding(userId, buildingQuery, taskName, durationStr
                 if (updateErr) throw updateErr;
             }
 
-            return { response: `🗑️ Задача "${taskName}" удалена из постройки "${buildingQuery}".`, style: 'output-success' };
+            return {
+                response: `🗑️ Задача "${taskName}" удалена из постройки "${buildingQuery}".`,
+                style: 'output-success',
+                undoAction: {
+                    type: 'supabase_restore_building_tasks',
+                    snapshots: prevSnapshots,
+                    description: `удаление задачи "${taskName}" из "${buildings[0].building_name}"`
+                }
+            };
         }
     } catch (err) {
         return { response: '❌ Ошибка: ' + err.message, style: 'output-error' };
@@ -272,8 +468,8 @@ async function modifyTaskInBuilding(userId, buildingQuery, taskName, durationStr
 
 CommandRegistry.register({
     names: ['add task', 'create task', 'task add', 'tasks add', 'добавить задачу', 'создать задачу', 'додати завдання', 'створити завдання'],
-    description: 'Закрепить задачу за постройкой с указанием времени (строго в 2 этапа)',
-    usage: 'add task -> <Постройка> <Задача> <Время>',
+    description: 'Закрепить задачу за постройкой (пошагово: building ➔ task ➔ time)',
+    usage: 'add task -> <Постройка> -> <Задача> -> <Время>',
     category: '🏭 Постройки',
     handler: handleAddTask
 });

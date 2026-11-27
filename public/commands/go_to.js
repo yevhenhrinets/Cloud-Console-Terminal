@@ -325,35 +325,43 @@ CommandRegistry.register({
 // Универсальный маршрутизатор: go to <цель> / go <цель>
 CommandRegistry.register({
     names: ['go to', 'go', 'перейти', 'перейти в', 'открыть', 'open'],
-    description: 'Универсальный переход к страницам и локациям (home 1/2/3, house 1/2/3, missions, dashboard, terminal...)',
+    description: 'Универсальный переход к страницам и локациям (home 1/2/3, house 1/2/3, Чапаева, missions, dashboard, terminal...)',
     category: 'House',
-    usage: 'go to <home 1 | home 2 | home 3 | house 1 | house 2 | house 3 | missions | dashboard | terminal>',
+    usage: 'go to <home 1 | home 2 | Чапаева | missions | dashboard | terminal>',
     handler: async (parameters, options = {}) => {
         const matchedCmd = String((parameters && parameters.matchedCmd) || 'go to').trim().toLowerCase();
-        const rawTarget = (parameters && parameters.raw_args ? String(parameters.raw_args) : (parameters && Array.isArray(parameters.args) ? parameters.args.join(' ') : '')).trim().toLowerCase();
+        const rawTargetOrig = (parameters && parameters.raw_args ? String(parameters.raw_args) : (parameters && Array.isArray(parameters.args) ? parameters.args.join(' ') : '')).trim();
+        const rawTarget = rawTargetOrig.toLowerCase();
 
-        if (!(options && options.fromTwoStepBar)) {
-            if (rawTarget) {
-                return rejectInlineParamsError(
-                    matchedCmd,
-                    'notes',
-                    '💡 Либо введите готовую словесную команду: `go to home 1`, `go to home 2`, `go to home 3`, `go to missions`, `go to dashboard`, `go to terminal`.'
-                );
+        // Запрещаем некорректные артикли сразу после 'go' без 'to' (напр: "go the home") или неверные артикли (напр: "go to a house 2")
+        const rawTokens = rawTarget.split(/\s+/).filter(Boolean);
+        let effectiveTarget = rawTarget;
+        let effectiveOrig = rawTargetOrig;
+        let hadValidArticleStrip = false;
+
+        if (rawTokens.length >= 2 && ['a', 'an', 'the'].includes(rawTokens[0])) {
+            if (matchedCmd === 'go') {
+                return {
+                    response: '❌ Некорректное употребление артикля после `go`. Используйте `go to ...` (например: `go to the home`).',
+                    style: 'output-error'
+                };
             }
-            return {
-                response: `🧭 Режим перехода (\`${matchedCmd}\`): введите раздел (напр: \`home 1\`, \`home 2\`, \`missions\`, \`dashboard\`, \`notes\`, \`history\`) и нажмите Enter (или ✕ для отмены).`,
-                style: 'output-info',
-                commandPrefix: matchedCmd,
-                inputValue: '',
-                inputPlaceholder: 'Раздел (home 1, home 2, missions, dashboard, notes)...'
-            };
-        }
+            const nextTok = rawTokens[1];
+            const restToks = rawTokens.slice(2);
+            const hasLatin = /[a-z]/i.test(nextTok);
+            const validPair = hasLatin
+                ? (typeof window.isValidEnglishArticlePair === 'function' ? window.isValidEnglishArticlePair(rawTokens[0], nextTok, restToks) : true)
+                : (rawTokens[0] === 'the' && !/^\d+$/.test(nextTok));
 
-        if (!rawTarget) {
-            return {
-                response: '🧭 Укажите раздел для перехода.',
-                style: 'output-error'
-            };
+            if (!validPair) {
+                return {
+                    response: `❌ Лексически некорректный артикль "${rawTokens[0]}" перед "${rawTokens.slice(1).join(' ')}".`,
+                    style: 'output-error'
+                };
+            }
+            effectiveTarget = rawTokens.slice(1).join(' ');
+            effectiveOrig = rawTargetOrig.trim().split(/\s+/).slice(1).join(' ');
+            hadValidArticleStrip = true;
         }
 
         const routeAliases = {
@@ -472,15 +480,65 @@ CommandRegistry.register({
             'продолжить': 'continue'
         };
 
-        const resolvedCmd = routeAliases[rawTarget] || rawTarget;
-        const targetHandler = window.CommandRegistry ? window.CommandRegistry.getHandler(resolvedCmd) : null;
+        // Если в 1 строку ввели переименованный/пользовательский дом (go to Чапаева / open Строителей) или валидный артикль (go to the kitchen)
+        const user = typeof fetchCurrentUser === 'function' ? await fetchCurrentUser(true) : null;
+        if (!(options && options.fromTwoStepBar)) {
+            if (!rawTarget) {
+                return {
+                    response: `🧭 Режим перехода (\`${matchedCmd}\`): введите раздел (напр: \`home 1\`, \`home 2\`, \`Чапаева\`, \`missions\`, \`dashboard\`, \`notes\`) и нажмите Enter (или ✕ для отмены).`,
+                    style: 'output-info',
+                    commandPrefix: matchedCmd,
+                    inputValue: '',
+                    inputPlaceholder: 'Раздел (home 1, Чапаева, missions, dashboard)...'
+                };
+            }
 
-        if (targetHandler && resolvedCmd !== 'go to' && resolvedCmd !== 'go') {
-            return await targetHandler({ args: [], raw_args: '' }, options);
+            // Проверяем пользовательские/переименованные дома сразу в 1 строку
+            if (user && !user.isGuest && window.UserHousesSync) {
+                try {
+                    await Promise.race([
+                        window.UserHousesSync.syncFromDb(user),
+                        new Promise(resolve => setTimeout(resolve, 450))
+                    ]);
+                } catch (e) {}
+                const cleanedRef = effectiveOrig.replace(/^(home|house|дом|дім|будинок)\s+/i, '').trim();
+                const foundHouse = window.UserHousesSync.findHouse(user, effectiveOrig) || window.UserHousesSync.findHouse(user, cleanedRef);
+                if (foundHouse && foundHouse.url) {
+                    if (options && options.skipRedirect) {
+                        return { response: `🆕 Открываю ${foundHouse.name} в новой вкладке: ${foundHouse.url}`, style: 'output-info' };
+                    }
+                    setTimeout(() => {
+                        window.location.href = foundHouse.url;
+                    }, 200);
+                    return { response: `🚀 Переход в ${foundHouse.name} (${foundHouse.url})...`, style: 'output-info' };
+                }
+            }
+
+            // Если ввели с валидным артиклем (напр. go to the kitchen / open the dashboard) — пропускаем к обработчику маршрута
+            if (!hadValidArticleStrip) {
+                return rejectInlineParamsError(
+                    matchedCmd,
+                    'notes',
+                    '💡 Либо введите готовую словесную команду: `go to home 1`, `go to Чапаева`, `go to missions`, `go to dashboard`, `go to terminal`.'
+                );
+            }
         }
 
-        // Проверяем пользовательские дома текущего аккаунта (напр. go to -> home 4 / Дача / Дом 2)
-        const user = typeof fetchCurrentUser === 'function' ? await fetchCurrentUser(true) : null;
+        if (!effectiveTarget) {
+            return {
+                response: '🧭 Укажите раздел для перехода.',
+                style: 'output-error'
+            };
+        }
+
+        const resolvedCmd = routeAliases[effectiveTarget] || effectiveTarget;
+        const targetHandler = window.CommandRegistry ? window.CommandRegistry.getHandler(resolvedCmd) : null;
+
+        if (targetHandler && resolvedCmd !== 'go to' && resolvedCmd !== 'go' && resolvedCmd !== 'open') {
+            return await targetHandler({ args: [], raw_args: '' }, { ...options, fromTwoStepBar: true });
+        }
+
+        // Проверяем пользовательские дома текущего аккаунта (напр. go to -> home 4 / Дача / Чапаева / Дом 2)
         if (user && !user.isGuest && window.UserHousesSync) {
             try {
                 await Promise.race([
@@ -488,8 +546,8 @@ CommandRegistry.register({
                     new Promise(resolve => setTimeout(resolve, 450))
                 ]);
             } catch (e) {}
-            const cleanedRef = rawTarget.replace(/^(home|house|дом|дім|будинок)\s+/i, '').trim();
-            const foundHouse = window.UserHousesSync.findHouse(user, rawTarget) || window.UserHousesSync.findHouse(user, cleanedRef);
+            const cleanedRef = effectiveOrig.replace(/^(home|house|дом|дім|будинок)\s+/i, '').trim();
+            const foundHouse = window.UserHousesSync.findHouse(user, effectiveOrig) || window.UserHousesSync.findHouse(user, cleanedRef);
             if (foundHouse && foundHouse.url) {
                 if (options && options.skipRedirect) {
                     return { response: `🆕 Открываю ${foundHouse.name} в новой вкладке: ${foundHouse.url}`, style: 'output-info' };
@@ -502,7 +560,7 @@ CommandRegistry.register({
         }
 
         return {
-            response: `❓ Неизвестный раздел "${rawTarget}".\nДоступные варианты: \`go to home 1\`, \`go to home 2\`, \`go to home 3\`, \`go to missions\`, \`go to dashboard\`, \`go to terminal\``,
+            response: `❓ Неизвестный раздел "${rawTargetOrig}".\nДоступные варианты: \`go to home 1\`, \`go to home 2\`, \`go to home 3\`, \`go to missions\`, \`go to dashboard\`, \`go to terminal\``,
             style: 'output-error'
         };
     }

@@ -7,20 +7,33 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Cloud Terminal — Dashboard</title>
+
+    <link rel="manifest" href="/manifest.json?v=20261127_1">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Terminal">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/svg+xml" href="/icon.svg">
     
-    <link rel="stylesheet" href="/style.css?v=20261124_1">
-    <link rel="stylesheet" href="/dashboard.css?v=20261124_1">
+    <link rel="stylesheet" href="/style.css?v=20261127_1">
+    <link rel="stylesheet" href="/dashboard.css?v=20261127_1">
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="/api.js?v=20261124_1"></script>
-    <script src="/helpers.js?v=20261125_4"></script>
-    <script src="/localization.js?v=20261124_1"></script>
+    <script src="/api.js?v=20261127_1"></script>
+    <script src="/helpers.js?v=20261127_1"></script>
+    <script src="/localization.js?v=20261127_1"></script>
 </head>
 <body>
 
     <div class="header">
-        <h2>🎛️ Dashboard</h2>
+        <div class="header-left">
+            <h2>🎛️ Dashboard</h2>
+            <span id="global-auth-profile" class="auth-profile-badge is-guest" data-global-auth-profile>🔴 Не авторизован</span>
+        </div>
         <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button type="button" id="bg-mode-header-btn" class="btn-console" onclick="openBackgroundPermissionsCard()" style="background: #d97706; border-color: #b45309; cursor: pointer;">⚡ Разрешить фон</button>
             <button type="button" class="btn-console" onclick="toggleThemeGlobal()" style="background: #475569; border: 1px solid #64748b; cursor: pointer;">🎨 Тема</button>
             <a href="/house/index.html" class="btn-console" style="background: #15803d; border-color: #166534;">🏠 Дом 1</a>
             <a href="/house2/index.html" class="btn-console" style="background: #0f766e; border-color: #115e59;">🏡 Дом 2</a>
@@ -31,6 +44,8 @@
     </div>
 
     <div id="error-banner" style="display: none; background: #7f1d1d; border: 1px solid #ef4444; color: #fca5a5; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 14px;"></div>
+
+    <div id="bg-permission-banner" class="bg-permission-banner" style="display: none;"></div>
 
     <!-- Раздел управления постройками (динамические кнопки) -->
     <div class="section-title">⚡ Управление постройками</div>
@@ -54,7 +69,24 @@
         <div class="badge">Загрузка склада...</div>
     </div>
 
-    <script src="/dashboard-logic.js?v=20261124_1"></script>
-    <script src="/dashboard-ui.js?v=20261124_1"></script>
+    <script src="/dashboard-logic.js?v=20261127_1"></script>
+    <script src="/dashboard-ui.js?v=20261127_1"></script>
+    <script>
+    if ('serviceWorker' in navigator) {
+        let swRefreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (swRefreshing) return;
+            swRefreshing = true;
+            window.location.reload();
+        });
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/service-worker.js?v=20261127_1', { updateViaCache: 'none' })
+                .then((reg) => {
+                    if (reg && typeof reg.update === 'function') reg.update().catch(() => {});
+                })
+                .catch(() => {});
+        });
+    }
+    </script>
 </body>
 </html>

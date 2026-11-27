@@ -57,7 +57,12 @@ async function handleAdd(parameters) {
             const m = await window.MissionsStore.addMission(missionText, currentUser.id);
             return {
                 response: `🟢 Поручення збережено!\n📋 [#${m.position}] "${m.title}"\n⏱️ Фіксація: ${m.created_display}\n🔗 Відкрийте сторінку завдань: /missions.html`,
-                style: 'output-success'
+                style: 'output-success',
+                undoAction: m && m.id ? {
+                    type: 'missions_delete',
+                    missionId: m.id,
+                    description: `добавление поручения "${m.title}"`
+                } : undefined
             };
         }
     }

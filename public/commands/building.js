@@ -78,7 +78,7 @@ async function handleAddBuilding(parameters, options = {}) {
             nextId++;
         }
 
-        const { error } = await window.supabaseClient
+        const { data: insertedRows, error } = await window.supabaseClient
             .from('terminal_buildings')
             .insert([{
                 building_key: buildingName.toLowerCase().replace(/[^a-z0-9а-яєіїё]/g, '_'),
@@ -86,10 +86,20 @@ async function handleAddBuilding(parameters, options = {}) {
                 queue_group_id: nextId,
                 tasks: [],
                 created_by: currentUser.id
-            }]);
+            }])
+            .select('*');
 
         if (error) throw error;
-        return { response: `🟢 Постройка "${buildingName}" успешно создана (очередь #${nextId})!`, style: 'output-success' };
+        const createdBuilding = insertedRows && insertedRows[0] ? insertedRows[0] : null;
+        return {
+            response: `🟢 Постройка "${buildingName}" успешно создана (очередь #${nextId})!`,
+            style: 'output-success',
+            undoAction: createdBuilding ? {
+                type: 'supabase_delete_building',
+                buildingId: createdBuilding.id,
+                description: `создание постройки "${buildingName}"`
+            } : undefined
+        };
     } catch (err) {
         return { response: '❌ Ошибка создания постройки: ' + err.message, style: 'output-error' };
     }
@@ -193,6 +203,17 @@ async function handleDeleteBuilding(parameters, options = {}) {
     }
 
     try {
+        const { data: existingRows, error: selectErr } = await window.supabaseClient
+            .from('terminal_buildings')
+            .select('*')
+            .eq('created_by', currentUser.id)
+            .ilike('building_name', buildingName);
+
+        if (selectErr) throw selectErr;
+        if (!existingRows || existingRows.length === 0) {
+            return { response: `❌ Постройка "${buildingName}" не найдена.`, style: 'output-error' };
+        }
+
         const { error } = await window.supabaseClient
             .from('terminal_buildings')
             .delete()
@@ -200,7 +221,15 @@ async function handleDeleteBuilding(parameters, options = {}) {
             .ilike('building_name', buildingName);
 
         if (error) throw error;
-        return { response: `🗑️ Постройка "${buildingName}" удалена.`, style: 'output-success' };
+        return {
+            response: `🗑️ Постройка "${buildingName}" удалена.`,
+            style: 'output-success',
+            undoAction: {
+                type: 'supabase_restore_building',
+                buildings: existingRows,
+                description: `удаление постройки "${buildingName}"`
+            }
+        };
     } catch (err) {
         return { response: '❌ Ошибка удаления: ' + err.message, style: 'output-error' };
     }

@@ -102,6 +102,13 @@ CommandRegistry.register({
         }
 
         try {
+            const { data: prevRows } = await window.supabaseClient
+                .from('notes')
+                .select('inner_id, is_pinned')
+                .in('inner_id', ids)
+                .eq('created_by', effectiveUserId)
+                .is('deleted_at', null);
+
             const { error } = await window.supabaseClient
                 .from('notes')
                 .update({ is_pinned: true })
@@ -123,7 +130,15 @@ CommandRegistry.register({
             return {
                 response: `📌 Заметки [ID: ${idsStr}] успешно закреплены.`,
                 style: 'output-success',
-                editedEntity: 'note'
+                editedEntity: 'note',
+                undoAction: {
+                    type: 'supabase_restore_notes_pin',
+                    items: (prevRows && prevRows.length ? prevRows : ids.map(id => ({ inner_id: id, is_pinned: false }))).map(r => ({
+                        inner_id: r.inner_id,
+                        prevPinned: Boolean(r.is_pinned)
+                    })),
+                    description: `закрепление заметок [${idsStr}]`
+                }
             };
         } catch (err) {
             if (window.OfflineNotesSync && window.OfflineNotesSync.isOfflineError(err)) {

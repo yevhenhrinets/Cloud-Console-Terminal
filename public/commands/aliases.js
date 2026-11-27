@@ -151,7 +151,12 @@
 
         return {
             response: parts.join('\n'),
-            style: 'output-success'
+            style: 'output-success',
+            undoAction: res.added.length > 0 ? {
+                type: 'custom_aliases_restore',
+                addedAliases: res.added,
+                description: `добавление алиаса (${res.added.join(', ')})`
+            } : undefined
         };
     }
 

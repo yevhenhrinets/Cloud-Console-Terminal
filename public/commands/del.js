@@ -138,7 +138,13 @@ CommandRegistry.register({
             return {
                 response: `🟢 ${entityLabel === 'истории' ? 'Записи истории' : 'Заметки'} [ID: ${idsStr}] успешно удалены.`,
                 style: 'output-success',
-                editedEntity: isHistory ? 'history' : 'note'
+                editedEntity: isHistory ? 'history' : 'note',
+                undoAction: !isHistory ? {
+                    type: 'supabase_restore_notes_deleted',
+                    innerIds: ids,
+                    restoreToDeletedAt: null,
+                    description: `удаление заметок [${idsStr}]`
+                } : undefined
             };
         } catch (err) {
             if (!isHistory && window.OfflineNotesSync && window.OfflineNotesSync.isOfflineError(err)) {

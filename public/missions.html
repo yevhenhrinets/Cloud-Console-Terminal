@@ -8,8 +8,8 @@
     <meta http-equiv="Expires" content="0">
     <title>Поручения и Задания — Cloud Terminal</title>
     
-    <link rel="stylesheet" href="/style.css?v=20261125_1">
-    <link rel="stylesheet" href="/dashboard.css?v=20261125_1">
+    <link rel="stylesheet" href="/style.css?v=20261127_1">
+    <link rel="stylesheet" href="/dashboard.css?v=20261127_1">
     
     <style>
         :root {
@@ -821,10 +821,10 @@
     </style>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="/api.js?v=20261125_1"></script>
-    <script src="/helpers.js?v=20261125_4"></script>
-    <script src="/localization.js?v=20261125_1"></script>
-    <script src="/missions-store.js?v=20261125_2"></script>
+    <script src="/api.js?v=20261127_1"></script>
+    <script src="/helpers.js?v=20261127_1"></script>
+    <script src="/localization.js?v=20261127_1"></script>
+    <script src="/missions-store.js?v=20261127_1"></script>
 </head>
 <body>
 
@@ -840,6 +840,7 @@
                 </div>
             </div>
             <span id="sync-badge" class="header-badge">💾 LocalStorage</span>
+            <span id="global-auth-profile" class="auth-profile-badge is-guest" data-global-auth-profile>🔴 Не авторизован</span>
         </div>
 
         <nav class="nav-links">
@@ -1967,7 +1968,7 @@ if ('serviceWorker' in navigator) {
         window.location.reload();
     });
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/service-worker.js?v=20261125_4', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('/service-worker.js?v=20261127_1', { updateViaCache: 'none' })
             .then((reg) => {
                 if (reg && typeof reg.update === 'function') reg.update().catch(() => {});
             })

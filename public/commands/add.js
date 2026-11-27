@@ -38,12 +38,23 @@ async function createNoteCommandHandler(currentUser, rawContent, matchedCmd = 'w
             .select('*');
 
         if (error) throw error;
-        if (data && data[0] && window.OfflineNotesSync) {
+        const createdNote = data && data[0] ? data[0] : null;
+        if (createdNote && window.OfflineNotesSync) {
             const cache = window.OfflineNotesSync.getNotesCache(currentUser.id);
-            cache.push(data[0]);
+            cache.push(createdNote);
             window.OfflineNotesSync.saveNotesCache(currentUser.id, cache);
         }
-        return { response: `🟢 Заметка успешно сохранена!`, style: 'output-success', editedEntity: 'note' };
+        return {
+            response: `🟢 Заметка успешно сохранена!`,
+            style: 'output-success',
+            editedEntity: 'note',
+            undoAction: createdNote ? {
+                type: 'supabase_delete_note',
+                id: createdNote.id,
+                inner_id: createdNote.inner_id,
+                description: `создание заметки "${content}"`
+            } : undefined
+        };
     } catch (err) {
         if (window.OfflineNotesSync && window.OfflineNotesSync.isOfflineError(err)) {
             const localNote = window.OfflineNotesSync.queueAddNoteOffline(currentUser.id, content);
@@ -246,7 +257,12 @@ async function addTimerHandler(parameters, options = {}) {
         const statusMsg = status === 'running' ? '🟢 Запущен в работу!' : '⏳ Встал в очередь (время суммировано).';
         return {
             response: `⏱️ Таймер "${template.name}" добавлен в очередь #${queueGroupId}. ${statusMsg}${consumedSuffix}`,
-            style: 'output-success'
+            style: 'output-success',
+            undoAction: {
+                type: 'supabase_delete_timer',
+                innerId: nextInnerId,
+                description: `запуск таймера "${template.name}"`
+            }
         };
     } catch (err) {
         return { response: '❌ Ошибка добавления таймера: ' + err.message, style: 'output-error' };
@@ -289,7 +305,22 @@ CommandRegistry.register({
         }
 
         const args = parameters.args || [];
-        const subCmd = args[0] ? String(args[0]).toLowerCase() : '';
+        let subIdx = 0;
+        let subCmd = args[0] ? String(args[0]).toLowerCase() : '';
+        if (['a', 'an', 'the'].includes(subCmd) && args[1]) {
+            const nextSub = String(args[1]).toLowerCase();
+            const isValid = typeof window.isValidEnglishArticlePair === 'function'
+                ? window.isValidEnglishArticlePair(subCmd, nextSub, args.slice(2))
+                : true;
+            if (!isValid) {
+                return {
+                    response: `❌ Лексически некорректный артикль "${subCmd}" перед "${args[1]}".`,
+                    style: 'output-error'
+                };
+            }
+            subIdx = 1;
+            subCmd = nextSub;
+        }
 
         if (!subCmd) {
             return {
@@ -298,13 +329,15 @@ CommandRegistry.register({
             };
         }
 
+        const tailArgs = args.slice(subIdx + 1);
+
         if (['house', 'home', 'дом', 'дім', 'будинок'].includes(subCmd)) {
             const hHandler = window.CommandRegistry.getHandler('add house');
             if (hHandler) {
                 return await hHandler({
                     ...parameters,
-                    args: args.slice(1),
-                    raw_args: args.slice(1).join(' ').trim(),
+                    args: tailArgs,
+                    raw_args: tailArgs.join(' ').trim(),
                     matchedCmd: subCmd === 'home' ? 'add home' : 'Add house'
                 }, options);
             }
@@ -315,8 +348,8 @@ CommandRegistry.register({
             if (rHandler) {
                 return await rHandler({
                     ...parameters,
-                    args: args.slice(1),
-                    raw_args: args.slice(1).join(' ').trim(),
+                    args: tailArgs,
+                    raw_args: tailArgs.join(' ').trim(),
                     matchedCmd: 'Add room'
                 }, options);
             }
@@ -327,15 +360,15 @@ CommandRegistry.register({
             if (tHandler) {
                 return await tHandler({
                     ...parameters,
-                    args: args.slice(1),
-                    raw_args: args.slice(1).join(' ').trim(),
+                    args: tailArgs,
+                    raw_args: tailArgs.join(' ').trim(),
                     matchedCmd: 'add thing'
                 }, options);
             }
         }
 
         if (subCmd === 'note' || subCmd === 'заметка' || subCmd === 'нотатка' || subCmd === 'заметку' || subCmd === 'нотатку') {
-            const content = args.slice(1).join(' ').trim();
+            const content = tailArgs.join(' ').trim();
             return await createNoteCommandHandler(currentUser, content, 'add note', options);
         }
 
@@ -343,8 +376,8 @@ CommandRegistry.register({
             const addMissionHandler = window.CommandRegistry.getHandler('add mission');
             const strippedParams = {
                 ...parameters,
-                args: args.slice(1),
-                raw_args: args.slice(1).join(' ').trim(),
+                args: tailArgs,
+                raw_args: tailArgs.join(' ').trim(),
                 matchedCmd: 'add mission'
             };
             if (addMissionHandler) {
@@ -366,14 +399,12 @@ CommandRegistry.register({
             }
         }
 
-        if (['alias', 'aliases', 'алиас', 'алиасы', 'псевдоним', 'псевдонимы'].includes(subCmd) || (subCmd === 'an' && args[1] && args[1].toLowerCase() === 'alias')) {
+        if (['alias', 'aliases', 'алиас', 'алиасы', 'псевдоним', 'псевдонимы'].includes(subCmd)) {
             const isPlural = ['aliases', 'алиасы', 'псевдонимы'].includes(subCmd);
             const aliasHandler = window.CommandRegistry.getHandler(isPlural ? 'add aliases' : 'add alias');
             if (aliasHandler) {
-                const startIdx = subCmd === 'an' ? 2 : 1;
-                const restArgs = args.slice(startIdx);
-                const restLower = restArgs.join(' ').toLowerCase().trim();
-                const filteredArgs = ['for the command', 'for command', 'for a command', 'для команды'].includes(restLower) ? [] : restArgs;
+                const restLower = tailArgs.join(' ').toLowerCase().trim();
+                const filteredArgs = ['for the command', 'for command', 'for a command', 'для команды'].includes(restLower) ? [] : tailArgs;
                 return await aliasHandler({
                     ...parameters,
                     args: filteredArgs,

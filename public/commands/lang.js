@@ -1,7 +1,7 @@
 // commands/lang.js — управление языком интерфейса терминала (строго в 2 этапа)
 
 CommandRegistry.register({
-    names: ['lang', 'language', 'мова', 'язык'],
+    names: ['lang', 'language', 'change language', 'select language', 'мова', 'язык'],
 
     description: 'Смена языка интерфейса (строго в 2 этапа: lang -> en | ru | uk)',
     category: 'Language',

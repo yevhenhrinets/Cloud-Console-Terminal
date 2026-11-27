@@ -426,24 +426,63 @@ function canAccessHouse(user, houseIdOrPath = 'house1') {
     };
 }
 
+function updateGlobalAuthBadge(user) {
+    if (typeof document === 'undefined') return;
+    const isAuthed = Boolean(user && !user.isGuest && user.id && user.id !== 'guest');
+    const email = isAuthed ? String(user.email || user.name || user.id).trim() : '';
+    const text = isAuthed ? `🟢 ${email}` : '🔴 Не авторизован';
+    const title = isAuthed
+        ? `Авторизован: ${email}`
+        : 'Вы не авторизованы (войдите командой login)';
+
+    const targets = [];
+    const primary = document.getElementById('global-auth-profile');
+    if (primary) targets.push(primary);
+    document.querySelectorAll('[data-global-auth-profile]').forEach(el => {
+        if (!targets.includes(el)) targets.push(el);
+    });
+
+    targets.forEach(el => {
+        el.textContent = text;
+        el.title = title;
+        el.classList.toggle('is-authed', isAuthed);
+        el.classList.toggle('is-guest', !isAuthed);
+    });
+}
+
 function applyHouseNavVisibility(user) {
     if (typeof document === 'undefined') return;
     const isAuthed = Boolean(user && !user.isGuest && user.id && user.id !== 'guest');
     const bound = isAuthed ? getUserBoundHouses(user) : [];
-    const hasHouse1 = bound.some(h => h.id === 'house1');
-    const hasHouse2 = bound.some(h => h.id === 'house2');
-    const hasHouse3 = bound.some(h => h.id === 'house3');
+    const house1 = bound.find(h => h.id === 'house1');
+    const house2 = bound.find(h => h.id === 'house2');
+    const house3 = bound.find(h => h.id === 'house3');
 
     const mapSelectors = [
-        { show: hasHouse1, sel: '.quick-bar a[href="/house/index.html"], .header a[href="/house/index.html"], .nav-links a[href="/house/index.html"]' },
-        { show: hasHouse2, sel: '.quick-bar a[href="/house2/index.html"], .header a[href="/house2/index.html"], .nav-links a[href="/house2/index.html"]' },
-        { show: hasHouse3, sel: '.quick-bar a[href="/house3/index.html"], .header a[href="/house3/index.html"], .nav-links a[href="/house3/index.html"]' }
+        {
+            show: Boolean(house1),
+            label: `🏠 ${(house1 && house1.name) || 'Дом 1'}`,
+            sel: '.quick-bar a[href="/house/index.html"], .header a[href="/house/index.html"], .nav-links a[href="/house/index.html"]'
+        },
+        {
+            show: Boolean(house2),
+            label: `🏡 ${(house2 && house2.name) || 'Дом 2'}`,
+            sel: '.quick-bar a[href="/house2/index.html"], .header a[href="/house2/index.html"], .nav-links a[href="/house2/index.html"]'
+        },
+        {
+            show: Boolean(house3),
+            label: `🏘️ ${(house3 && house3.name) || 'Дом 3'}`,
+            sel: '.quick-bar a[href="/house3/index.html"], .header a[href="/house3/index.html"], .nav-links a[href="/house3/index.html"]'
+        }
     ];
     try {
         mapSelectors.forEach(entry => {
             document.querySelectorAll(entry.sel).forEach(el => {
                 el.style.display = entry.show ? '' : 'none';
                 el.setAttribute('aria-hidden', entry.show ? 'false' : 'true');
+                if (entry.show && entry.label) {
+                    el.textContent = entry.label;
+                }
             });
         });
 
@@ -474,6 +513,8 @@ function applyHouseNavVisibility(user) {
             }
         }
     } catch (e) {}
+
+    updateGlobalAuthBadge(user);
 }
 
 if (typeof window !== 'undefined') {
@@ -485,6 +526,7 @@ if (typeof window !== 'undefined') {
     window.getUserBoundHouses = getUserBoundHouses;
     window.canAccessHouse = canAccessHouse;
     window.applyHouseNavVisibility = applyHouseNavVisibility;
+    window.updateGlobalAuthBadge = updateGlobalAuthBadge;
     window.clearCurrentUserCache = clearCurrentUserCache;
 }
 
@@ -494,7 +536,7 @@ function parseCommand(rawText) {
     const parts = rawText.trim().split(/\s+/);
 
     // Очищаем первые слова от двоеточий на конце (например, "note:", "add:")
-    for (let i = 0; i < Math.min(parts.length, 8); i++) {
+    for (let i = 0; i < Math.min(parts.length, 12); i++) {
         if (parts[i].endsWith(':')) {
             parts[i] = parts[i].slice(0, -1);
         }
@@ -505,9 +547,9 @@ function parseCommand(rawText) {
     let actualCmd = cmd;
     let prefixWordsCount = 1;
 
-    // Самое длинное совпадение (до 8 слов включительно)
+    // Самое длинное совпадение (до 12 слов включительно, с учётом артиклей a/an/the)
     if (parts.length > 1 && window.CommandRegistry) {
-        const maxWords = Math.min(parts.length, 8);
+        const maxWords = Math.min(parts.length, 12);
         for (let wordCount = maxWords; wordCount >= 2; wordCount--) {
             const candidate = lowerParts.slice(0, wordCount).join(' ');
             if (window.CommandRegistry.getHandler(candidate)) {
@@ -1852,11 +1894,11 @@ window.HouseLayoutSync = {
 // Аккаунт-зависимые Дома, Комнаты и Предметы (Add house / Add room / Add thing)
 // =========================================================================
 const THING_CATALOG_PRESETS = {
-    table: { type: 'table', label: 'Стол', w: 2, h: 2 },
-    desk: { type: 'desk', label: 'Стол', w: 2, h: 2 },
-    стол: { type: 'table', label: 'Стол', w: 2, h: 2 },
-    стіл: { type: 'table', label: 'Стол', w: 2, h: 2 },
-    столик: { type: 'desk', label: 'Столик', w: 2, h: 1 },
+    table: { type: 'table', label: 'Стол', w: 2, h: 1, defaultColor: 'brown' },
+    desk: { type: 'desk', label: 'Столик', w: 2, h: 1, defaultColor: 'brown' },
+    стол: { type: 'table', label: 'Стол', w: 2, h: 1, defaultColor: 'brown' },
+    стіл: { type: 'table', label: 'Стол', w: 2, h: 1, defaultColor: 'brown' },
+    столик: { type: 'desk', label: 'Столик', w: 2, h: 1, defaultColor: 'brown' },
     stove: { type: 'stove', label: 'Плита', w: 2, h: 2 },
     oven: { type: 'stove', label: 'Печь', w: 2, h: 2 },
     печь: { type: 'stove', label: 'Печь', w: 2, h: 2 },
@@ -1907,14 +1949,168 @@ const THING_CATALOG_PRESETS = {
     кондиционер: { type: 'conditioner', label: 'Кондиционер', w: 2, h: 1 }
 };
 
+const THING_COLOR_ALIASES = {
+    brown: 'brown', oak: 'brown', wood: 'brown', wooden: 'brown', коричневый: 'brown', коричневая: 'brown', коричневое: 'brown', коричневого: 'brown', дуб: 'brown', дубовый: 'brown', деревянный: 'brown',
+    green: 'green', emerald: 'green', зеленый: 'green', зелёный: 'green', зеленая: 'green', зелёная: 'green', зеленого: 'green', зелёного: 'green', зелений: 'green',
+    blue: 'blue', cyan: 'blue', sky: 'blue', синий: 'blue', синяя: 'blue', голубой: 'blue', голубая: 'blue', синій: 'blue', блакитний: 'blue',
+    red: 'red', crimson: 'red', красный: 'red', красная: 'red', красное: 'red', червоний: 'red', бордовый: 'red',
+    yellow: 'yellow', gold: 'yellow', amber: 'yellow', желтый: 'yellow', жёлтый: 'yellow', желтая: 'yellow', жёлтая: 'yellow', жовтий: 'yellow', золотой: 'yellow',
+    white: 'white', light: 'white', белый: 'white', белая: 'white', белое: 'white', білий: 'white', светлый: 'white',
+    gray: 'gray', grey: 'gray', silver: 'gray', серый: 'gray', серая: 'gray', серое: 'gray', сірий: 'gray',
+    black: 'black', dark: 'black', charcoal: 'black', черный: 'black', чёрный: 'black', черная: 'black', чёрная: 'black', чорний: 'black', тёмный: 'black', темный: 'black',
+    orange: 'orange', оранжевый: 'orange', оранжевая: 'orange', помаранчевий: 'orange',
+    purple: 'purple', violet: 'purple', фиолетовый: 'purple', фиолетовая: 'purple', фіолетовий: 'purple'
+};
+
+const THING_SHAPE_ALIASES = {
+    rect: 'rect', rectangle: 'rect', standard: 'rect', normal: 'rect', прямоугольный: 'rect', прямоугольная: 'rect', прямоугольник: 'rect', обычный: 'rect', стандартный: 'rect', прямокутний: 'rect',
+    corner: 'corner', lshape: 'corner', 'l-shape': 'corner', gshape: 'corner', угловой: 'corner', угловая: 'corner', кутовий: 'corner', уголок: 'corner',
+    round: 'round', circle: 'round', oval: 'round', круглый: 'round', круглая: 'round', круглое: 'round', круг: 'round', округлый: 'round', круглий: 'round'
+};
+
+function parseThingColorInput(rawColor) {
+    const clean = String(rawColor || '').trim().toLowerCase();
+    if (!clean) return null;
+    if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(clean)) {
+        if (clean.length === 4) {
+            return '#' + clean[1] + clean[1] + clean[2] + clean[2] + clean[3] + clean[3];
+        }
+        return clean;
+    }
+    if (THING_COLOR_ALIASES[clean]) return THING_COLOR_ALIASES[clean];
+    const tokens = clean.split(/[\s,;]+/).filter(Boolean);
+    for (const tok of tokens) {
+        if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(tok)) {
+            return tok.length === 4 ? ('#' + tok[1] + tok[1] + tok[2] + tok[2] + tok[3] + tok[3]) : tok;
+        }
+        if (THING_COLOR_ALIASES[tok]) return THING_COLOR_ALIASES[tok];
+    }
+    return null;
+}
+
+function parseThingShapeInput(rawShape) {
+    const clean = String(rawShape || '').trim().toLowerCase();
+    if (!clean) return null;
+    const tokens = clean.split(/[\s,;]+/).filter(Boolean);
+    let shape = null;
+    let w = null;
+    let h = null;
+
+    for (const tok of tokens) {
+        const sizeMatch = tok.match(/^([1-8])\s*[*xх×]\s*([1-8])$/i);
+        if (sizeMatch) {
+            w = Math.max(1, Math.min(8, parseInt(sizeMatch[1], 10)));
+            h = Math.max(1, Math.min(8, parseInt(sizeMatch[2], 10)));
+            continue;
+        }
+        if (THING_SHAPE_ALIASES[tok]) {
+            shape = THING_SHAPE_ALIASES[tok];
+            continue;
+        }
+        if (tok === 'square' || tok === 'квадрат' || tok === 'квадратный' || tok === 'квадратная') {
+            shape = 'rect';
+            if (w === null && h === null) { w = 2; h = 2; }
+            continue;
+        }
+        if (tok === 'small' || tok === 'mini' || tok === 'маленький' || tok === 'мини') {
+            if (w === null && h === null) { w = 1; h = 1; }
+            continue;
+        }
+    }
+
+    if (!shape && w === null && h === null) {
+        const fullMatch = clean.match(/^([1-8])\s*[*xх×]\s*([1-8])$/i);
+        if (fullMatch) {
+            w = parseInt(fullMatch[1], 10);
+            h = parseInt(fullMatch[2], 10);
+        } else {
+            return null;
+        }
+    }
+    return {
+        shape: shape || (w !== null ? 'rect' : null),
+        w,
+        h
+    };
+}
+
+function inferBuiltinThingType(itemId) {
+    const id = String(itemId || '').toLowerCase();
+    if (id.includes('table') || id.includes('desk')) return 'table';
+    if (id.includes('washer')) return 'washer';
+    if (id.includes('stove')) return 'stove';
+    if (id.includes('fridge')) return 'fridge';
+    if (id.includes('boiler')) return 'boiler';
+    if (id.includes('multicooker')) return 'multicooker';
+    if (id.includes('armchair')) return 'armchair';
+    if (id.includes('sofa')) return 'sofa';
+    if (id.includes('bed')) return 'bed';
+    if (id.includes('closet')) return 'closet';
+    if (id.includes('tv')) return 'tv';
+    if (id.includes('laptop')) return 'laptop';
+    if (id.includes('router')) return 'router';
+    if (id.includes('radiator')) return 'radiator';
+    if (id.includes('window')) return 'window';
+    if (id.includes('conditioner')) return 'conditioner';
+    return 'custom';
+}
+
 function getThingPreset(rawThingName) {
     const clean = String(rawThingName || '').trim();
-    const key = clean.toLowerCase().replace(/\s+/g, '_');
-    const exact = THING_CATALOG_PRESETS[key] || THING_CATALOG_PRESETS[clean.toLowerCase()];
-    if (exact) {
-        return { ...exact, displayName: clean };
+    const rawTokens = clean.split(/\s+/).filter(Boolean);
+    let parsedColor = null;
+    let parsedShape = null;
+    let parsedW = null;
+    let parsedH = null;
+    const baseTokens = [];
+
+    rawTokens.forEach(tok => {
+        const lower = tok.toLowerCase();
+        const c = (!parsedColor) ? parseThingColorInput(lower) : null;
+        if (c) {
+            parsedColor = c;
+            return;
+        }
+        const s = parseThingShapeInput(lower);
+        if (s) {
+            if (s.shape && !parsedShape) parsedShape = s.shape;
+            if (s.w !== null && s.h !== null && parsedW === null) {
+                parsedW = s.w;
+                parsedH = s.h;
+            }
+            return;
+        }
+        baseTokens.push(tok);
+    });
+
+    const basePhrase = baseTokens.join(' ').trim();
+    const fullKey = clean.toLowerCase().replace(/\s+/g, '_');
+    const baseKey = basePhrase.toLowerCase().replace(/\s+/g, '_');
+    const exact = THING_CATALOG_PRESETS[fullKey] ||
+        THING_CATALOG_PRESETS[clean.toLowerCase()] ||
+        THING_CATALOG_PRESETS[baseKey] ||
+        THING_CATALOG_PRESETS[basePhrase.toLowerCase()];
+
+    const resolvedType = exact ? exact.type : 'custom';
+    const resolvedLabel = exact ? exact.label : (basePhrase || clean);
+    let resolvedW = parsedW !== null ? parsedW : (exact ? exact.w : 2);
+    let resolvedH = parsedH !== null ? parsedH : (exact ? exact.h : 2);
+    if ((parsedShape === 'corner' || parsedShape === 'round') && parsedW === null && (resolvedType === 'table' || resolvedType === 'desk')) {
+        resolvedW = 2;
+        resolvedH = 2;
     }
-    return { type: 'custom', label: clean, displayName: clean, w: 2, h: 2 };
+    const resolvedColor = parsedColor || (exact && exact.defaultColor) || null;
+    const resolvedShape = parsedShape || 'rect';
+
+    return {
+        type: resolvedType,
+        label: resolvedLabel,
+        displayName: clean,
+        w: resolvedW,
+        h: resolvedH,
+        color: resolvedColor,
+        shape: resolvedShape
+    };
 }
 
 function getRoomsForHouseGridGeometry(houseRecord) {
@@ -1938,12 +2134,12 @@ function findRoomInHouseRecord(house, roomRef) {
         String(r.name || '').toLowerCase() === lower
     );
     if (match) return match;
-    // 2) Синонимы kitchen/hall/room/corridor
+    // 2) Синонимы kitchen/hall/room/corridor (включая падежи)
     const roomSyn = {
-        kitchen: ['кухня', 'kitchen'],
-        hall: ['зал', 'зала', 'гостиная', 'hall', 'parlor'],
-        room: ['комната', 'спальня', 'room', 'bedroom'],
-        corridor: ['коридор', 'corridor', 'hallway']
+        kitchen: ['кухня', 'кухне', 'кухню', 'кухні', 'kitchen'],
+        hall: ['зал', 'зале', 'зала', 'залу', 'залі', 'гостиная', 'гостиной', 'вітальня', 'hall', 'parlor'],
+        room: ['комната', 'комнате', 'комнату', 'кімната', 'спальня', 'спальне', 'спальню', 'room', 'bedroom'],
+        corridor: ['коридор', 'коридоре', 'коридорі', 'corridor', 'hallway']
     };
     for (const group of Object.values(roomSyn)) {
         if (group.includes(lower)) {
@@ -1951,11 +2147,34 @@ function findRoomInHouseRecord(house, roomRef) {
             if (match) return match;
         }
     }
-    // 3) Номер комнаты 1..N
+    // 3) Номер комнаты 1..N (для явно созданных комнат)
     if (/^\d+$/.test(raw)) {
         const idx = parseInt(raw, 10) - 1;
         if (idx >= 0 && idx < house.rooms.length) {
             return house.rooms[idx];
+        }
+    }
+    // 4) Встроенные комнаты по умолчанию (kitchen/hall/room/corridor) для builtin-домов
+    if (house.builtin) {
+        const blueprint = BUILTIN_HOUSE_BLUEPRINTS[house.id] || {};
+        const ql = hlResolveQuadrantLayout(house.quadrantLayout, blueprint.quadrantLayout);
+        const builtinLabels = {
+            kitchen: 'Кухня',
+            hall: 'Зал',
+            room: 'Комната',
+            corridor: 'Коридор'
+        };
+        for (const [key, group] of Object.entries(roomSyn)) {
+            if (group.includes(lower) && ql[key]) {
+                const slotIdx = ql[key][1] * 2 + ql[key][0];
+                return { id: key, name: builtinLabels[key] || key, slotIndex: slotIdx, builtinRoom: true };
+            }
+        }
+        if (/^[1-4]$/.test(lower)) {
+            const slotCoords = [[0, 0], [1, 0], [0, 1], [1, 1]][parseInt(lower, 10) - 1];
+            const key = Object.keys(ql).find(k => ql[k][0] === slotCoords[0] && ql[k][1] === slotCoords[1]) || 'kitchen';
+            const slotIdx = slotCoords[1] * 2 + slotCoords[0];
+            return { id: key, name: builtinLabels[key] || key, slotIndex: slotIdx, builtinRoom: true };
         }
     }
     return null;
@@ -2166,6 +2385,10 @@ window.UserHousesSync = {
     },
     findRoom: findRoomInHouseRecord,
     getThingPreset,
+    parseThingColorInput,
+    parseThingShapeInput,
+    parseMakeSizeArgs,
+    inferBuiltinThingType,
     getGridGeometry: getRoomsForHouseGridGeometry,
     addHouse: async (user, houseRef) => {
         if (!user || user.isGuest || !user.id || user.id === 'guest') {
@@ -2200,6 +2423,38 @@ window.UserHousesSync = {
         applyHouseNavVisibility(user);
         const synced = await syncUserHousesToDb(user, state);
         return { house: newHouse, synced };
+    },
+    renameHouse: async (user, houseRef, newNameInput) => {
+        if (!user || user.isGuest || !user.id || user.id === 'guest') {
+            throw new Error('Требуется авторизация через Google (`login`).');
+        }
+        const cleanRef = String(houseRef || '').trim();
+        const cleanNewName = String(newNameInput || '').trim();
+        if (!cleanRef) throw new Error('Укажите дом, который нужно переименовать.');
+        if (!cleanNewName) throw new Error('Укажите новое название дома.');
+
+        const state = loadUserHousesState(user) || buildDefaultUserHousesState(user);
+        const house = findUserHouseByRef(state.houses, cleanRef);
+        if (!house) {
+            throw new Error(`Дом "${cleanRef}" не найден в вашем аккаунте.`);
+        }
+
+        const dup = state.houses.find(h =>
+            h.id !== house.id &&
+            String(h.name || '').trim().toLowerCase() === cleanNewName.toLowerCase()
+        );
+        if (dup) {
+            throw new Error(`Дом с названием "${dup.name}" уже существует в вашем аккаунте.`);
+        }
+
+        const oldName = house.name;
+        house.name = cleanNewName;
+        state.ts = Date.now();
+        state.updatedAt = new Date(state.ts).toISOString();
+        saveUserHousesStateLocal(user, state);
+        applyHouseNavVisibility(user);
+        const synced = await syncUserHousesToDb(user, state);
+        return { house, oldName, newName: cleanNewName, synced };
     },
     addRoom: async (user, roomName, houseRef) => {
         if (!user || user.isGuest || !user.id || user.id === 'guest') {
@@ -2243,19 +2498,45 @@ window.UserHousesSync = {
         if (!house) {
             throw new Error(`Дом "${houseRef}" не найден в вашем аккаунте.`);
         }
+
+        const headlessRoom = hlLoadHeadlessHouseRoom(user, house);
+        const colsPerSide = (headlessRoom && headlessRoom.colsPerSide)
+            ? headlessRoom.colsPerSide
+            : (((house.rooms && house.rooms.length > 0) ? house.rooms.length : 4) <= 4 ? 2 : Math.max(2, Math.ceil(Math.sqrt(house.rooms.length))));
+
         let room = findRoomInHouseRecord(house, roomRef);
+        let qCol = 0;
+        let qRow = 0;
+        let slotIdx = 0;
+
         if (!room && house.builtin) {
-            // Для встроенного дома root поддерживаем стандартные 4 зоны, создавая привязку виртуально
-            const builtinIdxMap = { kitchen: 0, hall: 1, room: 2, corridor: 3 };
+            const blueprint = BUILTIN_HOUSE_BLUEPRINTS[house.id] || {};
+            const ql = (headlessRoom && headlessRoom.quadrantLayout) ||
+                hlResolveQuadrantLayout(house.quadrantLayout, blueprint.quadrantLayout);
             const lowerRef = String(roomRef || '').trim().toLowerCase();
-            if (lowerRef in builtinIdxMap || ['кухня', 'зал', 'комната', 'коридор', '1', '2', '3', '4'].includes(lowerRef)) {
-                const idx = lowerRef === 'кухня' || lowerRef === '1' || lowerRef === 'kitchen' ? 0
-                    : (lowerRef === 'зал' || lowerRef === '2' || lowerRef === 'hall' ? 1
-                        : (lowerRef === 'комната' || lowerRef === '3' || lowerRef === 'room' ? 2 : 3));
-                const slotNames = ['kitchen', 'hall', 'room', 'corridor'];
-                room = { id: `builtin_${slotNames[idx]}`, name: slotNames[idx], slotIndex: idx };
+            const builtinKeyMap = {
+                kitchen: 'kitchen', кухня: 'kitchen', кухню: 'kitchen',
+                hall: 'hall', зал: 'hall', зала: 'hall', залу: 'hall', гостиная: 'hall', parlor: 'hall',
+                room: 'room', комната: 'room', комнату: 'room', спальня: 'room', кімната: 'room', bedroom: 'room',
+                corridor: 'corridor', коридор: 'corridor', hallway: 'corridor'
+            };
+            let key = builtinKeyMap[lowerRef] || null;
+            if (!key && /^[1-4]$/.test(lowerRef)) {
+                const slotCoords = [[0, 0], [1, 0], [0, 1], [1, 1]][parseInt(lowerRef, 10) - 1];
+                key = Object.keys(ql).find(k => ql[k][0] === slotCoords[0] && ql[k][1] === slotCoords[1]) || 'kitchen';
             }
+            if (key && ql[key]) {
+                qCol = ql[key][0];
+                qRow = ql[key][1];
+                slotIdx = qRow * colsPerSide + qCol;
+                room = { id: `builtin_${key}`, name: key, slotIndex: slotIdx };
+            }
+        } else if (room) {
+            slotIdx = Number(room.slotIndex) || 0;
+            qCol = slotIdx % colsPerSide;
+            qRow = Math.floor(slotIdx / colsPerSide);
         }
+
         if (!room) {
             throw new Error(`Комната "${roomRef}" не найдена в "${house.name}". Сначала создайте комнату: \`Add room\` ➔ \`${roomRef}\` ➔ \`to house\` ➔ \`${house.number || house.name}\`.`);
         }
@@ -2264,24 +2545,22 @@ window.UserHousesSync = {
         const preset = getThingPreset(cleanThing);
         const queueNum = parseInt(String(queueIdInput || '0').replace(/[^\d]/g, ''), 10) || 0;
 
-        // Вычисляем свободное место внутри подквадрата 8×8 этой комнаты
-        const effectiveRooms = (house.rooms && house.rooms.length > 0) ? house.rooms : [{ slotIndex: room.slotIndex || 0 }];
-        const colsPerSide = effectiveRooms.length <= 4 ? 2 : Math.max(2, Math.ceil(Math.sqrt(effectiveRooms.length)));
-        const slotIdx = Number(room.slotIndex) || 0;
-        const qCol = slotIdx % colsPerSide;
-        const qRow = Math.floor(slotIdx / colsPerSide);
+        // Вычисляем свободное место внутри подквадрата 8×8 этой комнаты с учётом ВСЕХ предметов (включая встроенные)
         const minC = qCol * 8;
         const minR = qRow * 8;
         const maxC = minC + 8;
         const maxR = minR + 8;
 
-        const sameHouseThings = house.things;
-        let placedCol = minC + 1;
-        let placedRow = minR + 1;
+        const obstacles = (headlessRoom && Array.isArray(headlessRoom.items) && headlessRoom.items.length > 0)
+            ? headlessRoom.items.filter(it => !it.hidden)
+            : house.things.filter(it => !it.hidden);
+
+        let placedCol = minC;
+        let placedRow = minR;
         let foundSpot = false;
         for (let r = minR; r <= maxR - preset.h && !foundSpot; r++) {
             for (let c = minC; c <= maxC - preset.w && !foundSpot; c++) {
-                const overlaps = sameHouseThings.some(t =>
+                const overlaps = obstacles.some(t =>
                     c < (t.col + t.w) && (c + preset.w) > t.col &&
                     r < (t.row + t.h) && (r + preset.h) > t.row
                 );
@@ -2305,6 +2584,8 @@ window.UserHousesSync = {
             queueId: queueNum,
             w: preset.w,
             h: preset.h,
+            ...(preset.color ? { color: preset.color } : {}),
+            ...(preset.shape && preset.shape !== 'rect' ? { shape: preset.shape } : {}),
             col: placedCol,
             row: placedRow,
             createdAt: new Date().toISOString()
@@ -2315,7 +2596,190 @@ window.UserHousesSync = {
         state.updatedAt = new Date(state.ts).toISOString();
         saveUserHousesStateLocal(user, state);
         const synced = await syncUserHousesToDb(user, state);
-        return { house, room, thing: newThing, synced };
+        return { house, room, thing: newThing, foundSpot, synced };
+    },
+    setThingColor: async (user, houseRef, itemRef, colorInput, liveRoom = null) => {
+        if (!user || user.isGuest || !user.id || user.id === 'guest') {
+            throw new Error('Требуется авторизация через Google (`login`).');
+        }
+        const parsedColor = parseThingColorInput(colorInput);
+        if (!parsedColor) {
+            throw new Error(`Неизвестный цвет "${colorInput}". Доступны: brown, green, blue, red, yellow, white, gray, black, orange, purple или #hex.`);
+        }
+        const state = loadUserHousesState(user) || buildDefaultUserHousesState(user);
+        const house = findUserHouseByRef(state.houses, houseRef);
+        if (!house) throw new Error(`Дом "${houseRef}" не найден в вашем аккаунте.`);
+
+        const room = liveRoom || hlLoadHeadlessHouseRoom(user, house);
+        if (!room) throw new Error(`Не удалось загрузить расстановку дома "${house.name}".`);
+
+        const item = hlResolveItemInRoom(room, itemRef);
+        if (!item) throw new Error(`Предмет "${itemRef}" не найден в "${house.name}".`);
+
+        item.color = parsedColor;
+        if (!item.thingType) item.thingType = inferBuiltinThingType(item.id);
+        item.customStyled = true;
+
+        if (Array.isArray(house.things)) {
+            const userThing = house.things.find(t => t.id === item.id);
+            if (userThing) userThing.color = parsedColor;
+        }
+
+        const nowTs = Date.now();
+        state.ts = nowTs;
+        state.updatedAt = new Date(nowTs).toISOString();
+        saveUserHousesStateLocal(user, state);
+        const cloudOk = await syncUserHousesToDb(user, state);
+        const persisted = await hlPersistRoomLayout(user, house, room, { asyncCloud: false, customTs: nowTs });
+        return { house, room, item, itemName: hlGetItemLabel(item), color: parsedColor, synced: Boolean(cloudOk && persisted.synced) };
+    },
+    setThingShape: async (user, houseRef, itemRef, shapeInput, liveRoom = null, options = {}) => {
+        if (!user || user.isGuest || !user.id || user.id === 'guest') {
+            throw new Error('Требуется авторизация через Google (`login`).');
+        }
+        const parsedShape = parseThingShapeInput(shapeInput);
+        if (!parsedShape) {
+            throw new Error(`Неизвестная форма/размер "${shapeInput}". Примеры: \`1x2\`, \`2x1\`, \`2x2\`, \`1x1\`, \`rect\`, \`corner\`, \`round\`.`);
+        }
+        const state = loadUserHousesState(user) || buildDefaultUserHousesState(user);
+        const house = findUserHouseByRef(state.houses, houseRef);
+        if (!house) throw new Error(`Дом "${houseRef}" не найден в вашем аккаунте.`);
+
+        let targetRoomObj = null;
+        if (options && options.roomRef) {
+            targetRoomObj = findRoomInHouseRecord(house, options.roomRef);
+            if (!targetRoomObj) {
+                const avail = Array.isArray(house.rooms) && house.rooms.length
+                    ? house.rooms.map(r => `"${r.name}"`).join(', ')
+                    : 'kitchen, hall, room, corridor';
+                throw new Error(`Комната "${options.roomRef}" не найдена в "${house.name}". Доступны: ${avail}.`);
+            }
+        }
+
+        const room = liveRoom || hlLoadHeadlessHouseRoom(user, house);
+        if (!room) throw new Error(`Не удалось загрузить расстановку дома "${house.name}".`);
+
+        const item = hlResolveItemInRoom(room, itemRef, targetRoomObj, house);
+        if (!item) {
+            const roomSuffix = targetRoomObj ? ` в комнате "${targetRoomObj.name}"` : '';
+            throw new Error(`Предмет "${itemRef}" не найден${roomSuffix} дома "${house.name}".`);
+        }
+
+        const hasExplicitDims = parsedShape.w !== null && parsedShape.h !== null;
+        let nextBaseW = parsedShape.w !== null ? parsedShape.w : (Number(item.baseW) || Number(item.w) || 2);
+        let nextBaseH = parsedShape.h !== null ? parsedShape.h : (Number(item.baseH) || Number(item.h) || 2);
+        const nextShape = parsedShape.shape || item.shape || 'rect';
+        if ((nextShape === 'corner' || nextShape === 'round') && parsedShape.w === null && (nextBaseW === 2 && nextBaseH === 1 || nextBaseW === 1 && nextBaseH === 2)) {
+            nextBaseW = 2;
+            nextBaseH = 2;
+        }
+
+        // При явном задании размера (X×Y) сбрасываем поворот в 0°, чтобы X всегда был шириной (слева-направо), а Y — высотой (сверху-вниз)
+        const shouldResetRot = hasExplicitDims && !(options && options.resetRot === false);
+        const nextRot = shouldResetRot ? 0 : hlNormalizeRotationDeg(item.rot || 0);
+        const dims = hlGetRotatedDimensions(nextBaseW, nextBaseH, nextRot);
+        const activeOthers = room.items.filter(x => !x.hidden && x.id !== item.id);
+        let nextCol = item.col;
+        let nextRow = item.row;
+
+        if (!item.hidden) {
+            const fitsInPlace = hlCanPlaceItem(room, item.id, nextCol, nextRow, dims.w, dims.h, activeOthers) &&
+                !(room.quadrants && hlStraddlesQuadrantWall(room, nextCol, nextRow, dims.w, dims.h));
+            if (!fitsInPlace) {
+                const tempItem = { ...item, w: dims.w, h: dims.h };
+                const spot = hlFindFreePlacementInRoom(room, tempItem, activeOthers);
+                if (!spot) {
+                    throw new Error(`⚠️ Нет свободного места в комнате для размера ${dims.w}×${dims.h}.`);
+                }
+                nextCol = spot.col;
+                nextRow = spot.row;
+            }
+        }
+
+        item.shape = nextShape;
+        item.baseW = nextBaseW;
+        item.baseH = nextBaseH;
+        item.rot = nextRot;
+        item.w = dims.w;
+        item.h = dims.h;
+        item.col = nextCol;
+        item.row = nextRow;
+        if (!item.thingType) item.thingType = inferBuiltinThingType(item.id);
+        item.customStyled = true;
+
+        if (Array.isArray(house.things)) {
+            const userThing = house.things.find(t => t.id === item.id);
+            if (userThing) {
+                userThing.shape = nextShape;
+                userThing.w = nextBaseW;
+                userThing.h = nextBaseH;
+                userThing.rot = nextRot;
+                userThing.col = nextCol;
+                userThing.row = nextRow;
+            }
+        }
+
+        const nowTs = Date.now();
+        state.ts = nowTs;
+        state.updatedAt = new Date(nowTs).toISOString();
+        saveUserHousesStateLocal(user, state);
+        const cloudOk = await syncUserHousesToDb(user, state);
+        const persisted = await hlPersistRoomLayout(user, house, room, { asyncCloud: false, customTs: nowTs });
+        return {
+            house,
+            targetRoom: targetRoomObj,
+            room,
+            item,
+            itemName: hlGetItemLabel(item),
+            shape: nextShape,
+            w: nextBaseW,
+            h: nextBaseH,
+            rot: nextRot,
+            synced: Boolean(cloudOk && persisted.synced)
+        };
+    },
+    setThingQueue: async (user, houseRef, itemRef, queueInput, liveRoom = null) => {
+        if (!user || user.isGuest || !user.id || user.id === 'guest') {
+            throw new Error('Требуется авторизация через Google (`login`).');
+        }
+        const lowerQ = String(queueInput === undefined || queueInput === null ? '' : queueInput).trim().toLowerCase();
+        let queueNum = 0;
+        if (lowerQ !== '0' && lowerQ !== '-' && lowerQ !== 'none' && lowerQ !== 'нет' && lowerQ !== 'без' && lowerQ !== 'unlink') {
+            if (!/^\d+$/.test(lowerQ)) {
+                throw new Error('⚠️ Укажите числовой номер очереди (например: `2`) или `0` / `-` чтобы отвязать.');
+            }
+            queueNum = parseInt(lowerQ, 10) || 0;
+        }
+        const state = loadUserHousesState(user) || buildDefaultUserHousesState(user);
+        const house = findUserHouseByRef(state.houses, houseRef);
+        if (!house) throw new Error(`Дом "${houseRef}" не найден в вашем аккаунте.`);
+
+        const room = liveRoom || hlLoadHeadlessHouseRoom(user, house);
+        if (!room) throw new Error(`Не удалось загрузить расстановку дома "${house.name}".`);
+
+        const item = hlResolveItemInRoom(room, itemRef);
+        if (!item) throw new Error(`Предмет "${itemRef}" не найден в "${house.name}".`);
+
+        item.queueId = queueNum;
+        if (Array.isArray(house.things)) {
+            const userThing = house.things.find(t => t.id === item.id);
+            if (userThing) userThing.queueId = queueNum;
+        }
+
+        const nowTs = Date.now();
+        state.ts = nowTs;
+        state.updatedAt = new Date(nowTs).toISOString();
+        saveUserHousesStateLocal(user, state);
+        const cloudOk = await syncUserHousesToDb(user, state);
+        const persisted = await hlPersistRoomLayout(user, house, room, { asyncCloud: false, customTs: nowTs });
+        return {
+            house,
+            room,
+            item,
+            itemName: hlGetItemLabel(item),
+            queueId: queueNum,
+            synced: Boolean(cloudOk && persisted.synced)
+        };
     },
     updateThingPositionsFromLayout: (user, houseRef, layoutMap, asyncCloud = true) => {
         if (!user || user.isGuest || !user.id || user.id === 'guest' || !layoutMap || typeof layoutMap !== 'object') return false;
@@ -2329,11 +2793,22 @@ window.UserHousesSync = {
             if (pos && Number.isInteger(pos.col) && Number.isInteger(pos.row)) {
                 const nextRot = ((Math.round((Number(pos.rot) || 0) / 90) * 90) % 360 + 360) % 360;
                 const nextHidden = Boolean(pos.hidden);
-                if (t.col !== pos.col || t.row !== pos.row || (Number(t.rot) || 0) !== nextRot || Boolean(t.hidden) !== nextHidden) {
+                const nextW = (Number(pos.baseW) >= 1 && Number(pos.baseW) <= 8) ? Number(pos.baseW) : (Number(t.w) || 2);
+                const nextH = (Number(pos.baseH) >= 1 && Number(pos.baseH) <= 8) ? Number(pos.baseH) : (Number(t.h) || 2);
+                const nextColor = typeof pos.color === 'string' ? pos.color : t.color;
+                const nextShape = typeof pos.shape === 'string' ? pos.shape : t.shape;
+                const nextQueue = pos.queueId !== undefined ? (Number(pos.queueId) || 0) : (Number(t.queueId) || 0);
+                if (t.col !== pos.col || t.row !== pos.row || (Number(t.rot) || 0) !== nextRot || Boolean(t.hidden) !== nextHidden ||
+                    t.w !== nextW || t.h !== nextH || t.color !== nextColor || t.shape !== nextShape || (Number(t.queueId) || 0) !== nextQueue) {
                     t.col = pos.col;
                     t.row = pos.row;
                     t.rot = nextRot;
                     t.hidden = nextHidden;
+                    t.w = nextW;
+                    t.h = nextH;
+                    if (nextColor) t.color = nextColor;
+                    if (nextShape) t.shape = nextShape;
+                    t.queueId = nextQueue;
                     changed = true;
                 }
             }
@@ -2347,6 +2822,358 @@ window.UserHousesSync = {
             return true;
         }
         return syncUserHousesToDb(user, state);
+    },
+    markHouseReady: async (user, houseRef) => {
+        if (!user || user.isGuest || !user.id || user.id === 'guest') {
+            throw new Error('Требуется авторизация через Google (`login`).');
+        }
+        if (!isAdminUser(user)) {
+            throw new Error('🔒 Завершение настройки дома доступно только администраторам.');
+        }
+        const state = loadUserHousesState(user) || buildDefaultUserHousesState(user);
+        const house = findUserHouseByRef(state.houses, houseRef);
+        if (!house) {
+            throw new Error(`Дом "${houseRef}" не найден в вашем аккаунте.`);
+        }
+        if (house.isReady || house.ready || house.locked) {
+            return { house, alreadyReady: true, synced: true };
+        }
+        house.isReady = true;
+        house.readyAt = new Date().toISOString();
+        state.ts = Date.now();
+        state.updatedAt = house.readyAt;
+        saveUserHousesStateLocal(user, state);
+        const synced = await syncUserHousesToDb(user, state);
+        return { house, alreadyReady: false, synced };
+    },
+    swapRooms: async (user, houseRef, roomARef, roomBRef, liveRoom = null) => {
+        if (!user || user.isGuest || !user.id || user.id === 'guest') {
+            throw new Error('Требуется авторизация через Google (`login`).');
+        }
+        if (!isAdminUser(user)) {
+            throw new Error('🔒 Смена комнат местами (позиционирование дома) — привилегия администраторов.');
+        }
+        const state = loadUserHousesState(user) || buildDefaultUserHousesState(user);
+        const house = findUserHouseByRef(state.houses, houseRef);
+        if (!house) {
+            throw new Error(`Дом "${houseRef}" не найден в вашем аккаунте.`);
+        }
+        if (house.isReady || house.ready || house.locked) {
+            throw new Error(`🔒 Дом "${house.name}" уже готов — менять комнаты местами больше нельзя.`);
+        }
+
+        const room = liveRoom || hlLoadHeadlessHouseRoom(user, house);
+        if (!room) {
+            throw new Error(`Не удалось загрузить расстановку дома "${house.name}".`);
+        }
+
+        const nowTs = Date.now();
+        const nowIso = new Date(nowTs).toISOString();
+
+        if (house.builtin) {
+            const blueprint = BUILTIN_HOUSE_BLUEPRINTS[house.id] || {};
+            const ql = hlResolveQuadrantLayout(
+                (liveRoom && liveRoom.quadrantLayout) || house.quadrantLayout || blueprint.quadrantLayout,
+                blueprint.quadrantLayout
+            );
+            const resolveBuiltinKey = (ref) => {
+                const lower = String(ref || '').trim().toLowerCase();
+                if (!lower) return null;
+                const aliases = {
+                    kitchen: ['kitchen', 'кухня', 'кухню'],
+                    hall: ['hall', 'зал', 'зала', 'залу', 'гостиная', 'parlor'],
+                    room: ['room', 'комната', 'комнату', 'спальня', 'кімната', 'bedroom'],
+                    corridor: ['corridor', 'коридор', 'hallway']
+                };
+                for (const [k, list] of Object.entries(aliases)) {
+                    if (list.includes(lower)) return k;
+                }
+                if (/^[1-4]$/.test(lower)) {
+                    const slotCoords = [[0, 0], [1, 0], [0, 1], [1, 1]][parseInt(lower, 10) - 1];
+                    return Object.keys(ql).find(k => ql[k][0] === slotCoords[0] && ql[k][1] === slotCoords[1]) || null;
+                }
+                return null;
+            };
+
+            const keyA = resolveBuiltinKey(roomARef);
+            const keyB = resolveBuiltinKey(roomBRef);
+            const labelsRu = { kitchen: 'Кухня', hall: 'Зал', room: 'Комната', corridor: 'Коридор' };
+
+            if (!keyA) throw new Error(`Комната "${roomARef}" не найдена (доступны: kitchen, hall, room, corridor).`);
+            if (!keyB) throw new Error(`Комната "${roomBRef}" не найдена (доступны: kitchen, hall, room, corridor).`);
+            if (keyA === keyB) throw new Error('⚠️ Укажите две разные комнаты.');
+
+            const [ax, ay] = ql[keyA];
+            const [bx, by] = ql[keyB];
+            const dxA = (bx - ax) * 8;
+            const dyA = (by - ay) * 8;
+            const dxB = (ax - bx) * 8;
+            const dyB = (ay - by) * 8;
+
+            let movedCount = 0;
+            room.items.forEach(item => {
+                const qx = Math.floor((Number(item.col) || 0) / 8);
+                const qy = Math.floor((Number(item.row) || 0) / 8);
+                if (qx === ax && qy === ay) {
+                    item.col += dxA;
+                    item.row += dyA;
+                    movedCount++;
+                } else if (qx === bx && qy === by) {
+                    item.col += dxB;
+                    item.row += dyB;
+                    movedCount++;
+                }
+            });
+
+            if (Array.isArray(house.things)) {
+                house.things.forEach(t => {
+                    const qx = Math.floor((Number(t.col) || 0) / 8);
+                    const qy = Math.floor((Number(t.row) || 0) / 8);
+                    if (qx === ax && qy === ay) {
+                        t.col += dxA;
+                        t.row += dyA;
+                        t.slotIndex = by * 2 + bx;
+                    } else if (qx === bx && qy === by) {
+                        t.col += dxB;
+                        t.row += dyB;
+                        t.slotIndex = ay * 2 + ax;
+                    }
+                });
+            }
+
+            ql[keyA] = [bx, by];
+            ql[keyB] = [ax, ay];
+            room.quadrantLayout = ql;
+            house.quadrantLayout = ql;
+
+            state.ts = nowTs;
+            state.updatedAt = nowIso;
+            saveUserHousesStateLocal(user, state);
+            const cloudOk = await syncUserHousesToDb(user, state);
+            const persisted = await hlPersistRoomLayout(user, house, room, { asyncCloud: false, customTs: nowTs });
+            return {
+                house,
+                room,
+                roomAName: labelsRu[keyA] || keyA,
+                roomBName: labelsRu[keyB] || keyB,
+                keyA,
+                keyB,
+                movedCount,
+                synced: Boolean(cloudOk && persisted.synced)
+            };
+        }
+
+        // Пользовательский (не встроенный) дом
+        if (!Array.isArray(house.rooms) || house.rooms.length < 2) {
+            throw new Error(`⚠️ В доме "${house.name}" должно быть минимум 2 комнаты для смены местами.`);
+        }
+        house.rooms.forEach((r, idx) => {
+            if (!Number.isInteger(r.slotIndex)) r.slotIndex = idx;
+        });
+
+        const roomA = findRoomInHouseRecord(house, roomARef);
+        const roomB = findRoomInHouseRecord(house, roomBRef);
+        if (!roomA) throw new Error(`Комната "${roomARef}" не найдена в "${house.name}".`);
+        if (!roomB) throw new Error(`Комната "${roomBRef}" не найдена в "${house.name}".`);
+        if (roomA.id === roomB.id) throw new Error('⚠️ Укажите две разные комнаты.');
+
+        const geom = getRoomsForHouseGridGeometry(house);
+        const colsPerSide = geom.colsPerSide || 2;
+        const slotA = Number(roomA.slotIndex);
+        const slotB = Number(roomB.slotIndex);
+        const ax = slotA % colsPerSide;
+        const ay = Math.floor(slotA / colsPerSide);
+        const bx = slotB % colsPerSide;
+        const by = Math.floor(slotB / colsPerSide);
+        const dxA = (bx - ax) * 8;
+        const dyA = (by - ay) * 8;
+        const dxB = (ax - bx) * 8;
+        const dyB = (ay - by) * 8;
+
+        let movedCount = 0;
+        room.items.forEach(item => {
+            const qx = Math.floor((Number(item.col) || 0) / 8);
+            const qy = Math.floor((Number(item.row) || 0) / 8);
+            if (qx === ax && qy === ay) {
+                item.col += dxA;
+                item.row += dyA;
+                movedCount++;
+            } else if (qx === bx && qy === by) {
+                item.col += dxB;
+                item.row += dyB;
+                movedCount++;
+            }
+        });
+
+        if (Array.isArray(house.things)) {
+            house.things.forEach(t => {
+                const qx = Math.floor((Number(t.col) || 0) / 8);
+                const qy = Math.floor((Number(t.row) || 0) / 8);
+                if (t.roomId === roomA.id || (qx === ax && qy === ay)) {
+                    t.col += dxA;
+                    t.row += dyA;
+                    t.slotIndex = slotB;
+                } else if (t.roomId === roomB.id || (qx === bx && qy === by)) {
+                    t.col += dxB;
+                    t.row += dyB;
+                    t.slotIndex = slotA;
+                }
+            });
+        }
+
+        roomA.slotIndex = slotB;
+        roomB.slotIndex = slotA;
+        house.rooms.sort((a, b) => (Number(a.slotIndex) || 0) - (Number(b.slotIndex) || 0));
+
+        state.ts = nowTs;
+        state.updatedAt = nowIso;
+        saveUserHousesStateLocal(user, state);
+        const cloudOk = await syncUserHousesToDb(user, state);
+        const persisted = await hlPersistRoomLayout(user, house, room, { asyncCloud: false, customTs: nowTs });
+        return {
+            house,
+            room,
+            roomAName: roomA.name,
+            roomBName: roomB.name,
+            slotA,
+            slotB,
+            movedCount,
+            synced: Boolean(cloudOk && persisted.synced)
+        };
+    },
+    rotateRoom: async (user, houseRef, roomRef, deltaDegInput, liveRoom = null) => {
+        if (!user || user.isGuest || !user.id || user.id === 'guest') {
+            throw new Error('Требуется авторизация через Google (`login`).');
+        }
+        const deltaDeg = Number(deltaDegInput) >= 0 ? 90 : -90;
+        const state = loadUserHousesState(user) || buildDefaultUserHousesState(user);
+        const house = findUserHouseByRef(state.houses, houseRef);
+        if (!house) {
+            throw new Error(`Дом "${houseRef}" не найден в вашем аккаунте.`);
+        }
+
+        const room = liveRoom || hlLoadHeadlessHouseRoom(user, house);
+        if (!room) {
+            throw new Error(`Не удалось загрузить расстановку дома "${house.name}".`);
+        }
+
+        let targetQx = 0;
+        let targetQy = 0;
+        let roomDisplayName = String(roomRef || '').trim();
+        let targetRoomObj = null;
+
+        if (house.builtin) {
+            const blueprint = BUILTIN_HOUSE_BLUEPRINTS[house.id] || {};
+            const ql = hlResolveQuadrantLayout(
+                (liveRoom && liveRoom.quadrantLayout) || room.quadrantLayout || house.quadrantLayout || blueprint.quadrantLayout,
+                blueprint.quadrantLayout
+            );
+            const lower = roomDisplayName.toLowerCase();
+            const aliases = {
+                kitchen: ['kitchen', 'кухня', 'кухню'],
+                hall: ['hall', 'зал', 'зала', 'залу', 'гостиная', 'parlor'],
+                room: ['room', 'комната', 'комнату', 'спальня', 'кімната', 'bedroom'],
+                corridor: ['corridor', 'коридор', 'hallway']
+            };
+            let matchedKey = null;
+            for (const [k, list] of Object.entries(aliases)) {
+                if (list.includes(lower)) {
+                    matchedKey = k;
+                    break;
+                }
+            }
+            if (!matchedKey && /^[1-4]$/.test(lower)) {
+                const slotCoords = [[0, 0], [1, 0], [0, 1], [1, 1]][parseInt(lower, 10) - 1];
+                matchedKey = Object.keys(ql).find(k => ql[k][0] === slotCoords[0] && ql[k][1] === slotCoords[1]) || null;
+            }
+            if (!matchedKey || !ql[matchedKey]) {
+                throw new Error(`Комната "${roomRef}" не найдена (доступны: kitchen, hall, room, corridor).`);
+            }
+            const labelsRu = { kitchen: 'Кухня', hall: 'Зал', room: 'Комната', corridor: 'Коридор' };
+            targetQx = ql[matchedKey][0];
+            targetQy = ql[matchedKey][1];
+            roomDisplayName = labelsRu[matchedKey] || matchedKey;
+        } else {
+            if (!Array.isArray(house.rooms) || house.rooms.length === 0) {
+                throw new Error(`В доме "${house.name}" пока нет комнат.`);
+            }
+            house.rooms.forEach((r, idx) => {
+                if (!Number.isInteger(r.slotIndex)) r.slotIndex = idx;
+            });
+            targetRoomObj = findRoomInHouseRecord(house, roomRef);
+            if (!targetRoomObj) {
+                throw new Error(`Комната "${roomRef}" не найдена в "${house.name}".`);
+            }
+            const geom = getRoomsForHouseGridGeometry(house);
+            const colsPerSide = geom.colsPerSide || 2;
+            const slotIdx = Number(targetRoomObj.slotIndex) || 0;
+            targetQx = slotIdx % colsPerSide;
+            targetQy = Math.floor(slotIdx / colsPerSide);
+            roomDisplayName = targetRoomObj.name;
+        }
+
+        const originX = targetQx * 8;
+        const originY = targetQy * 8;
+        const nowTs = Date.now();
+        const nowIso = new Date(nowTs).toISOString();
+
+        let rotatedCount = 0;
+        const rotatedMap = new Map();
+
+        room.items.forEach(item => {
+            const oldW = Number(item.w) || 1;
+            const oldH = Number(item.h) || 1;
+            const itemQx = Math.floor((Number(item.col) + oldW * 0.5) / 8);
+            const itemQy = Math.floor((Number(item.row) + oldH * 0.5) / 8);
+            if (itemQx !== targetQx || itemQy !== targetQy) return;
+
+            const localX = (Number(item.col) || 0) - originX;
+            const localY = (Number(item.row) || 0) - originY;
+            const nextRot = hlNormalizeRotationDeg((item.rot || 0) + deltaDeg);
+            const nextDims = hlGetRotatedDimensions(item.baseW || oldW, item.baseH || oldH, nextRot);
+
+            let newLocalX = deltaDeg > 0 ? (8 - localY - oldH) : localY;
+            let newLocalY = deltaDeg > 0 ? localX : (8 - localX - oldW);
+            newLocalX = Math.max(0, Math.min(8 - nextDims.w, newLocalX));
+            newLocalY = Math.max(0, Math.min(8 - nextDims.h, newLocalY));
+
+            item.col = originX + newLocalX;
+            item.row = originY + newLocalY;
+            item.rot = nextDims.rot;
+            item.w = nextDims.w;
+            item.h = nextDims.h;
+            rotatedCount++;
+            rotatedMap.set(item.id, { col: item.col, row: item.row, rot: item.rot });
+        });
+
+        let synced = true;
+        if (rotatedCount > 0) {
+            if (Array.isArray(house.things)) {
+                house.things.forEach(t => {
+                    const upd = rotatedMap.get(t.id);
+                    if (upd) {
+                        t.col = upd.col;
+                        t.row = upd.row;
+                        t.rot = upd.rot;
+                    }
+                });
+            }
+            state.ts = nowTs;
+            state.updatedAt = nowIso;
+            saveUserHousesStateLocal(user, state);
+            const cloudOk = await syncUserHousesToDb(user, state);
+            const persisted = await hlPersistRoomLayout(user, house, room, { asyncCloud: false, customTs: nowTs });
+            synced = Boolean(cloudOk && persisted.synced);
+        }
+
+        return {
+            house,
+            room,
+            roomName: roomDisplayName,
+            deltaDeg,
+            rotatedCount,
+            synced
+        };
     }
 };
 
@@ -2361,21 +3188,28 @@ const BUILTIN_HOUSE_BLUEPRINTS = {
         storageKey: 'room_layout_house1_square_v1',
         tsKey: 'room_layout_house1_square_v1_ts',
         quadrants: true,
+        quadrantLayout: {
+            kitchen: [0, 0],
+            hall: [1, 0],
+            room: [0, 1],
+            corridor: [1, 1]
+        },
         gridW: 16,
         gridH: 16,
         colsPerSide: 2,
         rowsPerSide: 2,
         items: [
-            { id: 'washer', label: 'Стиральная машина', w: 2, h: 2, col: 0, row: 0 },
-            { id: 'stove', label: 'Печь', w: 2, h: 2, col: 5, row: 0 },
-            { id: 'table', label: 'Стол', w: 2, h: 2, col: 0, row: 5 },
-            { id: 'multicooker', label: 'Мультиварка', w: 1, h: 1, col: 3, row: 5 },
-            { id: 'tv', label: 'Телевизор', w: 2, h: 2, col: 9, row: 0 },
-            { id: 'router', label: 'Роутер', w: 1, h: 1, col: 14, row: 0 },
-            { id: 'hall_table', label: 'Коричневый столик', w: 2, h: 2, col: 9, row: 3 },
-            { id: 'armchair', label: 'Кресло', w: 2, h: 2, col: 13, row: 3 },
-            { id: 'sofa', label: 'Диван', w: 5, h: 2, col: 8, row: 6 },
-            { id: 'armchair2', label: 'Кресло справа', w: 2, h: 2, col: 13, row: 6 }
+            { id: 'washer', label: 'Стиральная машина', thingType: 'washer', w: 2, h: 2, col: 0, row: 0 },
+            { id: 'stove', label: 'Печь', thingType: 'stove', w: 2, h: 2, col: 5, row: 0 },
+            { id: 'table', label: 'Зелёный столик', thingType: 'table', color: 'green', shape: 'rect', w: 2, h: 1, col: 0, row: 5 },
+            { id: 'table_brown', label: 'Коричневый столик', thingType: 'table', color: 'brown', shape: 'rect', w: 2, h: 1, col: 0, row: 6 },
+            { id: 'multicooker', label: 'Мультиварка', thingType: 'multicooker', w: 1, h: 1, col: 3, row: 5 },
+            { id: 'tv', label: 'Телевизор', thingType: 'tv', w: 2, h: 2, col: 9, row: 0 },
+            { id: 'router', label: 'Роутер', thingType: 'router', w: 1, h: 1, col: 14, row: 0 },
+            { id: 'hall_table', label: 'Коричневый столик', thingType: 'table', color: 'brown', shape: 'rect', w: 2, h: 1, col: 9, row: 3 },
+            { id: 'armchair', label: 'Кресло', thingType: 'armchair', w: 2, h: 2, col: 13, row: 3 },
+            { id: 'sofa', label: 'Диван', thingType: 'sofa', w: 5, h: 2, col: 8, row: 6 },
+            { id: 'armchair2', label: 'Кресло справа', thingType: 'armchair', w: 2, h: 2, col: 13, row: 6 }
         ]
     },
     house2: {
@@ -2383,26 +3217,32 @@ const BUILTIN_HOUSE_BLUEPRINTS = {
         storageKey: 'room_layout_house2_square_v1',
         tsKey: 'room_layout_house2_square_v1_ts',
         quadrants: true,
+        quadrantLayout: {
+            kitchen: [0, 0],
+            hall: [1, 0],
+            room: [0, 1],
+            corridor: [1, 1]
+        },
         gridW: 16,
         gridH: 16,
         colsPerSide: 2,
         rowsPerSide: 2,
         items: [
-            { id: 'fridge2', label: 'Холодильник', w: 2, h: 2, col: 0, row: 0 },
-            { id: 'stove2', label: 'Печь', w: 2, h: 2, col: 2, row: 0 },
-            { id: 'boiler2', label: 'Бойлер', w: 2, h: 2, col: 0, row: 3 },
-            { id: 'table2', label: 'Стол', w: 2, h: 2, col: 2, row: 3 },
-            { id: 'closet2_1', label: 'Шкаф 1', w: 2, h: 2, col: 8, row: 0 },
-            { id: 'closet2_2', label: 'Шкаф 2', w: 2, h: 2, col: 10, row: 0 },
-            { id: 'closet2_3', label: 'Шкаф 3', w: 2, h: 2, col: 12, row: 0 },
-            { id: 'closet2_4', label: 'Шкаф 4', w: 2, h: 2, col: 8, row: 3 },
-            { id: 'hall2_table', label: 'Стол в зале', w: 2, h: 2, col: 11, row: 3 },
-            { id: 'armchair_h2', label: 'Кресло', w: 2, h: 2, col: 10, row: 5 },
-            { id: 'laptop2', label: 'Ноутбук', w: 1, h: 1, col: 13, row: 2 },
-            { id: 'desk2', label: 'Столик', w: 1, h: 2, col: 14, row: 2 },
-            { id: 'window2_1', label: 'Правое окно 1', w: 1, h: 2, col: 15, row: 2 },
-            { id: 'window2_2', label: 'Правое окно 2', w: 1, h: 2, col: 15, row: 5 },
-            { id: 'bed2', label: 'Двуспальная кровать', w: 2, h: 2, col: 1, row: 10 }
+            { id: 'fridge2', label: 'Холодильник', thingType: 'fridge', w: 2, h: 2, col: 0, row: 0 },
+            { id: 'stove2', label: 'Печь', thingType: 'stove', w: 2, h: 2, col: 2, row: 0 },
+            { id: 'boiler2', label: 'Бойлер', thingType: 'boiler', w: 2, h: 2, col: 0, row: 3 },
+            { id: 'table2', label: 'Столик', thingType: 'table', color: 'brown', shape: 'rect', w: 2, h: 1, col: 2, row: 3 },
+            { id: 'closet2_1', label: 'Шкаф 1', thingType: 'closet', w: 2, h: 2, col: 8, row: 0 },
+            { id: 'closet2_2', label: 'Шкаф 2', thingType: 'closet', w: 2, h: 2, col: 10, row: 0 },
+            { id: 'closet2_3', label: 'Шкаф 3', thingType: 'closet', w: 2, h: 2, col: 12, row: 0 },
+            { id: 'closet2_4', label: 'Шкаф 4', thingType: 'closet', w: 2, h: 2, col: 8, row: 3 },
+            { id: 'hall2_table', label: 'Столик в зале', thingType: 'table', color: 'brown', shape: 'rect', w: 2, h: 1, col: 11, row: 3 },
+            { id: 'armchair_h2', label: 'Кресло', thingType: 'armchair', w: 2, h: 2, col: 10, row: 5 },
+            { id: 'laptop2', label: 'Ноутбук', thingType: 'laptop', w: 1, h: 1, col: 13, row: 2 },
+            { id: 'desk2', label: 'Столик у окна', thingType: 'table', color: 'brown', shape: 'rect', w: 1, h: 2, col: 14, row: 2 },
+            { id: 'window2_1', label: 'Правое окно 1', thingType: 'window', w: 1, h: 2, col: 15, row: 2 },
+            { id: 'window2_2', label: 'Правое окно 2', thingType: 'window', w: 1, h: 2, col: 15, row: 5 },
+            { id: 'bed2', label: 'Двуспальная кровать', thingType: 'bed', w: 2, h: 2, col: 1, row: 10 }
         ]
     },
     house3: {
@@ -2410,29 +3250,61 @@ const BUILTIN_HOUSE_BLUEPRINTS = {
         storageKey: 'room_layout_house3_square_v2',
         tsKey: 'room_layout_house3_square_v2_ts',
         quadrants: true,
+        quadrantLayout: {
+            kitchen: [0, 0],
+            corridor: [1, 0],
+            hall: [0, 1],
+            room: [1, 1]
+        },
         gridW: 16,
         gridH: 16,
         colsPerSide: 2,
         rowsPerSide: 2,
         items: [
-            { id: 'washer3', label: 'Стиральная машина', w: 2, h: 2, col: 0, row: 0 },
-            { id: 'stove3', label: 'Печь', w: 2, h: 2, col: 3, row: 0 },
-            { id: 'fridge3', label: 'Холодильник', w: 2, h: 2, col: 5, row: 0 },
-            { id: 'window3', label: 'Окно', w: 1, h: 2, col: 2, row: 2 },
-            { id: 'table3', label: 'Стол', w: 2, h: 2, col: 0, row: 4 },
-            { id: 'laptop3', label: 'Ноутбук', w: 1, h: 1, col: 0, row: 8 },
-            { id: 'conditioner3', label: 'Кондиционер', w: 2, h: 1, col: 2, row: 8 },
-            { id: 'radiator3', label: 'Батарея', w: 1, h: 2, col: 4, row: 8 },
-            { id: 'router3', label: 'Роутер', w: 1, h: 1, col: 6, row: 8 },
-            { id: 'hall3_table', label: 'Угловой стол', w: 2, h: 2, col: 0, row: 10 },
-            { id: 'bed3', label: 'Кровать', w: 3, h: 3, col: 4, row: 10 },
-            { id: 'room3_closet', label: 'Шкаф', w: 2, h: 2, col: 8, row: 8 },
-            { id: 'room3_radiator', label: 'Батарея в комнате', w: 2, h: 1, col: 13, row: 8 },
-            { id: 'room3_window', label: 'Окно в комнате', w: 1, h: 2, col: 15, row: 9 },
-            { id: 'room3_bed', label: 'Одноместная кровать', w: 1, h: 2, col: 9, row: 11 }
+            { id: 'washer3', label: 'Стиральная машина', thingType: 'washer', w: 2, h: 2, col: 0, row: 0 },
+            { id: 'stove3', label: 'Печь', thingType: 'stove', w: 2, h: 2, col: 3, row: 0 },
+            { id: 'fridge3', label: 'Холодильник', thingType: 'fridge', w: 2, h: 2, col: 5, row: 0 },
+            { id: 'window3', label: 'Окно', thingType: 'window', w: 1, h: 2, col: 2, row: 2 },
+            { id: 'table3', label: 'Столик', thingType: 'table', color: 'green', shape: 'rect', w: 2, h: 1, col: 0, row: 4 },
+            { id: 'laptop3', label: 'Ноутбук', thingType: 'laptop', w: 1, h: 1, col: 0, row: 8 },
+            { id: 'conditioner3', label: 'Кондиционер', thingType: 'conditioner', w: 2, h: 1, col: 2, row: 8 },
+            { id: 'radiator3', label: 'Батарея', thingType: 'radiator', w: 1, h: 2, col: 4, row: 8 },
+            { id: 'router3', label: 'Роутер', thingType: 'router', w: 1, h: 1, col: 6, row: 8 },
+            { id: 'hall3_table', label: 'Угловой стол', thingType: 'table', color: 'brown', shape: 'corner', w: 2, h: 2, col: 0, row: 10 },
+            { id: 'bed3', label: 'Кровать', thingType: 'bed', w: 3, h: 3, col: 4, row: 10 },
+            { id: 'room3_closet', label: 'Шкаф', thingType: 'closet', w: 2, h: 2, col: 8, row: 8 },
+            { id: 'room3_radiator', label: 'Батарея в комнате', thingType: 'radiator', w: 2, h: 1, col: 13, row: 8 },
+            { id: 'room3_window', label: 'Окно в комнате', thingType: 'window', w: 1, h: 2, col: 15, row: 9 },
+            { id: 'room3_bed', label: 'Одноместная кровать', thingType: 'bed', w: 1, h: 2, col: 9, row: 11 }
         ]
     }
 };
+
+function hlResolveQuadrantLayout(customLayout, baseLayout = null) {
+    const def = baseLayout || {
+        kitchen: [0, 0],
+        hall: [1, 0],
+        room: [0, 1],
+        corridor: [1, 1]
+    };
+    const result = {
+        kitchen: [...(def.kitchen || [0, 0])],
+        hall: [...(def.hall || [1, 0])],
+        room: [...(def.room || [0, 1])],
+        corridor: [...(def.corridor || [1, 1])]
+    };
+    if (customLayout && typeof customLayout === 'object') {
+        Object.keys(result).forEach(key => {
+            const coords = customLayout[key];
+            if (Array.isArray(coords) && coords.length === 2 &&
+                (coords[0] === 0 || coords[0] === 1) &&
+                (coords[1] === 0 || coords[1] === 1)) {
+                result[key] = [coords[0], coords[1]];
+            }
+        });
+    }
+    return result;
+}
 
 function hlNormalizeRotationDeg(val) {
     const n = Number(val);
@@ -2564,9 +3436,42 @@ function hlApplyLayoutMap(room, savedMap) {
     const accepted = [];
     let changed = false;
 
+    if (savedMap.__quadrantLayout && typeof savedMap.__quadrantLayout === 'object' && !room.dynamicRooms) {
+        const nextQl = hlResolveQuadrantLayout(savedMap.__quadrantLayout, room.quadrantLayout);
+        if (JSON.stringify(nextQl) !== JSON.stringify(room.quadrantLayout)) {
+            changed = true;
+        }
+        room.quadrantLayout = nextQl;
+    }
+
     for (const item of room.items) {
         const candidate = savedMap[item.id];
         if (candidate && typeof candidate === 'object') {
+            if (Number(candidate.baseW) >= 1 && Number(candidate.baseW) <= 8) {
+                if (item.baseW !== Number(candidate.baseW)) changed = true;
+                item.baseW = Number(candidate.baseW);
+                item.customStyled = true;
+            }
+            if (Number(candidate.baseH) >= 1 && Number(candidate.baseH) <= 8) {
+                if (item.baseH !== Number(candidate.baseH)) changed = true;
+                item.baseH = Number(candidate.baseH);
+                item.customStyled = true;
+            }
+            if (typeof candidate.color === 'string' && candidate.color) {
+                if (item.color !== candidate.color) changed = true;
+                item.color = candidate.color;
+                item.customStyled = true;
+            }
+            if (typeof candidate.shape === 'string' && candidate.shape) {
+                if (item.shape !== candidate.shape) changed = true;
+                item.shape = candidate.shape;
+                item.customStyled = true;
+            }
+            if (candidate.queueId !== undefined && Number.isFinite(Number(candidate.queueId))) {
+                const nextQ = Math.max(0, parseInt(candidate.queueId, 10) || 0);
+                if (item.queueId !== nextQ) changed = true;
+                item.queueId = nextQ;
+            }
             const nextRot = hlNormalizeRotationDeg(candidate.rot);
             const nextHidden = Boolean(candidate.hidden);
             const dims = hlGetRotatedDimensions(item.baseW, item.baseH, nextRot);
@@ -2652,8 +3557,16 @@ function hlGetCurrentLayoutPayload(room) {
         const entry = { col: item.col, row: item.row };
         if (item.rot) entry.rot = item.rot;
         if (item.hidden) entry.hidden = true;
+        if (item.color && (item.customStyled || item.isUserThing)) entry.color = item.color;
+        if (item.shape && (item.customStyled || item.shape !== 'rect')) entry.shape = item.shape;
+        if (item.customStyled && item.baseW) entry.baseW = item.baseW;
+        if (item.customStyled && item.baseH) entry.baseH = item.baseH;
+        if (item.queueId !== undefined) entry.queueId = Number(item.queueId) || 0;
         payload[item.id] = entry;
     });
+    if (room && room.quadrantLayout && !room.dynamicRooms) {
+        payload.__quadrantLayout = hlResolveQuadrantLayout(room.quadrantLayout);
+    }
     return payload;
 }
 
@@ -2672,24 +3585,303 @@ function hlGetItemLabel(item) {
     return item.label || item.name || item.id || 'Предмет';
 }
 
-function hlResolveItemInRoom(room, itemRef) {
+const ITEM_TYPE_SEARCH_SYNONYMS = {
+    bed: ['кровать', 'кроватка', 'ліжко', 'bed', 'beds', 'двуспальная', 'одноместная'],
+    table: ['стол', 'столик', 'стіл', 'table', 'desk', 'угловой'],
+    closet: ['шкаф', 'шкафчик', 'шафа', 'closet', 'wardrobe', 'cabinet'],
+    sofa: ['диван', 'софа', 'sofa', 'couch'],
+    armchair: ['кресло', 'крісло', 'armchair', 'chair'],
+    fridge: ['холодильник', 'fridge', 'refrigerator'],
+    stove: ['плита', 'печь', 'піч', 'stove', 'oven'],
+    washer: ['стиралка', 'стиральная', 'washer', 'washing'],
+    boiler: ['бойлер', 'boiler'],
+    multicooker: ['мультиварка', 'multicooker'],
+    laptop: ['ноутбук', 'компьютер', 'ноут', 'laptop', 'pc', 'computer'],
+    tv: ['телевизор', 'телек', 'тв', 'tv', 'television'],
+    router: ['роутер', 'маршрутизатор', 'router'],
+    radiator: ['батарея', 'радиатор', 'radiator'],
+    window: ['окно', 'вікно', 'window'],
+    conditioner: ['кондиционер', 'кондей', 'conditioner']
+};
+
+function hlGetRoomQuadBounds(room, targetRoomObj, houseRecord) {
+    if (!room || !targetRoomObj) return null;
+    if (room.dynamicRooms && Array.isArray(room.dynamicRooms)) {
+        const idx = room.dynamicRooms.findIndex(r => r && (r.id === targetRoomObj.id || String(r.name || '').toLowerCase() === String(targetRoomObj.name || '').toLowerCase()));
+        if (idx === -1) return null;
+        const rObj = room.dynamicRooms[idx];
+        const slotIdx = (rObj && Number.isInteger(rObj.slotIndex)) ? rObj.slotIndex : idx;
+        const colsPerSide = room.colsPerSide || Math.max(2, Math.round((room.gridW || 16) / 8));
+        const qCol = slotIdx % colsPerSide;
+        const qRow = Math.floor(slotIdx / colsPerSide);
+        return { minCol: qCol * 8, maxCol: qCol * 8 + 7, minRow: qRow * 8, maxRow: qRow * 8 + 7 };
+    }
+    const rId = String(targetRoomObj.id || '').toLowerCase().replace(/^builtin_/, '');
+    const rName = String(targetRoomObj.name || '').toLowerCase();
+    let qKey = null;
+    if (rId === 'kitchen' || rName.includes('кух')) qKey = 'kitchen';
+    else if (rId === 'hall' || rName.includes('зал') || rName.includes('гостин')) qKey = 'hall';
+    else if (rId === 'room' || rName.includes('комнат') || rName.includes('спальн')) qKey = 'room';
+    else if (rId === 'corridor' || rName.includes('коридор')) qKey = 'corridor';
+    if (!qKey) return null;
+    const ql = hlResolveQuadrantLayout(room.quadrantLayout || (houseRecord && houseRecord.quadrantLayout));
+    const coords = ql[qKey];
+    if (!Array.isArray(coords) || coords.length !== 2) return null;
+    return {
+        minCol: coords[0] * 8,
+        maxCol: coords[0] * 8 + 7,
+        minRow: coords[1] * 8,
+        maxRow: coords[1] * 8 + 7
+    };
+}
+
+function hlIsItemInBounds(item, bounds) {
+    if (!item || !bounds) return true;
+    const c = Number(item.col) || 0;
+    const r = Number(item.row) || 0;
+    return c >= bounds.minCol && c <= bounds.maxCol && r >= bounds.minRow && r <= bounds.maxRow;
+}
+
+function hlInferQueryTypes(tokens) {
+    const matched = new Set();
+    tokens.forEach(tok => {
+        for (const [tKey, words] of Object.entries(ITEM_TYPE_SEARCH_SYNONYMS)) {
+            if (words.includes(tok)) matched.add(tKey);
+        }
+    });
+    return matched;
+}
+
+const ARTICLE_PLURAL_NOUNS = new Set([
+    'notes', 'houses', 'homes', 'rooms', 'things', 'items', 'objects', 'commands',
+    'timers', 'buildings', 'tasks', 'aliases', 'missions', 'reports', 'issues',
+    'users', 'logs', 'folders', 'directories', 'files', 'themes', 'languages',
+    'accelerators', 'boosts', 'queues', 'cookies', 'sessions'
+]);
+
+const ARTICLE_UNCOUNTABLE_OR_UNIQUE = new Set([
+    'history', 'trash', 'inventory', 'dashboard', 'status', 'profile', 'account',
+    'support', 'last', 'main', 'home', 'terminal', 'console', 'admin', 'root',
+    'dark', 'light', 'english', 'russian', 'ukrainian'
+]);
+
+const ARTICLE_FORBIDDEN_VERBS = new Set([
+    'add', 'open', 'make', 'edit', 'pin', 'unpin', 'del', 'delete', 'rm', 'remove',
+    'show', 'list', 'ls', 'read', 'cat', 'find', 'check', 'sync', 'refresh', 'update',
+    'cancel', 'undo', 'rename', 'rotate', 'swap', 'move', 'hide', 'unhide', 'color',
+    'shape', 'queue', 'finish', 'complete', 'done', 'take', 'resolve', 'close',
+    'clear', 'cls', 'help', 'login', 'logout', 'exit', 'go', 'back', 'return',
+    'select', 'set', 'switch', 'toggle', 'restore', 'create', 'write', 'mkdir',
+    'whoami', 'date', 'time', 'calc', 'ping', 'echo'
+]);
+
+function startsWithEnglishVowelSound(word) {
+    const w = String(word || '').toLowerCase().replace(/^[^a-z]+/, '');
+    if (!w) return false;
+    // Consonant /j/ or /w/ sound despite vowel spelling
+    if (/^(?:user|users|use|used|using|unit|units|uni|uniform|unique|union|universe|university|utility|ukulele|euro|eulogy|one|once)/.test(w)) {
+        return false;
+    }
+    // Silent 'h' -> vowel sound
+    if (/^(?:hour|hours|honor|honour|honest|heir|herb)/.test(w)) {
+        return true;
+    }
+    return /^[aeiou]/.test(w);
+}
+
+function isValidEnglishArticlePair(article, nextWord, restWords = []) {
+    const art = String(article || '').toLowerCase().trim();
+    const w = String(nextWord || '').toLowerCase().trim();
+    if (!art || !w) return false;
+    if (!['a', 'an', 'the'].includes(art)) return false;
+
+    // Never strip/accept articles before verbs or numeric-only tokens
+    if (ARTICLE_FORBIDDEN_VERBS.has(w) || /^\d+$/.test(w)) return false;
+
+    const secondWord = String((Array.isArray(restWords) && restWords[0]) || '').toLowerCase().trim();
+    const isNumberedEntity = Boolean(secondWord && /^\d+$/.test(secondWord));
+
+    if (art === 'the') {
+        return true;
+    }
+
+    // For indefinite articles 'a' and 'an':
+    // Never valid before plurals, uncountable/unique nouns, or numbered entities like "a house 2" / "an item 3"
+    if (ARTICLE_PLURAL_NOUNS.has(w)) return false;
+    if (ARTICLE_UNCOUNTABLE_OR_UNIQUE.has(w)) return false;
+    if (isNumberedEntity) return false;
+
+    const vowelSound = startsWithEnglishVowelSound(w);
+    if (art === 'an') return vowelSound;
+    if (art === 'a') return !vowelSound;
+    return false;
+}
+
+function stripLeadingValidArticle(text, opts = {}) {
+    const raw = String(text || '').trim();
+    if (!raw) return raw;
+    const tokens = raw.split(/\s+/);
+    if (tokens.length < 2) return raw;
+    const firstLower = tokens[0].toLowerCase();
+    if (!['a', 'an', 'the'].includes(firstLower)) return raw;
+
+    // Allow 'the' even for custom/non-ASCII names like "the Чапаева" or "the Кровать 2" when structural
+    const nextTok = tokens[1];
+    const hasLatinWord = /[a-z]/i.test(nextTok);
+    if (!hasLatinWord) {
+        if (firstLower === 'the' && opts.allowTheBeforeAny !== false && !/^\d+$/.test(nextTok)) {
+            return tokens.slice(1).join(' ').trim();
+        }
+        return raw;
+    }
+
+    if (isValidEnglishArticlePair(firstLower, nextTok, tokens.slice(2))) {
+        return tokens.slice(1).join(' ').trim();
+    }
+    return raw;
+}
+
+if (typeof window !== 'undefined') {
+    window.isValidEnglishArticlePair = isValidEnglishArticlePair;
+    window.stripLeadingValidArticle = stripLeadingValidArticle;
+}
+
+function parseMakeSizeArgs(rawArgs) {
+    let str = String(rawArgs || '').trim();
+    if (!str) return null;
+
+    // 1. Выделяем размер в конце после equal / equals / = / to / is (или просто <X>x<Y> в конце)
+    let sizeRaw = '';
+    let left = str;
+    const eqMatch = str.match(/^(.*?)\s+(?:equal(?:\s+to)?|equals|=|to|is|равно|рівно)\s+([^\s]+(?:\s+[^\s]+)?)\s*$/i);
+    if (eqMatch) {
+        left = eqMatch[1].trim();
+        sizeRaw = eqMatch[2].trim();
+    } else {
+        const inlineEq = str.match(/^(.*?)\s*=\s*([^\s]+(?:\s+[^\s]+)?)\s*$/);
+        if (inlineEq) {
+            left = inlineEq[1].trim();
+            sizeRaw = inlineEq[2].trim();
+        } else {
+            const tailSize = str.match(/^(.*?)\s+([1-8]\s*[*xх×]\s*[1-8])\s*$/i);
+            if (tailSize) {
+                left = tailSize[1].trim();
+                sizeRaw = tailSize[2].trim();
+            }
+        }
+    }
+
+    if (!sizeRaw) return null;
+
+    // 2. Разделяем left по ключевым фразам комнаты и дома (в любом порядке, включая артикли a/the)
+    const markers = [];
+    const markerRe = /(?:^|\s)(in\s+(?:the|a)\s+room|in\s+room|of\s+(?:the|a)\s+room|of\s+room|в\s+комнате|в\s+кімнаті|of\s+(?:the|a)\s+house|of\s+house|in\s+(?:the|a)\s+house|in\s+house|of\s+(?:the|a)\s+home|of\s+home|in\s+(?:the|a)\s+home|in\s+home|дома|в\s+доме)(?=\s|$)/gi;
+    let m;
+    while ((m = markerRe.exec(left)) !== null) {
+        const fullMatch = m[0];
+        const phraseStart = m.index + (fullMatch.length - fullMatch.trimStart().length);
+        const phraseEnd = m.index + fullMatch.length;
+        const kind = /room|комнат|кімнат/i.test(m[1]) ? 'room' : 'house';
+        markers.push({ kind, start: phraseStart, end: phraseEnd });
+    }
+
+    let itemRef = '';
+    let roomRef = '';
+    let houseRef = '';
+
+    if (markers.length === 0) {
+        itemRef = left.trim();
+    } else {
+        itemRef = left.slice(0, markers[0].start).trim();
+        for (let i = 0; i < markers.length; i++) {
+            const cur = markers[i];
+            const nextStart = (i + 1 < markers.length) ? markers[i + 1].start : left.length;
+            const segmentVal = left.slice(cur.end, nextStart).trim();
+            if (cur.kind === 'room' && !roomRef) roomRef = segmentVal;
+            if (cur.kind === 'house' && !houseRef) houseRef = segmentVal;
+        }
+    }
+
+    itemRef = itemRef.replace(/^(?:of|for)\s+/i, '').trim();
+    itemRef = stripLeadingValidArticle(itemRef);
+    roomRef = stripLeadingValidArticle(roomRef);
+    houseRef = stripLeadingValidArticle(houseRef);
+    return { itemRef, roomRef, houseRef, sizeRaw };
+}
+
+function hlResolveItemInRoom(room, itemRef, targetRoomObj = null, houseRecord = null) {
     if (!room || !Array.isArray(room.items) || !itemRef) return null;
     const raw = String(itemRef || '').trim();
     if (!raw) return null;
     const lower = raw.toLowerCase();
 
-    let match = room.items.find(i => String(i.id || '').toLowerCase() === lower);
+    const bounds = targetRoomObj ? hlGetRoomQuadBounds(room, targetRoomObj, houseRecord) : null;
+    const pool = bounds ? room.items.filter(i => hlIsItemInBounds(i, bounds)) : room.items;
+    if (!pool.length) return null;
+
+    // 1) Точный ID
+    let match = pool.find(i => String(i.id || '').toLowerCase() === lower);
     if (match) return match;
 
-    match = room.items.find(i => hlGetItemLabel(i).toLowerCase() === lower || String(i.name || '').toLowerCase() === lower);
+    // 2) Точное имя или label
+    match = pool.find(i => hlGetItemLabel(i).toLowerCase() === lower || String(i.name || '').toLowerCase() === lower);
     if (match) return match;
 
-    match = room.items.find(i =>
+    // 3) Прямая подстрока
+    match = pool.find(i =>
         String(i.id || '').toLowerCase().includes(lower) ||
         hlGetItemLabel(i).toLowerCase().includes(lower) ||
         String(i.name || '').toLowerCase().includes(lower)
     );
-    return match || null;
+    if (match) return match;
+
+    // 4) Умное сопоставление по токенам, синонимам типов, цвету и цифровому индексу (напр. "Кровать 2" -> bed2)
+    const tokens = lower.split(/[\s,._-]+/).filter(Boolean);
+    const numTokens = tokens.filter(t => /^\d+$/.test(t));
+    const wordTokens = tokens.filter(t => !/^\d+$/.test(t));
+    const queryTypes = hlInferQueryTypes(wordTokens);
+    const queryColor = parseThingColorInput(lower);
+
+    let bestItem = null;
+    let bestScore = 0;
+
+    pool.forEach(item => {
+        const idStr = String(item.id || '').toLowerCase();
+        const labelStr = hlGetItemLabel(item).toLowerCase();
+        const nameStr = String(item.name || '').toLowerCase();
+        const combined = `${idStr} ${labelStr} ${nameStr}`;
+        const itemType = String(item.thingType || inferBuiltinThingType(item.id) || '').toLowerCase();
+
+        let score = 0;
+        let matchedMeaning = false;
+
+        if (queryTypes.size > 0 && queryTypes.has(itemType)) {
+            score += 40;
+            matchedMeaning = true;
+        }
+        if (queryColor && (String(item.color || '').toLowerCase() === queryColor || combined.includes(queryColor))) {
+            score += 25;
+            matchedMeaning = true;
+        }
+        wordTokens.forEach(wt => {
+            if (wt.length >= 2 && combined.includes(wt)) {
+                score += 20;
+                matchedMeaning = true;
+            }
+        });
+        numTokens.forEach(nt => {
+            if (combined.includes(nt)) {
+                score += 15;
+            }
+        });
+
+        if (matchedMeaning && score > bestScore) {
+            bestScore = score;
+            bestItem = item;
+        }
+    });
+
+    return bestItem;
 }
 
 function hlLoadHeadlessHouseRoom(user, houseRecord) {
@@ -2711,7 +3903,10 @@ function hlLoadHeadlessHouseRoom(user, houseRecord) {
         blueprint.items.forEach(spec => {
             items.push({
                 id: spec.id,
+                thingType: spec.thingType || inferBuiltinThingType(spec.id),
                 label: spec.label,
+                color: spec.color || null,
+                shape: spec.shape || 'rect',
                 baseW: spec.w,
                 baseH: spec.h,
                 w: spec.w,
@@ -2732,8 +3927,13 @@ function hlLoadHeadlessHouseRoom(user, houseRecord) {
         const dims = hlGetRotatedDimensions(bw, bh, rot);
         items.push({
             id: t.id,
+            isUserThing: true,
+            thingType: t.type || inferBuiltinThingType(t.id),
             name: t.name,
             label: t.label || t.name,
+            color: t.color || null,
+            shape: t.shape || 'rect',
+            queueId: Number(t.queueId) || 0,
             baseW: bw,
             baseH: bh,
             w: dims.w,
@@ -2750,6 +3950,8 @@ function hlLoadHeadlessHouseRoom(user, houseRecord) {
         storageKey: scopedStorageKey,
         tsKey: scopedTsKey,
         quadrants: blueprint ? blueprint.quadrants : (Array.isArray(houseRecord.rooms) && houseRecord.rooms.length > 0),
+        quadrantLayout: hlResolveQuadrantLayout(houseRecord.quadrantLayout || (blueprint && blueprint.quadrantLayout)),
+        dynamicRooms: !houseRecord.builtin && Array.isArray(houseRecord.rooms) ? houseRecord.rooms : null,
         colsPerSide: blueprint ? blueprint.colsPerSide : geom.colsPerSide,
         rowsPerSide: blueprint ? blueprint.rowsPerSide : geom.rowsPerSide,
         gridW: blueprint ? blueprint.gridW : geom.gridW,
@@ -2788,7 +3990,7 @@ async function hlPersistRoomLayout(user, houseRecord, room, options = {}) {
     if (!user || user.isGuest || !user.id || user.id === 'guest' || !room) {
         return { payload: null, synced: false };
     }
-    const nowTs = Date.now();
+    const nowTs = (options && options.customTs) ? Number(options.customTs) : Date.now();
     const payload = hlSaveRoomLayoutLocalOnly(user, room, nowTs);
     if (!payload) return { payload: null, synced: false };
 
@@ -5399,6 +6601,13 @@ if (typeof window !== 'undefined') {
         if (event.key === 'terminal_theme' && event.newValue) {
             applyTheme(event.newValue);
         }
+        if (event.key === CACHED_AUTH_USER_KEY || (event.key && event.key.startsWith(USER_HOUSES_STORAGE_PREFIX))) {
+            const cached = getCachedAuthUser();
+            if (event.key === CACHED_AUTH_USER_KEY) {
+                currentUserCache = cached || null;
+            }
+            applyHouseNavVisibility(cached || currentUserCache);
+        }
     });
 
     // Синхронизация между iframes через postMessage
@@ -5422,7 +6631,15 @@ if (typeof window !== 'undefined') {
                         if (!currentUserCache || currentUserCache.isGuest || currentUserCache.id !== session.user.id) {
                             clearCurrentUserCache();
                         }
-                        fetchCurrentUser().then((u) => applyHouseNavVisibility(u)).catch(() => {});
+                        if (session.access_token) {
+                            cachedSupabaseAccessToken = session.access_token;
+                        }
+                        fetchCurrentUser().then((u) => {
+                            applyHouseNavVisibility(u);
+                            if (window.BackgroundModeSync && typeof window.BackgroundModeSync.pushConfigToSw === 'function') {
+                                window.BackgroundModeSync.pushConfigToSw({ user: u, accessToken: session.access_token }).catch(() => {});
+                            }
+                        }).catch(() => {});
                     }
                 });
             }
@@ -5430,6 +6647,8 @@ if (typeof window !== 'undefined') {
         const initNavAndTheme = () => {
             initTheme();
             attachGlobalAuthSync();
+            const cached = getCachedAuthUser();
+            updateGlobalAuthBadge(cached);
             if (typeof fetchCurrentUser === 'function') {
                 fetchCurrentUser().then((u) => applyHouseNavVisibility(u)).catch(() => applyHouseNavVisibility(null));
             } else {
@@ -5443,4 +6662,862 @@ if (typeof window !== 'undefined') {
         }
     }
 }
+
+// =========================================================================
+// Фоновый режим (PWA, разрешения, Wake Lock, Periodic/Background Sync, Worker)
+// =========================================================================
+(function () {
+    const BG_ENABLED_KEY = 'terminal_bg_mode_enabled';
+    const BG_DISMISSED_KEY = 'terminal_bg_prompt_dismissed';
+    const BG_WAKELOCK_PREF_KEY = 'terminal_bg_wakelock_pref';
+    const BG_SW_URL = '/service-worker.js?v=20261127_1';
+
+    let deferredInstallPrompt = null;
+    let activeWakeLock = null;
+    let hasActiveTimersFlag = false;
+    const listeners = new Set();
+
+    function notifyChange() {
+        listeners.forEach((fn) => {
+            try { fn(); } catch (e) {}
+        });
+    }
+
+    function isStandaloneMode() {
+        try {
+            return Boolean(
+                (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) ||
+                (window.navigator && window.navigator.standalone === true)
+            );
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function isIOSDevice() {
+        try {
+            const ua = String((window.navigator && window.navigator.userAgent) || '').toLowerCase();
+            return /iphone|ipad|ipod/.test(ua);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function getNotificationPermission() {
+        try {
+            if (typeof window === 'undefined' || !('Notification' in window)) return 'unsupported';
+            return Notification.permission || 'default';
+        } catch (e) {
+            return 'unsupported';
+        }
+    }
+
+    async function queryPermissionSafe(name) {
+        try {
+            if (typeof navigator === 'undefined' || !navigator.permissions || typeof navigator.permissions.query !== 'function') {
+                return 'unsupported';
+            }
+            const res = await navigator.permissions.query({ name });
+            return (res && res.state) || 'unsupported';
+        } catch (e) {
+            return 'unsupported';
+        }
+    }
+
+    async function ensureServiceWorkerReady() {
+        if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return null;
+        try {
+            let reg = await navigator.serviceWorker.getRegistration('/');
+            if (!reg) {
+                reg = await navigator.serviceWorker.register(BG_SW_URL, { updateViaCache: 'none' });
+            }
+            const readyReg = await Promise.race([
+                navigator.serviceWorker.ready,
+                new Promise((resolve) => setTimeout(() => resolve(reg), 2500))
+            ]);
+            return readyReg || reg;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    async function resolveCurrentAccessToken() {
+        if (cachedSupabaseAccessToken) return cachedSupabaseAccessToken;
+        try {
+            if (window.supabaseClient && window.supabaseClient.auth && typeof window.supabaseClient.auth.getSession === 'function') {
+                const { data } = await window.supabaseClient.auth.getSession();
+                if (data && data.session && data.session.access_token) {
+                    cachedSupabaseAccessToken = data.session.access_token;
+                    return cachedSupabaseAccessToken;
+                }
+            }
+        } catch (e) {}
+        return null;
+    }
+
+    async function pushConfigToSw(options = {}) {
+        const reg = await ensureServiceWorkerReady();
+        const target = (navigator.serviceWorker && navigator.serviceWorker.controller) || (reg && (reg.active || reg.waiting || reg.installing));
+        if (!target || typeof target.postMessage !== 'function') return false;
+
+        let user = options.user || null;
+        if (!user && typeof fetchCurrentUser === 'function') {
+            try { user = await fetchCurrentUser(); } catch (e) {}
+        }
+        const token = options.accessToken || await resolveCurrentAccessToken();
+
+        const msg = { type: 'BG_SYNC_CONFIG' };
+        msg.config = {
+            supabaseUrl: window.SUPABASE_URL || '',
+            supabaseAnonKey: window.SUPABASE_ANON_KEY || '',
+            accessToken: token || '',
+            userId: user && user.id ? user.id : 'guest',
+            isGuest: Boolean(!user || user.isGuest || !user.id || user.id === 'guest'),
+            updatedAt: Date.now()
+        };
+
+        if (Array.isArray(options.timers)) {
+            msg.timers = options.timers.map((t) => ({
+                id: t.id,
+                name: t.name,
+                queue_group_id: t.queue_group_id,
+                status: t.status,
+                ends_at: t.ends_at,
+                total_seconds: t.total_seconds,
+                created_by: t.created_by
+            }));
+            hasActiveTimersFlag = msg.timers.length > 0;
+        }
+        if (Array.isArray(options.cooldowns)) {
+            msg.cooldowns = options.cooldowns;
+        }
+
+        try {
+            target.postMessage(msg);
+        } catch (e) {}
+
+        // Регистрируем одноразовый Sync в SW, чтобы при уходе в фон / восстановлении сети дошли обновления
+        if (reg && 'sync' in reg && typeof reg.sync.register === 'function') {
+            try { await reg.sync.register('dashboard-timers-sync'); } catch (e) {}
+        }
+
+        // Если браузер поддерживает NotificationTriggers (TimestampTrigger) — дополнительно ставим системный будильник на ближайшее завершение
+        if (getNotificationPermission() === 'granted' && typeof window.TimestampTrigger === 'function' && reg && typeof reg.showNotification === 'function' && Array.isArray(msg.timers)) {
+            const now = Date.now();
+            msg.timers.forEach((t) => {
+                const endMs = t && t.ends_at ? new Date(t.ends_at).getTime() : 0;
+                if (endMs > now + 1500 && endMs - now < 12 * 3600 * 1000) {
+                    const isBoil = t.name === 'Кипяток';
+                    reg.showNotification(
+                        isBoil ? '🔥 Кипяток готов!' : '⏱️ Таймер завершён!',
+                        {
+                            body: isBoil ? 'Вода закипела, пора заваривать чай или кофе!' : `Задача "${t.name}" выполнена.`,
+                            icon: '/icon-512.png',
+                            badge: '/badge.png',
+                            tag: `trigger-${t.id || t.name}-${endMs}`,
+                            showTrigger: new window.TimestampTrigger(endMs),
+                            data: { url: '/dashboard.html', timerName: t.name }
+                        }
+                    ).catch(() => {});
+                }
+            });
+        }
+
+        return true;
+    }
+
+    async function requestWakeLockIfNeeded() {
+        try {
+            const pref = localStorage.getItem(BG_WAKELOCK_PREF_KEY);
+            const wantWakeLock = pref === null ? true : pref === '1';
+            const enabled = localStorage.getItem(BG_ENABLED_KEY) === '1';
+            if (!wantWakeLock || !enabled || !hasActiveTimersFlag) {
+                if (activeWakeLock) {
+                    await activeWakeLock.release().catch(() => {});
+                    activeWakeLock = null;
+                }
+                return false;
+            }
+            if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && document.visibilityState === 'visible') {
+                if (!activeWakeLock) {
+                    activeWakeLock = await navigator.wakeLock.request('screen');
+                    if (activeWakeLock && typeof activeWakeLock.addEventListener === 'function') {
+                        activeWakeLock.addEventListener('release', () => {
+                            activeWakeLock = null;
+                            notifyChange();
+                        });
+                    }
+                    notifyChange();
+                }
+                return true;
+            }
+        } catch (e) {}
+        return false;
+    }
+
+    function setWakeLockPreference(enabled) {
+        try { localStorage.setItem(BG_WAKELOCK_PREF_KEY, enabled ? '1' : '0'); } catch (e) {}
+        if (!enabled && activeWakeLock) {
+            activeWakeLock.release().catch(() => {});
+            activeWakeLock = null;
+        } else if (enabled) {
+            requestWakeLockIfNeeded();
+        }
+        notifyChange();
+    }
+
+    function getWakeLockPreference() {
+        try {
+            const val = localStorage.getItem(BG_WAKELOCK_PREF_KEY);
+            return val === null ? true : val === '1';
+        } catch (e) {
+            return true;
+        }
+    }
+
+    async function getStatus() {
+        const notification = getNotificationPermission();
+        const periodicSyncPerm = await queryPermissionSafe('periodic-background-sync');
+        const backgroundSyncPerm = await queryPermissionSafe('background-sync');
+        const installed = isStandaloneMode();
+        const ios = isIOSDevice();
+        const enabledByUser = (() => { try { return localStorage.getItem(BG_ENABLED_KEY) === '1'; } catch (e) { return false; } })();
+        const dismissed = (() => { try { return localStorage.getItem(BG_DISMISSED_KEY) === '1'; } catch (e) { return false; } })();
+
+        return {
+            notification,
+            periodicSyncPerm,
+            backgroundSyncPerm,
+            serviceWorkerSupported: typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
+            wakeLockSupported: typeof navigator !== 'undefined' && 'wakeLock' in navigator,
+            wakeLockActive: Boolean(activeWakeLock),
+            wakeLockPref: getWakeLockPreference(),
+            installed,
+            canInstall: Boolean(deferredInstallPrompt),
+            isIOS: ios,
+            enabledByUser,
+            dismissed,
+            needsAttention: notification !== 'granted' || !enabledByUser
+        };
+    }
+
+    async function requestPermissions(options = {}) {
+        let notifPerm = getNotificationPermission();
+        if (typeof window !== 'undefined' && 'Notification' in window && notifPerm !== 'granted') {
+            try {
+                notifPerm = await Notification.requestPermission();
+            } catch (e) {}
+        }
+
+        const reg = await ensureServiceWorkerReady();
+        let syncRegistered = false;
+        let periodicRegistered = false;
+
+        if (reg && 'sync' in reg && typeof reg.sync.register === 'function') {
+            try {
+                await reg.sync.register('dashboard-timers-sync');
+                syncRegistered = true;
+            } catch (e) {}
+        }
+
+        if (reg && 'periodicSync' in reg && typeof reg.periodicSync.register === 'function') {
+            try {
+                await reg.periodicSync.register('dashboard-sync', { minInterval: 60 * 1000 });
+                periodicRegistered = true;
+            } catch (e) {}
+        }
+
+        try {
+            localStorage.setItem(BG_ENABLED_KEY, '1');
+            localStorage.removeItem(BG_DISMISSED_KEY);
+        } catch (e) {}
+
+        if (options.requestWakeLock !== false) {
+            if (options.forceWakeLockNow && typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+                try {
+                    if (!activeWakeLock && document.visibilityState === 'visible') {
+                        activeWakeLock = await navigator.wakeLock.request('screen');
+                        activeWakeLock.addEventListener('release', () => { activeWakeLock = null; notifyChange(); });
+                    }
+                } catch (e) {}
+            } else {
+                await requestWakeLockIfNeeded();
+            }
+        }
+
+        await pushConfigToSw().catch(() => {});
+
+        // Отправляем немедленный тест/подтверждение в SW
+        if (notifPerm === 'granted' && reg && typeof reg.showNotification === 'function' && options.silent !== true) {
+            reg.showNotification('✅ Фоновый режим включён', {
+                body: 'Таймеры Дашборда и фоновая синхронизация работают активно.',
+                icon: '/icon-512.png',
+                badge: '/badge.png',
+                tag: 'bg-mode-enabled',
+                data: { url: '/dashboard.html' }
+            }).catch(() => {});
+        }
+
+        notifyChange();
+        return {
+            notification: notifPerm,
+            syncRegistered,
+            periodicRegistered,
+            wakeLockActive: Boolean(activeWakeLock),
+            needsManualSettings: notifPerm === 'denied'
+        };
+    }
+
+    async function triggerInstallApp() {
+        if (deferredInstallPrompt) {
+            try {
+                await deferredInstallPrompt.prompt();
+                const choice = await deferredInstallPrompt.userChoice;
+                if (choice && choice.outcome === 'accepted') {
+                    deferredInstallPrompt = null;
+                    notifyChange();
+                    return { installed: true };
+                }
+            } catch (e) {}
+            return { installed: false };
+        }
+        if (isIOSDevice()) {
+            return { iosGuide: true };
+        }
+        return { manualHint: true };
+    }
+
+    function dismissPromptBanner() {
+        try { localStorage.setItem(BG_DISMISSED_KEY, '1'); } catch (e) {}
+        notifyChange();
+    }
+
+    function reopenPromptBanner() {
+        try { localStorage.removeItem(BG_DISMISSED_KEY); } catch (e) {}
+        notifyChange();
+    }
+
+    function startBackgroundTicker(onTick, intervalMs = 1000) {
+        if (typeof onTick !== 'function') return () => {};
+        let stopped = false;
+        let worker = null;
+        let workerUrl = null;
+        let fallbackTimer = null;
+
+        try {
+            if (typeof Worker === 'function' && typeof Blob === 'function' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+                const code = `setInterval(() => postMessage('tick'), ${Math.max(250, Number(intervalMs) || 1000)});`;
+                const blob = new Blob([code], { type: 'application/javascript' });
+                workerUrl = URL.createObjectURL(blob);
+                worker = new Worker(workerUrl);
+                worker.onmessage = () => {
+                    if (!stopped) onTick();
+                };
+            }
+        } catch (e) {
+            worker = null;
+        }
+
+        if (!worker) {
+            fallbackTimer = setInterval(() => {
+                if (!stopped) onTick();
+            }, Math.max(250, Number(intervalMs) || 1000));
+        }
+
+        return () => {
+            stopped = true;
+            if (worker) {
+                try { worker.terminate(); } catch (e) {}
+                worker = null;
+            }
+            if (workerUrl) {
+                try { URL.revokeObjectURL(workerUrl); } catch (e) {}
+                workerUrl = null;
+            }
+            if (fallbackTimer) {
+                clearInterval(fallbackTimer);
+                fallbackTimer = null;
+            }
+        };
+    }
+
+    if (typeof window !== 'undefined') {
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredInstallPrompt = e;
+            notifyChange();
+        });
+
+        window.addEventListener('appinstalled', () => {
+            deferredInstallPrompt = null;
+            notifyChange();
+        });
+
+        if (typeof document !== 'undefined') {
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    requestWakeLockIfNeeded();
+                    notifyChange();
+                } else {
+                    pushConfigToSw().catch(() => {});
+                }
+            });
+        }
+    }
+
+    window.BackgroundModeSync = {
+        getStatus,
+        requestPermissions,
+        triggerInstallApp,
+        dismissPromptBanner,
+        reopenPromptBanner,
+        pushConfigToSw,
+        requestWakeLockIfNeeded,
+        setWakeLockPreference,
+        getWakeLockPreference,
+        setHasActiveTimers: (val) => {
+            hasActiveTimersFlag = Boolean(val);
+            requestWakeLockIfNeeded();
+        },
+        startBackgroundTicker,
+        subscribe: (fn) => {
+            if (typeof fn === 'function') listeners.add(fn);
+            return () => listeners.delete(fn);
+        }
+    };
+})();
+
+// =========================================================================
+// Undo / Cancel last command (стек отмены последней операции)
+// =========================================================================
+(function () {
+    const UNDO_STACK_PREFIX = 'terminal_undo_stack_v1';
+    const MAX_UNDO_ENTRIES = 25;
+    const memoryUndoStacks = new Map();
+
+    function resolveUid(userOverride) {
+        if (userOverride && userOverride.id) return String(userOverride.id);
+        if (currentUserCache && currentUserCache.id) return String(currentUserCache.id);
+        const cached = getCachedAuthUser();
+        if (cached && cached.id) return String(cached.id);
+        return 'guest';
+    }
+
+    function getStackKey(userOverride = null) {
+        return `${UNDO_STACK_PREFIX}::${resolveUid(userOverride)}`;
+    }
+
+    function loadStack(userOverride = null) {
+        const key = getStackKey(userOverride);
+        try {
+            const raw = localStorage.getItem(key);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        } catch (e) {}
+        return memoryUndoStacks.get(key) || [];
+    }
+
+    function saveStack(stack, userOverride = null) {
+        const key = getStackKey(userOverride);
+        const trimmed = Array.isArray(stack) ? stack.slice(-MAX_UNDO_ENTRIES) : [];
+        memoryUndoStacks.set(key, trimmed);
+        try {
+            localStorage.setItem(key, JSON.stringify(trimmed));
+        } catch (e) {}
+    }
+
+    function getTrackedKeys(uid) {
+        const keys = [
+            'terminal_theme',
+            'terminal_lang',
+            'terminal_offline_notes_cache',
+            'terminal_offline_notes_pending_v1',
+            `terminal_notes_cache_${uid}`,
+            'terminal_pending_notes_ops',
+            'terminal_demo_notes_store',
+            'terminal_demo_buildings_store',
+            'terminal_demo_tasks',
+            'cloud_missions_store',
+            'cloud_missions_ops_queue',
+            'cloud_missions_completion_locks_v1',
+            'cloud_missions_deleted',
+            'terminal_local_fs_v1',
+            `terminal_custom_aliases_${uid}`,
+            `terminal_missions_v1::${uid}`,
+            `${USER_HOUSES_STORAGE_PREFIX}::${uid}`,
+            `terminal_pending_house_layouts::${uid}`
+        ];
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (!k) continue;
+                if (k.startsWith('room_layout_') && !keys.includes(k)) {
+                    keys.push(k);
+                }
+            }
+        } catch (e) {}
+        return keys;
+    }
+
+    function snapshotStorageMap(uid) {
+        const snap = {};
+        const keys = getTrackedKeys(uid);
+        keys.forEach(k => {
+            try {
+                const v = localStorage.getItem(k);
+                snap[k] = v === null ? null : String(v);
+            } catch (e) {}
+        });
+        return snap;
+    }
+
+    function capturePreSnapshot(rawCommand, parsedCmd, userOverride = null) {
+        const uid = resolveUid(userOverride);
+        const cmdLower = String(parsedCmd || '').trim().toLowerCase();
+        // Не перезаписываем состояние при вызове самой команды отмены
+        if (['cancel', 'cancel last command', 'cancel last', 'undo', 'undo last', 'undo last command', 'отмена', 'отменить', 'отменить последнюю команду', 'отменить последнюю операцию', 'скасувати'].includes(cmdLower)) {
+            return null;
+        }
+        return {
+            uid,
+            rawCommand: String(rawCommand || '').trim(),
+            parsedCmd: cmdLower,
+            storageBefore: snapshotStorageMap(uid),
+            capturedAt: Date.now()
+        };
+    }
+
+    function finalizePostSnapshot(preToken, resultObj, userOverride = null) {
+        if (!preToken || !resultObj) return false;
+        // Пропускаем многошаговые подсказки и ошибки / пустые операции
+        if (resultObj.commandSteps || resultObj.commandPrefix) return false;
+        if (resultObj.skipUndoSave || resultObj.noChange) return false;
+        if (resultObj.style === 'output-error') return false;
+
+        const uid = preToken.uid || resolveUid(userOverride);
+        const afterMap = snapshotStorageMap(uid);
+        const allKeys = new Set([...Object.keys(preToken.storageBefore || {}), ...Object.keys(afterMap)]);
+        const changedKeys = [];
+
+        allKeys.forEach(k => {
+            const beforeVal = Object.prototype.hasOwnProperty.call(preToken.storageBefore, k) ? preToken.storageBefore[k] : null;
+            const afterVal = Object.prototype.hasOwnProperty.call(afterMap, k) ? afterMap[k] : null;
+            if (beforeVal !== afterVal) {
+                changedKeys.push({
+                    key: k,
+                    before: beforeVal,
+                    after: afterVal
+                });
+            }
+        });
+
+        const undoAction = resultObj.undoAction && typeof resultObj.undoAction === 'object' ? resultObj.undoAction : null;
+        if (changedKeys.length === 0 && !undoAction) {
+            return false;
+        }
+
+        const entry = {
+            id: `undo_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            rawCommand: preToken.rawCommand,
+            parsedCmd: preToken.parsedCmd,
+            description: (undoAction && undoAction.description) || resultObj.undoDescription || preToken.rawCommand || preToken.parsedCmd,
+            changedKeys,
+            undoAction,
+            createdAt: Date.now()
+        };
+
+        const stack = loadStack({ id: uid });
+        stack.push(entry);
+        saveStack(stack, { id: uid });
+        return true;
+    }
+
+    async function applyUndoAction(entry, user) {
+        const act = entry && entry.undoAction;
+        if (!act || !act.type) return;
+
+        switch (act.type) {
+            case 'supabase_delete_note': {
+                if (window.supabaseClient && user && !user.isGuest) {
+                    if (act.id) {
+                        await window.supabaseClient.from('notes').delete().eq('id', act.id).eq('created_by', user.id);
+                    } else if (act.inner_id) {
+                        await window.supabaseClient.from('notes').delete().eq('inner_id', act.inner_id).eq('created_by', user.id);
+                    }
+                }
+                if (window.OfflineNotesSync && user && user.id) {
+                    const cache = window.OfflineNotesSync.getNotesCache(user.id).filter(n =>
+                        (act.id && n.id !== act.id) || (act.inner_id && n.inner_id !== act.inner_id)
+                    );
+                    window.OfflineNotesSync.saveNotesCache(user.id, cache);
+                }
+                break;
+            }
+            case 'supabase_restore_note_content': {
+                if (window.supabaseClient && user && !user.isGuest && Array.isArray(act.prevNotes)) {
+                    for (const prev of act.prevNotes) {
+                        await window.supabaseClient
+                            .from('notes')
+                            .update({ content: prev.content })
+                            .eq('inner_id', prev.inner_id)
+                            .eq('created_by', user.id);
+                    }
+                }
+                break;
+            }
+            case 'supabase_restore_notes_pin': {
+                if (window.supabaseClient && user && !user.isGuest && Array.isArray(act.items)) {
+                    for (const it of act.items) {
+                        await window.supabaseClient
+                            .from('notes')
+                            .update({ is_pinned: Boolean(it.prevPinned) })
+                            .eq('inner_id', it.inner_id)
+                            .eq('created_by', user.id);
+                    }
+                }
+                break;
+            }
+            case 'supabase_restore_notes_deleted': {
+                if (window.supabaseClient && user && !user.isGuest && Array.isArray(act.innerIds) && act.innerIds.length > 0) {
+                    await window.supabaseClient
+                        .from('notes')
+                        .update({ deleted_at: act.restoreToDeletedAt === undefined ? null : act.restoreToDeletedAt })
+                        .in('inner_id', act.innerIds)
+                        .eq('created_by', user.id);
+                }
+                break;
+            }
+            case 'supabase_delete_building': {
+                if (window.supabaseClient && user && !user.isGuest && act.buildingId) {
+                    await window.supabaseClient.from('terminal_buildings').delete().eq('id', act.buildingId).eq('created_by', user.id);
+                }
+                break;
+            }
+            case 'supabase_restore_building': {
+                if (window.supabaseClient && user && !user.isGuest) {
+                    const rows = Array.isArray(act.buildings) ? act.buildings : (act.building ? [act.building] : []);
+                    if (rows.length > 0) {
+                        await window.supabaseClient.from('terminal_buildings').insert(rows);
+                    }
+                }
+                break;
+            }
+            case 'supabase_restore_building_tasks': {
+                if (window.supabaseClient && user && !user.isGuest && Array.isArray(act.snapshots)) {
+                    for (const snap of act.snapshots) {
+                        await window.supabaseClient
+                            .from('terminal_buildings')
+                            .update({ tasks: snap.tasks || [], updated_at: new Date().toISOString() })
+                            .eq('id', snap.id)
+                            .eq('created_by', user.id);
+                    }
+                }
+                break;
+            }
+            case 'supabase_delete_timer': {
+                if (window.supabaseClient && user && !user.isGuest && act.innerId) {
+                    await window.supabaseClient.from('active_timers').delete().eq('inner_id', act.innerId).eq('created_by', user.id);
+                }
+                break;
+            }
+            case 'supabase_restore_timer': {
+                if (window.supabaseClient && user && !user.isGuest && act.timer) {
+                    await window.supabaseClient.from('active_timers').insert([act.timer]);
+                }
+                break;
+            }
+            case 'missions_delete': {
+                if (window.MissionsStore && act.missionId && typeof window.MissionsStore.deleteMission === 'function') {
+                    await window.MissionsStore.deleteMission(act.missionId);
+                }
+                break;
+            }
+            case 'missions_reopen': {
+                if (window.MissionsStore && act.missionId && typeof window.MissionsStore.restoreMission === 'function') {
+                    await window.MissionsStore.restoreMission(act.missionId);
+                }
+                break;
+            }
+            case 'missions_restore': {
+                if (window.MissionsStore && Array.isArray(act.prevState)) {
+                    window.MissionsStore.missions = JSON.parse(JSON.stringify(act.prevState));
+                    if (typeof window.MissionsStore.saveLocal === 'function') {
+                        window.MissionsStore.saveLocal();
+                    }
+                    if (typeof window.MissionsStore.trySyncSupabase === 'function') {
+                        await window.MissionsStore.trySyncSupabase(true).catch(() => {});
+                    }
+                }
+                break;
+            }
+            case 'local_fs_trash': {
+                if (window.LocalFS && act.name && typeof window.LocalFS.trash === 'function') {
+                    await window.LocalFS.trash(act.name);
+                }
+                break;
+            }
+            case 'local_fs_restore_trash': {
+                if (window.LocalFS && act.name && typeof window.LocalFS.restore === 'function') {
+                    await window.LocalFS.restore(act.name);
+                }
+                break;
+            }
+            case 'local_fs_rename': {
+                if (window.LocalFS && act.newName && act.oldName && typeof window.LocalFS.rename === 'function') {
+                    await window.LocalFS.rename(act.newName, act.oldName);
+                }
+                break;
+            }
+            case 'custom_aliases_restore': {
+                if (window.CustomAliasesSync && typeof window.CustomAliasesSync.applyStoredCustomAliases === 'function') {
+                    window.CustomAliasesSync.applyStoredCustomAliases();
+                }
+                if (Array.isArray(act.addedAliases) && window.CommandRegistry && window.CommandRegistry._aliases) {
+                    act.addedAliases.forEach(a => {
+                        delete window.CommandRegistry._aliases[String(a).toLowerCase()];
+                    });
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    async function executeUndo(userOverride = null) {
+        const user = userOverride || (typeof fetchCurrentUser === 'function' ? await fetchCurrentUser() : null);
+        const uid = resolveUid(user);
+        const stack = loadStack({ id: uid });
+        if (!stack.length) {
+            return {
+                response: 'ℹ️ Нет операций для отмены.',
+                style: 'output-info',
+                skipHistorySave: true,
+                skipUndoSave: true
+            };
+        }
+
+        const entry = stack.pop();
+        saveStack(stack, { id: uid });
+
+        let restoredHousesState = null;
+        const restoredLayouts = [];
+        let themeRestored = null;
+        let langRestored = null;
+
+        // 1. Восстанавливаем изменённые ключи localStorage
+        const changes = Array.isArray(entry.changedKeys) ? entry.changedKeys : [];
+        for (const ch of changes) {
+            try {
+                if (ch.key === `${USER_HOUSES_STORAGE_PREFIX}::${uid}`) {
+                    if (ch.before === null) {
+                        localStorage.removeItem(ch.key);
+                    } else {
+                        const parsed = JSON.parse(ch.before);
+                        const afterParsed = ch.after ? JSON.parse(ch.after) : null;
+                        const maxTs = Math.max(
+                            Number(parsed && parsed.ts) || 0,
+                            Number(afterParsed && afterParsed.ts) || 0
+                        );
+                        const undoTs = Math.max(Date.now(), maxTs + 1);
+                        parsed.ts = undoTs;
+                        parsed.updatedAt = new Date(undoTs).toISOString();
+                        localStorage.setItem(ch.key, JSON.stringify(parsed));
+                        restoredHousesState = parsed;
+                    }
+                } else if (ch.key.startsWith('room_layout_') && !ch.key.endsWith('_ts')) {
+                    if (ch.before === null) {
+                        localStorage.removeItem(ch.key);
+                    } else {
+                        const parsedLayout = JSON.parse(ch.before);
+                        const prevTs = Number(localStorage.getItem(`${ch.key}_ts`) || 0);
+                        const undoTs = Math.max(Date.now(), prevTs + 1);
+                        localStorage.setItem(ch.key, JSON.stringify(parsedLayout));
+                        localStorage.setItem(`${ch.key}_ts`, String(undoTs));
+                        restoredLayouts.push({ storageKey: ch.key, layout: parsedLayout, undoTs });
+                    }
+                } else {
+                    if (ch.before === null) {
+                        localStorage.removeItem(ch.key);
+                    } else {
+                        localStorage.setItem(ch.key, ch.before);
+                    }
+                    if (ch.key === 'terminal_theme') themeRestored = ch.before || 'dark';
+                    if (ch.key === 'terminal_lang') langRestored = ch.before || 'ru';
+                }
+            } catch (e) {}
+        }
+
+        // 2. Специфичные отменяющие действия (Supabase / LocalFS / Aliases / Missions)
+        try {
+            await applyUndoAction(entry, user);
+        } catch (err) {
+            console.warn('Undo action error:', err);
+        }
+
+        // 3. Применяем тему / язык / навигацию / облачную синхронизацию домов и комнат
+        if (themeRestored) {
+            await applyTheme(themeRestored).catch(() => {});
+        }
+        if (langRestored && typeof window.I18n !== 'undefined' && typeof window.I18n.setLang === 'function') {
+            window.I18n.setLang(langRestored);
+        }
+
+        if (restoredHousesState && user && !user.isGuest) {
+            try {
+                await syncUserHousesToDb(user, restoredHousesState);
+            } catch (e) {}
+            applyHouseNavVisibility(user);
+        } else if (user) {
+            applyHouseNavVisibility(user);
+        }
+
+        if (restoredLayouts.length > 0 && user && !user.isGuest) {
+            for (const rl of restoredLayouts) {
+                const roomName = rl.storageKey.replace(/^room_layout_/, '').replace(/_v1$/, '');
+                try {
+                    await saveAndSyncHouseLayout(roomName, rl.layout, user, rl.undoTs);
+                } catch (e) {}
+            }
+        }
+
+        // 4. Если открыта страница Дома (HouseEngine), обновляем сцену без перезагрузки
+        try {
+            if (window.HouseEngine && typeof window.HouseEngine.refreshAfterExternalChange === 'function') {
+                await window.HouseEngine.refreshAfterExternalChange();
+            }
+        } catch (e) {}
+
+        const desc = String(entry.description || entry.rawCommand || 'последняя операция').trim();
+        return {
+            response: `Canceled\n↩️ Отмена последней операции: ${desc}`,
+            style: 'output-success',
+            skipUndoSave: true
+        };
+    }
+
+    function peek(userOverride = null) {
+        const stack = loadStack(userOverride);
+        return stack.length > 0 ? stack[stack.length - 1] : null;
+    }
+
+    function clear(userOverride = null) {
+        saveStack([], userOverride);
+    }
+
+    if (typeof window !== 'undefined') {
+        window.CommandUndo = {
+            getStackKey,
+            capturePreSnapshot,
+            finalizePostSnapshot,
+            executeUndo,
+            peek,
+            clear
+        };
+    }
+})();
+
+
 

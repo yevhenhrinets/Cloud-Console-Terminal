@@ -113,8 +113,34 @@ function loadFromLocalStorage() {
     }
     
     checkExpiredLocalTimers();
+    syncDashboardTimersToServiceWorker();
     
     return savedTimers !== null;
+}
+
+function syncDashboardTimersToServiceWorker() {
+    if (typeof window === 'undefined' || !window.BackgroundModeSync) return;
+    try {
+        const uid = (typeof currentUser !== 'undefined' && currentUser && currentUser.id) ? currentUser.id : 'guest';
+        const timersSnapshot = Array.isArray(localTimersData) ? localTimersData : [];
+        let cooldownsSnapshot = [];
+        if (window.TaskCooldowns && typeof window.TaskCooldowns.getAllActive === 'function') {
+            const activeList = window.TaskCooldowns.getAllActive(uid) || [];
+            const now = Date.now();
+            cooldownsSnapshot = activeList.map((c) => ({
+                key: c.key,
+                label: c.label,
+                readyAt: c.readyAt || (now + (Number(c.remainingMs) || 0)),
+                readyText: c.readyText || ''
+            }));
+        }
+        window.BackgroundModeSync.setHasActiveTimers(timersSnapshot.length > 0);
+        window.BackgroundModeSync.pushConfigToSw({
+            user: currentUser,
+            timers: timersSnapshot,
+            cooldowns: cooldownsSnapshot
+        }).catch(() => {});
+    } catch (e) {}
 }
 
 function checkExpiredLocalTimers() {
@@ -161,6 +187,7 @@ function checkExpiredLocalTimers() {
     if (changed) {
         localTimersData = [].concat(...Object.values(queueGroups));
         saveToLocalStorage();
+        syncDashboardTimersToServiceWorker();
     }
 }
 
@@ -332,6 +359,7 @@ async function forceSyncWithDB() {
             }
 
             saveToLocalStorage();
+            syncDashboardTimersToServiceWorker();
             renderUI();
 
         } catch (err) {
@@ -460,6 +488,7 @@ async function quickAddTimer(name, queueId, overrideDuration = null) {
     }
     localTimersData.push(newItem);
     saveToLocalStorage();
+    syncDashboardTimersToServiceWorker();
     renderUI();
 
     if (launchCostRule) {
@@ -656,6 +685,7 @@ async function accelerateRunningTimer(timerId) {
         if (window.TaskCooldowns && typeof window.TaskCooldowns.recordCompletion === 'function') {
             window.TaskCooldowns.recordCompletion(timer.name, now, currentUser ? currentUser.id : 'guest');
         }
+        syncDashboardTimersToServiceWorker();
         showTimerNotification(timer.name);
         if (typeof renderUI === 'function') renderUI();
 
@@ -843,5 +873,15 @@ if (typeof window !== 'undefined') {
         syncDashboardInventoryFromStorage();
         if (typeof renderUI === 'function') renderUI();
     });
+
+    if (typeof navigator !== 'undefined' && navigator.serviceWorker && typeof navigator.serviceWorker.addEventListener === 'function') {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+            const data = event && event.data;
+            if (data && data.type === 'BG_TIMERS_UPDATED') {
+                if (typeof localTick === 'function') localTick();
+                if (typeof forceSyncWithDB === 'function') forceSyncWithDB();
+            }
+        });
+    }
 }
 

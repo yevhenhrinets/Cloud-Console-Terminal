@@ -283,7 +283,12 @@ CommandRegistry.register({
             return {
                 response: `🟢 ${entitySuccessTitle} [${targetInnerId}] успешно отредактирована (версия v${insertPayload.version}).`,
                 style: 'output-success',
-                editedEntity: isHistory ? 'history' : 'note'
+                editedEntity: isHistory ? 'history' : 'note',
+                undoAction: !isHistory ? {
+                    type: 'supabase_restore_note_content',
+                    prevNotes: [{ inner_id: latestItem.inner_id, content: currentText }],
+                    description: `редактирование заметки [${targetInnerId}]`
+                } : undefined
             };
         } catch (err) {
             if (!isHistory && window.OfflineNotesSync && window.OfflineNotesSync.isOfflineError(err)) {

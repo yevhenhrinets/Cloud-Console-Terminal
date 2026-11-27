@@ -12,6 +12,9 @@ async function initDashboard() {
         };
         showError('ℹ️ Гостевой режим. Для синхронизации с Supabase используйте команду "login" в консоли.');
     }
+    if (typeof window.updateGlobalAuthBadge === 'function') {
+        window.updateGlobalAuthBadge(currentUser);
+    }
 
     // 💡 Проверяем наличие параметра queue в URL для управления кнопкой в шапке
     const urlParams = new URLSearchParams(window.location.search);
@@ -88,18 +91,168 @@ async function initDashboard() {
     await forceSyncWithDB();
 
     if (tickerInterval) clearInterval(tickerInterval);
-    tickerInterval = setInterval(localTick, 1000);
-    
+    if (window.tickerStopFn) {
+        try { window.tickerStopFn(); } catch (e) {}
+        window.tickerStopFn = null;
+    }
+    if (window.BackgroundModeSync && typeof window.BackgroundModeSync.startBackgroundTicker === 'function') {
+        window.tickerStopFn = window.BackgroundModeSync.startBackgroundTicker(localTick, 1000);
+    } else {
+        tickerInterval = setInterval(localTick, 1000);
+    }
+
+    if (window.bgDbSyncInterval) clearInterval(window.bgDbSyncInterval);
+    window.bgDbSyncInterval = setInterval(() => {
+        if (document.visibilityState === 'visible' && typeof forceSyncWithDB === 'function') {
+            forceSyncWithDB();
+        }
+    }, 30000);
+
     initNotifications();
 }
 
+let bgBannerManualOpen = false;
+let bgInstallHintText = '';
+
+function openBackgroundPermissionsCard() {
+    bgBannerManualOpen = !bgBannerManualOpen;
+    if (bgBannerManualOpen && window.BackgroundModeSync && typeof window.BackgroundModeSync.reopenPromptBanner === 'function') {
+        window.BackgroundModeSync.reopenPromptBanner();
+    }
+    renderBackgroundPermissionBanner();
+}
+
+async function handleGrantBackgroundPermissions() {
+    if (!window.BackgroundModeSync) return;
+    const res = await window.BackgroundModeSync.requestPermissions({ requestWakeLock: true, forceWakeLockNow: true });
+    if (typeof syncDashboardTimersToServiceWorker === 'function') {
+        syncDashboardTimersToServiceWorker();
+    }
+    if (res.notification === 'granted') {
+        bgBannerManualOpen = false;
+        showError('✅ Фоновый режим, уведомления и синхронизация таймеров включены!', 'ready');
+    } else if (res.needsManualSettings) {
+        bgBannerManualOpen = true;
+        showError('⚠️ Уведомления заблокированы браузером — разрешите их в настройках сайта (значок замка слева от адреса).');
+    } else {
+        showError('ℹ️ Фоновая синхронизация настроена; разрешите уведомления для звуковых/экранных оповещений.', 'ready');
+    }
+    renderBackgroundPermissionBanner();
+}
+
+async function handleInstallPwaClick() {
+    if (!window.BackgroundModeSync) return;
+    const res = await window.BackgroundModeSync.triggerInstallApp();
+    if (res.installed) {
+        bgInstallHintText = '';
+        showError('✅ Приложение установлено! Фоновые таймеры и синхронизация теперь работают стабильнее.', 'ready');
+    } else if (res.iosGuide) {
+        bgInstallHintText = 'На iPhone/iPad: нажмите кнопку «Поделиться» внизу Safari ➔ «На экран Домой» — тогда приложение будет работать как отдельное PWA с уведомлениями.';
+    } else if (res.manualHint) {
+        bgInstallHintText = 'Откройте меню браузера (⋮) ➔ «Установить приложение» / «Добавить на главный экран», чтобы Android не усыплял синхронизацию.';
+    }
+    renderBackgroundPermissionBanner();
+}
+
+function handleDismissBackgroundBanner() {
+    bgBannerManualOpen = false;
+    bgInstallHintText = '';
+    if (window.BackgroundModeSync && typeof window.BackgroundModeSync.dismissPromptBanner === 'function') {
+        window.BackgroundModeSync.dismissPromptBanner();
+    }
+    renderBackgroundPermissionBanner();
+}
+
+async function renderBackgroundPermissionBanner() {
+    const banner = document.getElementById('bg-permission-banner');
+    const headerBtn = document.getElementById('bg-mode-header-btn');
+    if (!window.BackgroundModeSync) return;
+
+    const status = await window.BackgroundModeSync.getStatus();
+
+    if (headerBtn) {
+        if (!status.needsAttention) {
+            headerBtn.textContent = '🔔 Фон: Вкл';
+            headerBtn.style.background = '#059669';
+            headerBtn.style.borderColor = '#047857';
+        } else {
+            headerBtn.textContent = '⚡ Разрешить фон';
+            headerBtn.style.background = '#d97706';
+            headerBtn.style.borderColor = '#b45309';
+        }
+    }
+
+    if (!banner) return;
+    const shouldShow = bgBannerManualOpen || (status.needsAttention && !status.dismissed);
+    if (!shouldShow) {
+        banner.style.display = 'none';
+        return;
+    }
+
+    banner.style.display = 'flex';
+    banner.classList.toggle('is-active', !status.needsAttention);
+
+    const isReady = !status.needsAttention;
+    const titleText = isReady
+        ? '✅ Фоновый режим и синхронизация активны'
+        : '⚡ Разрешить работу в фоновом режиме';
+    const descText = isReady
+        ? 'Уведомления и синхронизация Service Worker разрешены: таймеры Дашборда завершаются вовремя, а склад обновляется в БД.'
+        : 'Дайте разрешение на уведомления и фоновую синхронизацию, чтобы таймеры в Дашборде срабатывали вовремя, а задачи синхронизировались с БД даже в свёрнутом режиме.';
+
+    const installBtnHtml = (!status.installed && (status.canInstall || status.isIOS))
+        ? `<button type="button" class="bg-perm-btn-install" onclick="handleInstallPwaClick()">📲 Установить приложение</button>`
+        : (!status.installed
+            ? `<button type="button" class="bg-perm-btn-secondary" onclick="handleInstallPwaClick()">📲 Как установить PWA</button>`
+            : '');
+
+    const wakeLockHtml = status.wakeLockSupported
+        ? `<label class="bg-perm-wakelock-label">
+                <input type="checkbox" ${status.wakeLockPref ? 'checked' : ''} onchange="window.BackgroundModeSync && window.BackgroundModeSync.setWakeLockPreference(this.checked)">
+                🔆 Не гасить экран при активных таймерах
+           </label>`
+        : '';
+
+    const deniedHintHtml = status.notification === 'denied'
+        ? `<div class="bg-perm-hint">🔒 Уведомления сейчас запрещены в настройках браузера. Откройте настройки сайта (иконка слева от адреса) и включите «Уведомления» и «Фоновая синхронизация».</div>`
+        : '';
+
+    const installHintHtml = bgInstallHintText
+        ? `<div class="bg-perm-hint">📲 ${bgInstallHintText}</div>`
+        : '';
+
+    const primaryLabel = isReady ? '🔄 Обновить фоновую синхронизацию' : '✅ Разрешить фоновый режим';
+    const closeLabel = isReady ? 'Скрыть' : 'Позже';
+
+    banner.innerHTML = `
+        <div class="bg-permission-banner-head">
+            <div>
+                <div class="bg-permission-banner-title">${titleText}</div>
+                <p class="bg-permission-banner-desc">${descText}</p>
+            </div>
+        </div>
+        ${deniedHintHtml}
+        ${installHintHtml}
+        <div class="bg-permission-banner-actions">
+            <button type="button" class="bg-perm-btn-primary" onclick="handleGrantBackgroundPermissions()">${primaryLabel}</button>
+            ${installBtnHtml}
+            ${wakeLockHtml}
+            <button type="button" class="bg-perm-btn-secondary" onclick="handleDismissBackgroundBanner()">${closeLabel}</button>
+        </div>
+    `;
+}
+
 function initNotifications() {
-    if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission().then(permission => {
-            if (permission === 'granted') {
-                console.log('Разрешение на уведомления получено');
-            }
-        });
+    if (window.BackgroundModeSync) {
+        if (typeof window.BackgroundModeSync.subscribe === 'function') {
+            window.BackgroundModeSync.subscribe(() => {
+                renderBackgroundPermissionBanner();
+            });
+        }
+        if (typeof syncDashboardTimersToServiceWorker === 'function') {
+            syncDashboardTimersToServiceWorker();
+        }
+        renderBackgroundPermissionBanner();
     }
 }
 
@@ -461,8 +614,26 @@ function renderInventory() {
 
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
+        if (typeof localTick === 'function') localTick();
         forceSyncWithDB();
+    } else if (typeof syncDashboardTimersToServiceWorker === 'function') {
+        syncDashboardTimersToServiceWorker();
     }
+});
+
+window.addEventListener('online', () => {
+    if (typeof localTick === 'function') localTick();
+    if (typeof forceSyncWithDB === 'function') forceSyncWithDB();
+});
+
+window.addEventListener('focus', () => {
+    if (typeof localTick === 'function') localTick();
+    if (typeof forceSyncWithDB === 'function') forceSyncWithDB();
+});
+
+window.addEventListener('pageshow', () => {
+    if (typeof localTick === 'function') localTick();
+    if (typeof forceSyncWithDB === 'function') forceSyncWithDB();
 });
 
 if (document.readyState === 'loading') {

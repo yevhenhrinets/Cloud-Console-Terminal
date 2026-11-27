@@ -251,10 +251,43 @@
         const accepted = [];
         let changed = false;
 
-        // Сначала выставляем rot и hidden у каждого элемента, чтобы размеры w/h при проверке коллизий были актуальными
+        if (savedMap.__quadrantLayout && typeof savedMap.__quadrantLayout === 'object' && !room.dynamicRooms) {
+            const nextQl = resolveQuadrantLayout(savedMap.__quadrantLayout);
+            if (JSON.stringify(nextQl) !== JSON.stringify(room.quadrantLayout)) {
+                changed = true;
+            }
+            room.quadrantLayout = nextQl;
+        }
+
+        // Сначала выставляем стили, размеры, rot и hidden у каждого элемента, чтобы размеры w/h при проверке коллизий были актуальными
         for (const item of room.items) {
             const candidate = savedMap[item.id];
             if (candidate && typeof candidate === 'object') {
+                if (Number(candidate.baseW) >= 1 && Number(candidate.baseW) <= 8) {
+                    if (item.baseW !== Number(candidate.baseW)) changed = true;
+                    item.baseW = Number(candidate.baseW);
+                    item.customStyled = true;
+                }
+                if (Number(candidate.baseH) >= 1 && Number(candidate.baseH) <= 8) {
+                    if (item.baseH !== Number(candidate.baseH)) changed = true;
+                    item.baseH = Number(candidate.baseH);
+                    item.customStyled = true;
+                }
+                if (typeof candidate.color === 'string' && candidate.color) {
+                    if (item.color !== candidate.color) changed = true;
+                    item.color = candidate.color;
+                    item.customStyled = true;
+                }
+                if (typeof candidate.shape === 'string' && candidate.shape) {
+                    if (item.shape !== candidate.shape) changed = true;
+                    item.shape = candidate.shape;
+                    item.customStyled = true;
+                }
+                if (candidate.queueId !== undefined && Number.isFinite(Number(candidate.queueId))) {
+                    const nextQ = Math.max(0, parseInt(candidate.queueId, 10) || 0);
+                    if (item.queueId !== nextQ) changed = true;
+                    item.queueId = nextQ;
+                }
                 const nextRot = normalizeRotationDeg(candidate.rot);
                 const nextHidden = Boolean(candidate.hidden);
                 const dims = getRotatedDimensions(item.baseW, item.baseH, nextRot);
@@ -340,8 +373,16 @@
             const entry = { col: item.col, row: item.row };
             if (item.rot) entry.rot = item.rot;
             if (item.hidden) entry.hidden = true;
+            if (item.color && (item.customStyled || item.isUserThing)) entry.color = item.color;
+            if (item.shape && (item.customStyled || item.shape !== 'rect')) entry.shape = item.shape;
+            if (item.customStyled && item.baseW) entry.baseW = item.baseW;
+            if (item.customStyled && item.baseH) entry.baseH = item.baseH;
+            if (item.queueId !== undefined) entry.queueId = Number(item.queueId) || 0;
             payload[item.id] = entry;
         });
+        if (room && room.quadrantLayout && !room.dynamicRooms) {
+            payload.__quadrantLayout = resolveQuadrantLayout(room.quadrantLayout);
+        }
         return payload;
     }
 
@@ -474,123 +515,353 @@
         });
     }
 
-    function buildThingInnerSvg(type) {
-        switch (String(type || '').toLowerCase()) {
+    const THING_SVG_PALETTES = {
+        brown:  { main: '#B45309', dark: '#92400E', deep: '#78350F', stroke: '#451A03', light: '#D97706' },
+        green:  { main: '#22C55E', dark: '#16A34A', deep: '#15803D', stroke: '#14532D', light: '#4ADE80' },
+        blue:   { main: '#3B82F6', dark: '#2563EB', deep: '#1D4ED8', stroke: '#1E3A8A', light: '#60A5FA' },
+        red:    { main: '#EF4444', dark: '#DC2626', deep: '#B91C1C', stroke: '#7F1D1D', light: '#F87171' },
+        yellow: { main: '#EAB308', dark: '#CA8A04', deep: '#A16207', stroke: '#713F12', light: '#FACC15' },
+        white:  { main: '#F8FAFC', dark: '#E2E8F0', deep: '#CBD5E1', stroke: '#475569', light: '#FFFFFF' },
+        gray:   { main: '#94A3B8', dark: '#64748B', deep: '#475569', stroke: '#1E293B', light: '#CBD5E1' },
+        black:  { main: '#334155', dark: '#1E293B', deep: '#0F172A', stroke: '#020617', light: '#475569' },
+        orange: { main: '#F97316', dark: '#EA580C', deep: '#C2410C', stroke: '#7C2D12', light: '#FB923C' },
+        purple: { main: '#A855F7', dark: '#9333EA', deep: '#7E22CE', stroke: '#581C87', light: '#C084FC' }
+    };
+
+    function resolveThingPalette(colorKey, fallbackKey = 'brown') {
+        const clean = String(colorKey || '').trim().toLowerCase();
+        if (THING_SVG_PALETTES[clean]) return THING_SVG_PALETTES[clean];
+        if (/^#[0-9a-f]{6}$/i.test(clean)) {
+            return {
+                main: clean,
+                dark: clean,
+                deep: '#1e293b',
+                stroke: '#0f172a',
+                light: clean
+            };
+        }
+        return THING_SVG_PALETTES[fallbackKey] || THING_SVG_PALETTES.brown;
+    }
+
+    function inferTypeFromId(itemId) {
+        if (window.UserHousesSync && typeof window.UserHousesSync.inferBuiltinThingType === 'function') {
+            return window.UserHousesSync.inferBuiltinThingType(itemId);
+        }
+        const id = String(itemId || '').toLowerCase();
+        if (id.includes('table') || id.includes('desk')) return 'table';
+        return 'custom';
+    }
+
+    function buildThingInnerSvg(type, opts = {}) {
+        const cleanType = String(type || '').toLowerCase();
+        const shape = String(opts.shape || 'rect').toLowerCase();
+        const pal = opts.color ? resolveThingPalette(opts.color, 'brown') : null;
+        const bw = Math.max(1, Number(opts.w) || 2);
+        const bh = Math.max(1, Number(opts.h) || 2);
+        const aspect = bw === bh ? 'xMidYMid meet' : 'none';
+
+        switch (cleanType) {
             case 'table':
-            case 'desk':
-                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 165 472 340" preserveAspectRatio="xMidYMid meet" class="appliance-object">
-                    <rect x="110" y="220" width="28" height="200" rx="6" fill="#78350F"/>
-                    <rect x="374" y="220" width="28" height="200" rx="6" fill="#78350F"/>
-                    <rect x="70" y="240" width="36" height="200" rx="8" fill="#92400E" stroke="#451A03" stroke-width="4"/>
-                    <rect x="406" y="240" width="36" height="200" rx="8" fill="#92400E" stroke="#451A03" stroke-width="4"/>
-                    <rect x="40" y="190" width="432" height="45" rx="12" fill="#B45309" stroke="#78350F" stroke-width="6"/>
-                    <rect x="52" y="200" width="408" height="8" rx="4" fill="#D97706" opacity="0.65"/>
+            case 'desk': {
+                const tp = pal || THING_SVG_PALETTES.brown;
+                if (shape === 'round') {
+                    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="24 24 464 464" preserveAspectRatio="${aspect}" role="img" aria-label="Круглый столик" class="appliance-object">
+                        <circle cx="152" cy="152" r="24" fill="${tp.deep}" stroke="${tp.stroke}" stroke-width="6"/>
+                        <circle cx="360" cy="152" r="24" fill="${tp.deep}" stroke="${tp.stroke}" stroke-width="6"/>
+                        <circle cx="152" cy="360" r="24" fill="${tp.deep}" stroke="${tp.stroke}" stroke-width="6"/>
+                        <circle cx="360" cy="360" r="24" fill="${tp.deep}" stroke="${tp.stroke}" stroke-width="6"/>
+                        <circle cx="256" cy="256" r="196" fill="${tp.main}" stroke="${tp.deep}" stroke-width="12"/>
+                        <circle cx="256" cy="256" r="158" fill="none" stroke="${tp.light}" stroke-width="6" opacity="0.65"/>
+                        <circle cx="256" cy="256" r="56" fill="${tp.dark}" opacity="0.35"/>
+                    </svg>`;
+                }
+                if (shape === 'corner') {
+                    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="24 24 464 464" preserveAspectRatio="${aspect}" role="img" aria-label="Угловой стол" class="appliance-object">
+                        <rect x="232" y="218" width="224" height="32" rx="6" fill="${tp.dark}" stroke="${tp.stroke}" stroke-width="6"/>
+                        <rect x="58" y="424" width="32" height="44" rx="6" fill="${tp.deep}" stroke="${tp.stroke}" stroke-width="5"/>
+                        <rect x="196" y="424" width="32" height="44" rx="6" fill="${tp.deep}" stroke="${tp.stroke}" stroke-width="5"/>
+                        <rect x="424" y="218" width="32" height="48" rx="6" fill="${tp.deep}" stroke="${tp.stroke}" stroke-width="5"/>
+                        <path d="M56 48 H456 A16 16 0 0 1 472 64 V212 A16 16 0 0 1 456 228 H252 Q232 228 232 248 V436 A16 16 0 0 1 216 452 H56 A16 16 0 0 1 40 436 V64 A16 16 0 0 1 56 48 Z" fill="${tp.main}" stroke="${tp.deep}" stroke-width="10" stroke-linejoin="round"/>
+                        <path d="M68 68 H444 V82 H82 V424 H68 Z" fill="${tp.light}" opacity="0.65"/>
+                        <rect x="108" y="102" width="128" height="72" rx="10" fill="${tp.dark}" opacity="0.45" stroke="${tp.deep}" stroke-width="4"/>
+                    </svg>`;
+                }
+                if (bw < bh) {
+                    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="120 16 272 480" preserveAspectRatio="none" role="img" aria-label="Столик" class="appliance-object">
+                        <g transform="rotate(90 256 256)">
+                            <rect x="108" y="218" width="28" height="176" rx="6" fill="${tp.deep}"/>
+                            <rect x="376" y="218" width="28" height="176" rx="6" fill="${tp.deep}"/>
+                            <rect x="70" y="236" width="34" height="178" rx="8" fill="${tp.dark}" stroke="${tp.stroke}" stroke-width="6"/>
+                            <rect x="408" y="236" width="34" height="178" rx="8" fill="${tp.dark}" stroke="${tp.stroke}" stroke-width="6"/>
+                            <rect x="80" y="220" width="352" height="36" fill="${tp.dark}"/>
+                            <rect x="36" y="156" width="440" height="68" rx="14" fill="${tp.main}" stroke="${tp.deep}" stroke-width="8"/>
+                            <rect x="52" y="170" width="408" height="12" rx="6" fill="${tp.light}" opacity="0.72"/>
+                        </g>
+                    </svg>`;
+                }
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="16 144 480 280" preserveAspectRatio="none" role="img" aria-label="Столик" class="appliance-object">
+                    <rect x="108" y="218" width="28" height="176" rx="6" fill="${tp.deep}"/>
+                    <rect x="376" y="218" width="28" height="176" rx="6" fill="${tp.deep}"/>
+                    <rect x="70" y="236" width="34" height="178" rx="8" fill="${tp.dark}" stroke="${tp.stroke}" stroke-width="6"/>
+                    <rect x="408" y="236" width="34" height="178" rx="8" fill="${tp.dark}" stroke="${tp.stroke}" stroke-width="6"/>
+                    <rect x="80" y="220" width="352" height="36" fill="${tp.dark}"/>
+                    <rect x="36" y="156" width="440" height="68" rx="14" fill="${tp.main}" stroke="${tp.deep}" stroke-width="8"/>
+                    <rect x="52" y="170" width="408" height="12" rx="6" fill="${tp.light}" opacity="0.72"/>
                 </svg>`;
-            case 'stove':
-                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="48 48 416 448" preserveAspectRatio="xMidYMid meet" class="appliance-object">
-                    <rect x="64" y="64" width="384" height="416" rx="24" fill="#F8F9FA" stroke="#CBD5E1" stroke-width="8"/>
-                    <rect x="64" y="64" width="384" height="64" fill="#E5E7EB" stroke="#9CA3AF" stroke-width="6"/>
+            }
+            case 'stove': {
+                const body = pal ? pal.light : '#F8F9FA';
+                const top = pal ? pal.dark : '#E5E7EB';
+                const border = pal ? pal.stroke : '#CBD5E1';
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="48 48 416 448" preserveAspectRatio="${aspect}" class="appliance-object">
+                    <rect x="64" y="64" width="384" height="416" rx="24" fill="${body}" stroke="${border}" stroke-width="8"/>
+                    <rect x="64" y="64" width="384" height="64" fill="${top}" stroke="${border}" stroke-width="6"/>
                     <circle cx="160" cy="184" r="26" fill="#1F2937"/><circle cx="352" cy="184" r="26" fill="#1F2937"/>
-                    <rect x="96" y="256" width="320" height="192" rx="12" fill="#1F2937" stroke="#CBD5E1" stroke-width="6"/>
+                    <rect x="96" y="256" width="320" height="192" rx="12" fill="#1F2937" stroke="${border}" stroke-width="6"/>
                     <rect x="128" y="288" width="256" height="128" rx="8" fill="#111827"/>
                 </svg>`;
-            case 'fridge':
-                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="80 36 352 464" preserveAspectRatio="xMidYMid meet" class="appliance-object">
-                    <rect x="96" y="48" width="320" height="416" rx="32" fill="#e2e8f0" stroke="#1e293b" stroke-width="12"/>
-                    <line x1="96" y1="176" x2="416" y2="176" stroke="#1e293b" stroke-width="12"/>
+            }
+            case 'fridge': {
+                const body = pal ? pal.main : '#e2e8f0';
+                const stroke = pal ? pal.stroke : '#1e293b';
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="80 36 352 464" preserveAspectRatio="${aspect}" class="appliance-object">
+                    <rect x="96" y="48" width="320" height="416" rx="32" fill="${body}" stroke="${stroke}" stroke-width="12"/>
+                    <line x1="96" y1="176" x2="416" y2="176" stroke="${stroke}" stroke-width="12"/>
                     <rect x="344" y="104" width="16" height="48" rx="8" fill="#334155"/>
                     <rect x="344" y="240" width="16" height="80" rx="8" fill="#334155"/>
                 </svg>`;
-            case 'washer':
-                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="48 48 416 448" preserveAspectRatio="xMidYMid meet" class="appliance-object">
-                    <rect x="64" y="64" width="384" height="416" rx="28" fill="#e2e8f0" stroke="#1e293b" stroke-width="12"/>
-                    <circle cx="256" cy="296" r="108" fill="#0f172a" stroke="#38bdf8" stroke-width="12"/>
+            }
+            case 'washer': {
+                const body = pal ? pal.main : '#e2e8f0';
+                const stroke = pal ? pal.stroke : '#1e293b';
+                const ring = pal ? pal.light : '#38bdf8';
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="48 48 416 448" preserveAspectRatio="${aspect}" class="appliance-object">
+                    <rect x="64" y="64" width="384" height="416" rx="28" fill="${body}" stroke="${stroke}" stroke-width="12"/>
+                    <circle cx="256" cy="296" r="108" fill="#0f172a" stroke="${ring}" stroke-width="12"/>
                     <circle cx="256" cy="296" r="76" fill="#0284c7" opacity="0.45"/>
                 </svg>`;
-            case 'boiler':
-                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="96 24 320 468" preserveAspectRatio="xMidYMid meet" class="appliance-object">
-                    <rect x="112" y="80" width="288" height="360" rx="24" fill="#e2e8f0" stroke="#1e293b" stroke-width="12"/>
+            }
+            case 'boiler': {
+                const body = pal ? pal.main : '#e2e8f0';
+                const stroke = pal ? pal.stroke : '#1e293b';
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="96 24 320 468" preserveAspectRatio="${aspect}" class="appliance-object">
+                    <rect x="112" y="80" width="288" height="360" rx="24" fill="${body}" stroke="${stroke}" stroke-width="12"/>
                     <rect x="144" y="128" width="224" height="128" rx="16" fill="#1e293b"/>
                     <circle cx="200" cy="192" r="28" fill="#334155" stroke="#38bdf8" stroke-width="6"/>
-                    <circle cx="256" cy="336" r="16" fill="#ef4444" stroke="#1e293b" stroke-width="8"/>
+                    <circle cx="256" cy="336" r="16" fill="#ef4444" stroke="${stroke}" stroke-width="8"/>
                 </svg>`;
-            case 'bed':
-                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="36 36 440 440" preserveAspectRatio="xMidYMid meet" class="appliance-object">
-                    <rect x="80" y="48" width="352" height="416" rx="16" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
-                    <rect x="80" y="48" width="352" height="84" rx="10" fill="#94a3b8" stroke="#1e293b" stroke-width="10"/>
-                    <rect x="108" y="340" width="136" height="96" rx="8" fill="#e2e8f0" stroke="#334155" stroke-width="8"/>
-                    <rect x="268" y="340" width="136" height="96" rx="8" fill="#e2e8f0" stroke="#334155" stroke-width="8"/>
+            }
+            case 'bed': {
+                const base = pal ? pal.main : '#cbd5e1';
+                const head = pal ? pal.dark : '#334155';
+                const blanket = pal ? pal.light : '#0284c7';
+                const blanketOp = pal ? '0.65' : '0.32';
+                const stroke = pal ? pal.stroke : '#1e293b';
+                if (bw < bh) {
+                    // Вертикальная кровать (стандарт X < Y, например 1x2: изголовье сверху, длина по Y)
+                    const single = bw === 1;
+                    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="96 20 320 472" preserveAspectRatio="none" role="img" aria-label="Кровать" class="appliance-object">
+                        <rect x="128" y="36" width="256" height="52" rx="14" fill="${head}" stroke="${stroke}" stroke-width="12"/>
+                        <rect x="136" y="72" width="240" height="396" rx="20" fill="${base}" stroke="${stroke}" stroke-width="12"/>
+                        <rect x="156" y="96" width="200" height="348" rx="14" fill="#f8fafc" stroke="${stroke}" stroke-width="10"/>
+                        ${single
+                            ? `<rect x="180" y="114" width="152" height="78" rx="16" fill="#e2e8f0" stroke="${stroke}" stroke-width="8"/>`
+                            : `<rect x="168" y="114" width="80" height="78" rx="12" fill="#e2e8f0" stroke="${stroke}" stroke-width="8"/><rect x="264" y="114" width="80" height="78" rx="12" fill="#e2e8f0" stroke="${stroke}" stroke-width="8"/>`}
+                        <path d="M156 218h200v212a14 14 0 0 1-14 14H170a14 14 0 0 1-14-14V218z" fill="${blanket}" opacity="${blanketOp}" stroke="${stroke}" stroke-width="10"/>
+                        <rect x="156" y="212" width="200" height="24" rx="6" fill="#bae6fd" opacity="0.75" stroke="${stroke}" stroke-width="8"/>
+                    </svg>`;
+                }
+                if (bw > bh) {
+                    // Горизонтальная кровать (X > Y, например 2x1: изголовье слева, длина по X)
+                    const single = bh === 1;
+                    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 96 472 320" preserveAspectRatio="none" role="img" aria-label="Кровать" class="appliance-object">
+                        <g transform="rotate(-90 256 256)">
+                            <rect x="128" y="36" width="256" height="52" rx="14" fill="${head}" stroke="${stroke}" stroke-width="12"/>
+                            <rect x="136" y="72" width="240" height="396" rx="20" fill="${base}" stroke="${stroke}" stroke-width="12"/>
+                            <rect x="156" y="96" width="200" height="348" rx="14" fill="#f8fafc" stroke="${stroke}" stroke-width="10"/>
+                            ${single
+                                ? `<rect x="180" y="114" width="152" height="78" rx="16" fill="#e2e8f0" stroke="${stroke}" stroke-width="8"/>`
+                                : `<rect x="168" y="114" width="80" height="78" rx="12" fill="#e2e8f0" stroke="${stroke}" stroke-width="8"/><rect x="264" y="114" width="80" height="78" rx="12" fill="#e2e8f0" stroke="${stroke}" stroke-width="8"/>`}
+                            <path d="M156 218h200v212a14 14 0 0 1-14 14H170a14 14 0 0 1-14-14V218z" fill="${blanket}" opacity="${blanketOp}" stroke="${stroke}" stroke-width="10"/>
+                            <rect x="156" y="212" width="200" height="24" rx="6" fill="#bae6fd" opacity="0.75" stroke="${stroke}" stroke-width="8"/>
+                        </g>
+                    </svg>`;
+                }
+                // Квадратная кровать (2x2, 3x3): изголовье сверху, две подушки
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 32 448 448" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Кровать" class="appliance-object">
+                    <rect x="56" y="48" width="400" height="58" rx="16" fill="${head}" stroke="${stroke}" stroke-width="12"/>
+                    <rect x="64" y="88" width="384" height="368" rx="22" fill="${base}" stroke="${stroke}" stroke-width="12"/>
+                    <rect x="88" y="112" width="336" height="320" rx="16" fill="#f8fafc" stroke="${stroke}" stroke-width="10"/>
+                    <rect x="112" y="132" width="132" height="84" rx="18" fill="#e2e8f0" stroke="${stroke}" stroke-width="8"/>
+                    <rect x="268" y="132" width="132" height="84" rx="18" fill="#e2e8f0" stroke="${stroke}" stroke-width="8"/>
+                    <path d="M88 238h336v178a16 16 0 0 1-16 16H104a16 16 0 0 1-16-16V238z" fill="${blanket}" opacity="${blanketOp}" stroke="${stroke}" stroke-width="10"/>
+                    <rect x="88" y="232" width="336" height="28" rx="8" fill="#bae6fd" opacity="0.7" stroke="${stroke}" stroke-width="8"/>
                 </svg>`;
-            case 'sofa':
-                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="16 80 480 352" preserveAspectRatio="xMidYMid meet" class="appliance-object">
-                    <rect x="40" y="110" width="432" height="140" rx="24" fill="#64748b" stroke="#1e293b" stroke-width="12"/>
-                    <rect x="64" y="210" width="384" height="160" rx="20" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
-                    <rect x="24" y="160" width="44" height="220" rx="16" fill="#94a3b8" stroke="#1e293b" stroke-width="10"/>
-                    <rect x="444" y="160" width="44" height="220" rx="16" fill="#94a3b8" stroke="#1e293b" stroke-width="10"/>
+            }
+            case 'sofa': {
+                const back = pal ? pal.dark : '#64748b';
+                const seat = pal ? pal.main : '#cbd5e1';
+                const arm = pal ? pal.light : '#94a3b8';
+                const stroke = pal ? pal.stroke : '#1e293b';
+                if (bw < bh) {
+                    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="80 16 352 480" preserveAspectRatio="none" class="appliance-object">
+                        <g transform="rotate(90 256 256)">
+                            <rect x="40" y="110" width="432" height="140" rx="24" fill="${back}" stroke="${stroke}" stroke-width="12"/>
+                            <rect x="64" y="210" width="384" height="160" rx="20" fill="${seat}" stroke="${stroke}" stroke-width="12"/>
+                            <rect x="24" y="160" width="44" height="220" rx="16" fill="${arm}" stroke="${stroke}" stroke-width="10"/>
+                            <rect x="444" y="160" width="44" height="220" rx="16" fill="${arm}" stroke="${stroke}" stroke-width="10"/>
+                        </g>
+                    </svg>`;
+                }
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="16 80 480 352" preserveAspectRatio="none" class="appliance-object">
+                    <rect x="40" y="110" width="432" height="140" rx="24" fill="${back}" stroke="${stroke}" stroke-width="12"/>
+                    <rect x="64" y="210" width="384" height="160" rx="20" fill="${seat}" stroke="${stroke}" stroke-width="12"/>
+                    <rect x="24" y="160" width="44" height="220" rx="16" fill="${arm}" stroke="${stroke}" stroke-width="10"/>
+                    <rect x="444" y="160" width="44" height="220" rx="16" fill="${arm}" stroke="${stroke}" stroke-width="10"/>
                 </svg>`;
-            case 'armchair':
-                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 96 448 384" preserveAspectRatio="xMidYMid meet" class="appliance-object">
-                    <rect x="96" y="272" width="320" height="144" rx="20" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
-                    <rect x="112" y="112" width="288" height="180" rx="24" fill="#94a3b8" stroke="#1e293b" stroke-width="12"/>
+            }
+            case 'armchair': {
+                const seat = pal ? pal.main : '#cbd5e1';
+                const back = pal ? pal.dark : '#94a3b8';
+                const stroke = pal ? pal.stroke : '#1e293b';
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 96 448 384" preserveAspectRatio="${aspect}" class="appliance-object">
+                    <rect x="96" y="272" width="320" height="144" rx="20" fill="${seat}" stroke="${stroke}" stroke-width="12"/>
+                    <rect x="112" y="112" width="288" height="180" rx="24" fill="${back}" stroke="${stroke}" stroke-width="12"/>
                 </svg>`;
-            case 'closet':
-                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="64 36 384 440" preserveAspectRatio="xMidYMid meet" class="appliance-object">
-                    <rect x="80" y="48" width="352" height="416" rx="16" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
-                    <line x1="256" y1="48" x2="256" y2="464" stroke="#1e293b" stroke-width="12"/>
-                    <rect x="232" y="220" width="12" height="64" rx="6" fill="#1e293b"/>
-                    <rect x="268" y="220" width="12" height="64" rx="6" fill="#1e293b"/>
+            }
+            case 'closet': {
+                const body = pal ? pal.main : '#cbd5e1';
+                const stroke = pal ? pal.stroke : '#1e293b';
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="64 36 384 440" preserveAspectRatio="${aspect}" class="appliance-object">
+                    <rect x="80" y="48" width="352" height="416" rx="16" fill="${body}" stroke="${stroke}" stroke-width="12"/>
+                    <line x1="256" y1="48" x2="256" y2="464" stroke="${stroke}" stroke-width="12"/>
+                    <rect x="232" y="220" width="12" height="64" rx="6" fill="${stroke}"/>
+                    <rect x="268" y="220" width="12" height="64" rx="6" fill="${stroke}"/>
                 </svg>`;
+            }
             case 'laptop':
-                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 56 432 392" preserveAspectRatio="xMidYMid meet" class="appliance-object">
-                    <rect x="92" y="72" width="328" height="224" rx="22" fill="#1e293b" stroke="#0f172a" stroke-width="12"/>
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 56 432 392" preserveAspectRatio="${aspect}" class="appliance-object">
+                    <rect x="92" y="72" width="328" height="224" rx="22" fill="${pal ? pal.deep : '#1e293b'}" stroke="#0f172a" stroke-width="12"/>
                     <rect x="112" y="92" width="288" height="184" rx="12" fill="#0f172a"/>
-                    <path d="M150 144h110M150 174h160" stroke="#38bdf8" stroke-width="12" stroke-linecap="round"/>
-                    <path d="M56 312h400l24 88H32l24-88z" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
+                    <path d="M150 144h110M150 174h160" stroke="${pal ? pal.light : '#38bdf8'}" stroke-width="12" stroke-linecap="round"/>
+                    <path d="M56 312h400l24 88H32l24-88z" fill="${pal ? pal.main : '#cbd5e1'}" stroke="#1e293b" stroke-width="12"/>
                 </svg>`;
             case 'tv':
-                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 64 448 360" preserveAspectRatio="xMidYMid meet" class="appliance-object">
-                    <rect x="48" y="80" width="416" height="256" rx="18" fill="#0f172a" stroke="#334155" stroke-width="14"/>
-                    <rect x="72" y="104" width="368" height="208" rx="8" fill="#0284c7" opacity="0.3"/>
+                if (bw < bh) {
+                    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="64 32 360 448" preserveAspectRatio="none" class="appliance-object">
+                        <g transform="rotate(90 256 256)">
+                            <rect x="48" y="80" width="416" height="256" rx="18" fill="${pal ? pal.deep : '#0f172a'}" stroke="${pal ? pal.stroke : '#334155'}" stroke-width="14"/>
+                            <rect x="72" y="104" width="368" height="208" rx="8" fill="${pal ? pal.light : '#0284c7'}" opacity="0.3"/>
+                            <rect x="196" y="348" width="120" height="24" rx="8" fill="#475569"/>
+                        </g>
+                    </svg>`;
+                }
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 64 448 360" preserveAspectRatio="${aspect}" class="appliance-object">
+                    <rect x="48" y="80" width="416" height="256" rx="18" fill="${pal ? pal.deep : '#0f172a'}" stroke="${pal ? pal.stroke : '#334155'}" stroke-width="14"/>
+                    <rect x="72" y="104" width="368" height="208" rx="8" fill="${pal ? pal.light : '#0284c7'}" opacity="0.3"/>
                     <rect x="196" y="348" width="120" height="24" rx="8" fill="#475569"/>
                 </svg>`;
             case 'router':
-                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="48 64 416 384" preserveAspectRatio="xMidYMid meet" class="appliance-object">
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="48 64 416 384" preserveAspectRatio="${aspect}" class="appliance-object">
                     <rect x="128" y="88" width="24" height="144" rx="12" fill="#334155"/>
                     <rect x="360" y="88" width="24" height="144" rx="12" fill="#334155"/>
-                    <rect x="64" y="232" width="384" height="144" rx="24" fill="#1e293b" stroke="#0f172a" stroke-width="12"/>
+                    <rect x="64" y="232" width="384" height="144" rx="24" fill="${pal ? pal.main : '#1e293b'}" stroke="#0f172a" stroke-width="12"/>
                     <circle cx="144" cy="304" r="14" fill="#22c55e"/><circle cx="204" cy="304" r="14" fill="#38bdf8"/>
                 </svg>`;
             case 'radiator':
-                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="48 120 416 272" preserveAspectRatio="xMidYMid meet" class="appliance-object">
-                    <rect x="72" y="152" width="368" height="208" rx="22" fill="#e2e8f0" stroke="#1e293b" stroke-width="12"/>
-                    <line x1="140" y1="168" x2="140" y2="344" stroke="#64748b" stroke-width="16"/>
-                    <line x1="216" y1="168" x2="216" y2="344" stroke="#64748b" stroke-width="16"/>
-                    <line x1="292" y1="168" x2="292" y2="344" stroke="#64748b" stroke-width="16"/>
-                    <line x1="368" y1="168" x2="368" y2="344" stroke="#64748b" stroke-width="16"/>
+                if (bw < bh) {
+                    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="120 48 272 416" preserveAspectRatio="none" class="appliance-object">
+                        <g transform="rotate(90 256 256)">
+                            <rect x="72" y="152" width="368" height="208" rx="22" fill="${pal ? pal.main : '#e2e8f0'}" stroke="${pal ? pal.stroke : '#1e293b'}" stroke-width="12"/>
+                            <line x1="140" y1="168" x2="140" y2="344" stroke="${pal ? pal.deep : '#64748b'}" stroke-width="16"/>
+                            <line x1="216" y1="168" x2="216" y2="344" stroke="${pal ? pal.deep : '#64748b'}" stroke-width="16"/>
+                            <line x1="292" y1="168" x2="292" y2="344" stroke="${pal ? pal.deep : '#64748b'}" stroke-width="16"/>
+                            <line x1="368" y1="168" x2="368" y2="344" stroke="${pal ? pal.deep : '#64748b'}" stroke-width="16"/>
+                        </g>
+                    </svg>`;
+                }
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="48 120 416 272" preserveAspectRatio="none" class="appliance-object">
+                    <rect x="72" y="152" width="368" height="208" rx="22" fill="${pal ? pal.main : '#e2e8f0'}" stroke="${pal ? pal.stroke : '#1e293b'}" stroke-width="12"/>
+                    <line x1="140" y1="168" x2="140" y2="344" stroke="${pal ? pal.deep : '#64748b'}" stroke-width="16"/>
+                    <line x1="216" y1="168" x2="216" y2="344" stroke="${pal ? pal.deep : '#64748b'}" stroke-width="16"/>
+                    <line x1="292" y1="168" x2="292" y2="344" stroke="${pal ? pal.deep : '#64748b'}" stroke-width="16"/>
+                    <line x1="368" y1="168" x2="368" y2="344" stroke="${pal ? pal.deep : '#64748b'}" stroke-width="16"/>
                 </svg>`;
             case 'window':
-                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="96 20 320 472" preserveAspectRatio="xMidYMid meet" class="appliance-object">
-                    <rect x="128" y="48" width="224" height="416" rx="14" fill="#e2e8f0" stroke="#1e293b" stroke-width="12"/>
+                if (bw > bh) {
+                    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 96 472 320" preserveAspectRatio="none" class="appliance-object">
+                        <g transform="rotate(-90 256 256)">
+                            <rect x="128" y="48" width="224" height="416" rx="14" fill="${pal ? pal.main : '#e2e8f0'}" stroke="${pal ? pal.stroke : '#1e293b'}" stroke-width="12"/>
+                            <rect x="150" y="72" width="180" height="176" rx="8" fill="#38bdf8" opacity="0.6" stroke="#1e293b" stroke-width="8"/>
+                            <rect x="150" y="264" width="180" height="176" rx="8" fill="#38bdf8" opacity="0.6" stroke="#1e293b" stroke-width="8"/>
+                        </g>
+                    </svg>`;
+                }
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="96 20 320 472" preserveAspectRatio="none" class="appliance-object">
+                    <rect x="128" y="48" width="224" height="416" rx="14" fill="${pal ? pal.main : '#e2e8f0'}" stroke="${pal ? pal.stroke : '#1e293b'}" stroke-width="12"/>
                     <rect x="150" y="72" width="180" height="176" rx="8" fill="#38bdf8" opacity="0.6" stroke="#1e293b" stroke-width="8"/>
                     <rect x="150" y="264" width="180" height="176" rx="8" fill="#38bdf8" opacity="0.6" stroke="#1e293b" stroke-width="8"/>
                 </svg>`;
             case 'conditioner':
-                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 128 448 256" preserveAspectRatio="xMidYMid meet" class="appliance-object">
-                    <rect x="48" y="144" width="416" height="168" rx="24" fill="#f8fafc" stroke="#1e293b" stroke-width="12"/>
+                if (bw < bh) {
+                    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="128 32 256 448" preserveAspectRatio="none" class="appliance-object">
+                        <g transform="rotate(90 256 256)">
+                            <rect x="48" y="144" width="416" height="168" rx="24" fill="${pal ? pal.main : '#f8fafc'}" stroke="${pal ? pal.stroke : '#1e293b'}" stroke-width="12"/>
+                            <rect x="88" y="256" width="336" height="28" rx="8" fill="#38bdf8" opacity="0.7"/>
+                        </g>
+                    </svg>`;
+                }
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 128 448 256" preserveAspectRatio="none" class="appliance-object">
+                    <rect x="48" y="144" width="416" height="168" rx="24" fill="${pal ? pal.main : '#f8fafc'}" stroke="${pal ? pal.stroke : '#1e293b'}" stroke-width="12"/>
                     <rect x="88" y="256" width="336" height="28" rx="8" fill="#38bdf8" opacity="0.7"/>
                 </svg>`;
             case 'multicooker':
-                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="64 48 384 416" preserveAspectRatio="xMidYMid meet" class="appliance-object">
-                    <ellipse cx="256" cy="144" rx="144" ry="44" fill="#cbd5e1" stroke="#1e293b" stroke-width="12"/>
-                    <rect x="96" y="144" width="320" height="272" rx="36" fill="#475569" stroke="#1e293b" stroke-width="12"/>
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="64 48 384 416" preserveAspectRatio="${aspect}" class="appliance-object">
+                    <ellipse cx="256" cy="144" rx="144" ry="44" fill="${pal ? pal.light : '#cbd5e1'}" stroke="#1e293b" stroke-width="12"/>
+                    <rect x="96" y="144" width="320" height="272" rx="36" fill="${pal ? pal.main : '#475569'}" stroke="#1e293b" stroke-width="12"/>
                     <rect x="176" y="216" width="160" height="72" rx="12" fill="#0f172a"/>
                 </svg>`;
-            default:
-                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 32 448 448" preserveAspectRatio="xMidYMid meet" class="appliance-object">
-                    <rect x="52" y="52" width="408" height="408" rx="44" fill="#334155" stroke="#38bdf8" stroke-width="16"/>
-                    <rect x="92" y="92" width="328" height="328" rx="28" fill="#1e293b" stroke="#64748b" stroke-width="8"/>
-                    <circle cx="256" cy="230" r="64" fill="#0284c7" opacity="0.45"/>
+            default: {
+                const fill = pal ? pal.main : '#334155';
+                const stroke = pal ? pal.light : '#38bdf8';
+                const inner = pal ? pal.deep : '#1e293b';
+                if (shape === 'round') {
+                    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 32 448 448" preserveAspectRatio="${aspect}" class="appliance-object">
+                        <circle cx="256" cy="256" r="204" fill="${fill}" stroke="${stroke}" stroke-width="16"/>
+                        <circle cx="256" cy="256" r="144" fill="${inner}" stroke="#64748b" stroke-width="8"/>
+                    </svg>`;
+                }
+                return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 32 448 448" preserveAspectRatio="${aspect}" class="appliance-object">
+                    <rect x="52" y="52" width="408" height="408" rx="44" fill="${fill}" stroke="${stroke}" stroke-width="16"/>
+                    <rect x="92" y="92" width="328" height="328" rx="28" fill="${inner}" stroke="#64748b" stroke-width="8"/>
+                    <circle cx="256" cy="230" r="64" fill="${stroke}" opacity="0.45"/>
                 </svg>`;
+            }
+        }
+    }
+
+    function applyThingQueueBinding(item, houseRecord) {
+        if (!item || !item.el) return;
+        const qNum = Math.max(0, Number(item.queueId) || 0);
+        const displayName = item.name || item.label || item.id || 'Предмет';
+        if (qNum > 0) {
+            const url = `/dashboard.html?queue=${qNum}`;
+            item.el.setAttribute('href', url);
+            item.el.setAttribute('draggable', 'false');
+            item.el.style.cursor = 'pointer';
+            item.el.onclick = (e) => onApplianceClick(
+                e,
+                url,
+                `select ${displayName} ${qNum}`,
+                `Выбран предмет ${displayName} (Queue #${qNum}${houseRecord ? ', ' + houseRecord.name : ''})`
+            );
+        } else {
+            item.el.removeAttribute('href');
+            item.el.onclick = null;
+        }
+        const captionEl = item.el.querySelector('.house-thing-caption');
+        if (captionEl) {
+            captionEl.textContent = `${displayName}${qNum > 0 ? ' #' + qNum : ''}`;
         }
     }
 
@@ -601,6 +872,11 @@
         el.className = 'room-item';
         el.setAttribute('data-user-thing', '1');
         el.dataset.id = thing.id;
+        el.dataset.thingType = thing.type || 'custom';
+        if (thing.name) el.dataset.name = thing.name;
+        if (thing.color) el.dataset.color = thing.color;
+        if (thing.shape) el.dataset.shape = thing.shape;
+        el.dataset.queueId = String(Number(thing.queueId) || 0);
         el.dataset.w = String(Number(thing.w) || 2);
         el.dataset.h = String(Number(thing.h) || 2);
         el.dataset.col = String(Number(thing.col) || 0);
@@ -621,7 +897,7 @@
             );
         }
 
-        el.innerHTML = buildThingInnerSvg(thing.type) +
+        el.innerHTML = buildThingInnerSvg(thing.type, { color: thing.color, shape: thing.shape, w: thing.w, h: thing.h }) +
             `<span class="house-thing-caption">${escapeHtml(thing.name)}${hasQueue ? ' #' + Number(thing.queueId) : ''}</span>`;
         return el;
     }
@@ -754,6 +1030,9 @@
             }
             document.title = `Cloud Terminal — ${houseRecord.name}`;
         } else {
+            if (houseRecord.quadrantLayout && typeof houseRecord.quadrantLayout === 'object') {
+                cfgCopy.quadrantLayout = resolveQuadrantLayout(houseRecord.quadrantLayout);
+            }
             // Для встроенного дома root добавляем пользовательские вещи поверх встроенного плана
             userThings.forEach(thing => {
                 const el = createCustomThingElement(thing, houseRecord);
@@ -761,9 +1040,12 @@
                 cfgCopy.defaults[thing.id] = { col: Number(thing.col) || 0, row: Number(thing.row) || 0 };
             });
             if (labelEl && houseRecord.name) {
-                // оставляем стандартный заголовок или обновляем, если это запрос
-                if (activeEffectiveCfg && activeEffectiveCfg.isQueryHouse) {
-                    labelEl.textContent = `🏠 ${houseRecord.name}`;
+                const def = typeof window.getHouseDefinition === 'function' ? window.getHouseDefinition(houseRecord.id) : null;
+                const isRenamed = Boolean(def && def.name && houseRecord.name !== def.name);
+                if (isRenamed || (activeEffectiveCfg && activeEffectiveCfg.isQueryHouse)) {
+                    const icon = houseRecord.number === 2 ? '🏡' : (houseRecord.number === 3 ? '🏘️' : '🏠');
+                    labelEl.textContent = `${icon} ${houseRecord.name} — Единый квадрат 16×16 (4 × 8×8)`;
+                    document.title = `Cloud Terminal — ${houseRecord.name}`;
                 }
             }
         }
@@ -811,11 +1093,16 @@
         } else if (dynRooms.length > 0) {
             html += `<span class="top-nav-sep"></span>`;
             dynRooms.forEach((r, idx) => {
-                html += `<button type="button" onclick="jumpToQuadrant(${idx})">🚪 ${escapeHtml(r.name)}</button>`;
+                const slot = Number.isInteger(r.slotIndex) ? r.slotIndex : idx;
+                html += `<button type="button" onclick="jumpToQuadrant(${slot})">🚪 ${escapeHtml(r.name)}</button>`;
             });
         }
 
+        html += `<span class="top-nav-sep"></span><span id="global-auth-profile" class="auth-profile-badge"></span>`;
         nav.innerHTML = html;
+        if (typeof window.updateGlobalAuthBadge === 'function') {
+            window.updateGlobalAuthBadge(user);
+        }
     }
 
     function loadRoomLayoutState(roomCfg, user) {
@@ -871,6 +1158,12 @@
 
         room.items = domItems.map(el => {
             const id = el.dataset.id;
+            const isUserThing = el.getAttribute('data-user-thing') === '1';
+            const thingType = el.dataset.thingType || inferTypeFromId(id);
+            const name = el.dataset.name || undefined;
+            const color = el.dataset.color || null;
+            const shape = el.dataset.shape || (id === 'hall3_table' ? 'corner' : 'rect');
+            const queueIdAttr = el.dataset.queueId !== undefined ? Number(el.dataset.queueId) : undefined;
             const baseW = Number(el.dataset.w) || 2;
             const baseH = Number(el.dataset.h) || 2;
             const rot = normalizeRotationDeg(el.dataset.rot || 0);
@@ -883,6 +1176,12 @@
             const itemObj = {
                 id,
                 el,
+                isUserThing,
+                thingType,
+                name,
+                color,
+                shape,
+                queueId: queueIdAttr,
                 baseW,
                 baseH,
                 w: dims.w,
@@ -919,11 +1218,20 @@
             }
         }
 
+        if (room.quadrants && boardEl && !room.dynamicRooms) {
+            ensureQuadrantsOverlay(boardEl, roomCfg.quadrantLabels || null, room.quadrantLayout, true);
+        }
+
         return room;
     }
 
-    function ensureQuadrantsOverlay(boardEl, labels, quadrantLayout) {
-        if (!boardEl || boardEl.querySelector('.house-quadrants-overlay')) return;
+    function ensureQuadrantsOverlay(boardEl, labels, quadrantLayout, forceRebuild = false) {
+        if (!boardEl) return;
+        const existing = boardEl.querySelector('.house-quadrants-overlay');
+        if (existing) {
+            if (!forceRebuild) return;
+            existing.remove();
+        }
         const lbl = labels || {};
         const layout = resolveQuadrantLayout(quadrantLayout);
 
@@ -1061,6 +1369,9 @@
                     const changed = applyLayoutMap(room, chosenLayout);
                     const savedPayload = saveRoomLayoutLocalOnly(room, chosenTs || Date.now());
                     if (changed) {
+                        if (room.quadrants && room.boardEl && !room.dynamicRooms) {
+                            ensureQuadrantsOverlay(room.boardEl, null, room.quadrantLayout, true);
+                        }
                         room.items.forEach(item => applyItemGeometry(item));
                         if (selectedItem && selectedItem.hidden) {
                             clearSelectedItem();
@@ -1194,6 +1505,28 @@
         item.el.style.top = (pxTop !== undefined ? pxTop : item.row * tilePx) + 'px';
         item.el.style.width = (item.w * tilePx) + 'px';
         item.el.style.height = (item.h * tilePx) + 'px';
+
+        const renderSig = item.customStyled ? `${item.thingType || inferTypeFromId(item.id)}|${item.color || ''}|${item.shape || 'rect'}|${item.baseW}x${item.baseH}` : '';
+        if (renderSig && item._renderedStyleSig !== renderSig) {
+            const oldSvg = item.el.querySelector('.appliance-object');
+            const newHtml = buildThingInnerSvg(item.thingType || inferTypeFromId(item.id), {
+                color: item.color,
+                shape: item.shape,
+                w: item.baseW,
+                h: item.baseH
+            });
+            if (oldSvg) {
+                oldSvg.outerHTML = newHtml;
+            } else {
+                item.el.insertAdjacentHTML('afterbegin', newHtml);
+            }
+            item._renderedStyleSig = renderSig;
+        }
+
+        if (item.queueId !== undefined && item._appliedQueueId !== item.queueId) {
+            applyThingQueueBinding(item, activeHouseRecord);
+            item._appliedQueueId = item.queueId;
+        }
 
         const svgEl = item.el.querySelector('.appliance-object');
         if (svgEl) {
@@ -1974,11 +2307,15 @@
         if (!gate) return;
         gate.innerHTML = `
             <div class="house-auth-card">
+                <div class="house-auth-profile-row"><span class="auth-profile-badge" data-global-auth-profile></span></div>
                 <div class="house-auth-icon">🔐</div>
                 <div class="house-auth-title">Проверка доступа к Дому</div>
                 <div class="house-auth-text">Загружаем ваши дома и сохранённую расстановку...</div>
             </div>
         `;
+        if (typeof window.updateGlobalAuthBadge === 'function') {
+            window.updateGlobalAuthBadge(activeHouseUser || null);
+        }
     }
 
     function renderAuthGateDenied(access) {
@@ -2001,6 +2338,7 @@
 
         gate.innerHTML = `
             <div class="house-auth-card">
+                <div class="house-auth-profile-row"><span class="auth-profile-badge" data-global-auth-profile></span></div>
                 <div class="house-auth-icon">${isUnauthed ? '🔐' : '🏘️'}</div>
                 <div class="house-auth-title">${title}</div>
                 <div class="house-auth-text">${text}</div>
@@ -2012,6 +2350,9 @@
                 <div id="house-auth-status" class="house-auth-status"></div>
             </div>
         `;
+        if (typeof window.updateGlobalAuthBadge === 'function') {
+            window.updateGlobalAuthBadge(isUnauthed ? null : (activeHouseUser || null));
+        }
         const primaryBtn = document.getElementById('house-auth-primary-btn');
         if (primaryBtn) {
             primaryBtn.addEventListener('click', () => startHouseGoogleAuth(!isUnauthed));
@@ -2155,7 +2496,7 @@
             window.location.reload();
         });
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/service-worker.js?v=20261125_4', { updateViaCache: 'none' })
+            navigator.serviceWorker.register('/service-worker.js?v=20261127_1', { updateViaCache: 'none' })
                 .then((reg) => {
                     if (reg && typeof reg.update === 'function') reg.update().catch(() => {});
                 })
@@ -2172,6 +2513,27 @@
             window.HouseLayoutSync.flushPendingHouseLayouts();
         }
     }
+
+    async function refreshAfterExternalChange() {
+        if (!activeHouseUser || activeHouseUser.isGuest || !initialized) return;
+        const cfg = activeEffectiveCfg || resolveEffectiveHouseConfig();
+        activeHouseRecord = window.UserHousesSync ? window.UserHousesSync.findHouse(activeHouseUser, cfg.homeId) : activeHouseRecord;
+        const preparedRoomsCfg = (cfg.rooms || []).map(rc => prepareBoardForAccount(rc, activeHouseRecord, activeHouseUser));
+        roomsState = preparedRoomsCfg.map(rc => loadRoomLayoutState(rc, activeHouseUser));
+        updateHouseTopNav(activeHouseUser, cfg, activeHouseRecord, roomsState[0]);
+        layoutAllBoards(true);
+        initInteractions();
+    }
+
+    window.addEventListener('storage', (event) => {
+        if (!event || !event.key) return;
+        if (
+            event.key.startsWith('terminal_user_houses_v2::') ||
+            (event.key.startsWith('room_layout_') && !event.key.endsWith('_ts'))
+        ) {
+            refreshAfterExternalChange().catch(() => {});
+        }
+    });
 
     window.addEventListener('online', syncAllRoomsWithDatabase);
     window.addEventListener('focus', () => {
@@ -2213,6 +2575,7 @@
         drawStaticFloorCanvas,
         layoutAllBoards,
         jumpToQuadrant,
-        syncAllRoomsWithDatabase
+        syncAllRoomsWithDatabase,
+        refreshAfterExternalChange
     };
 })();

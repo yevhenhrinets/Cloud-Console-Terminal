@@ -196,7 +196,12 @@
                 const res = await window.LocalFS.mkdir(folderName);
                 return {
                     response: `🟢 Папка "${res.name}" успешно создана!\n📂 Путь: ${res.path}\n💡 Для перехода: \`cd\` ➔ \`${res.name}\``,
-                    style: 'output-success'
+                    style: 'output-success',
+                    undoAction: {
+                        type: 'local_fs_trash',
+                        name: res.name,
+                        description: `создание папки ${res.name}`
+                    }
                 };
             } catch (err) {
                 return {
@@ -258,7 +263,12 @@
 
                 return {
                     response: `🗑️ Папка "${res.name}" удалена (перемещена в корзину).\n💡 Для восстановления: \`undel directory\` ➔ \`${res.name}\``,
-                    style: 'output-success'
+                    style: 'output-success',
+                    undoAction: {
+                        type: 'local_fs_restore_trash',
+                        name: res.name,
+                        description: `удаление папки ${res.name}`
+                    }
                 };
             } catch (err) {
                 return {
@@ -313,7 +323,12 @@
                 const res = await window.LocalFS.restore(folderName);
                 return {
                     response: `🟢 Папка "${res.name}" успешно восстановлена в текущую директорию!`,
-                    style: 'output-success'
+                    style: 'output-success',
+                    undoAction: {
+                        type: 'local_fs_trash',
+                        name: res.name,
+                        description: `восстановление папки ${res.name}`
+                    }
                 };
             } catch (err) {
                 return {
@@ -329,7 +344,7 @@
         names: [
             'edit directory', 'rename directory',
             'edit folder', 'rename folder',
-            'rename', 'переименовать папку'
+            'переименовать папку'
         ],
         description: 'Переименование папки (строго в 2 этапа)',
         category: 'FileSystem',
@@ -383,7 +398,13 @@
                 const res = await window.LocalFS.rename(oldName, newName);
                 return {
                     response: `✏️ Папка "${res.oldName}" успешно переименована в "${res.newName}"!`,
-                    style: 'output-success'
+                    style: 'output-success',
+                    undoAction: {
+                        type: 'local_fs_rename',
+                        oldName: res.oldName,
+                        newName: res.newName,
+                        description: `переименование папки ${res.oldName} → ${res.newName}`
+                    }
                 };
             } catch (err) {
                 return {

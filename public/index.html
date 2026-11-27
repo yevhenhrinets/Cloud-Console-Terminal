@@ -10,59 +10,69 @@
     
     <title>Cloud Terminal</title>
     
-    <link rel="manifest" href="/manifest.json?v=20261124_1">
+    <link rel="manifest" href="/manifest.json?v=20261127_1">
     <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Terminal">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/svg+xml" href="/icon.svg">
     
-    <link rel="stylesheet" href="/style.css?v=20261124_1">
+    <link rel="stylesheet" href="/style.css?v=20261127_1">
 
     <!-- 1. Библиотеки Supabase и JSZip для локального хранилища и ZIP-экспорта -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-    <script src="/local-fs.js?v=20261124_1"></script>
+    <script src="/local-fs.js?v=20261127_1"></script>
     <!-- 2. Ключи -->
-    <script src="/api.js?v=20261124_1"></script>
+    <script src="/api.js?v=20261127_1"></script>
     <!-- 3. Ядро и утилиты -->
-    <script src="/registry.js?v=20261125_4"></script>
-    <script src="/helpers.js?v=20261125_4"></script>
-    <script src="/localization.js?v=20261125_4"></script>
-    <script src="/missions-store.js?v=20261125_2"></script>
+    <script src="/registry.js?v=20261127_1"></script>
+    <script src="/helpers.js?v=20261127_1"></script>
+    <script src="/localization.js?v=20261127_1"></script>
+    <script src="/missions-store.js?v=20261127_1"></script>
     
     <!-- 4. Плагины команд (добавлен суффикс версии для принудительного сброса кэша) -->
-    <script src="/commands-actions.js?v=20261124_1"></script>
-    <script src="/commands/system.js?v=20261124_1"></script>
-    <script src="/commands/timers.js?v=20261124_1"></script>
-    <script src="/commands/inventory.js?v=20261124_1"></script>
-    <script src="/commands/add.js?v=20261124_1"></script>
-    <script src="/commands/missions.js?v=20261125_2"></script>
-    <script src="/commands/history.js?v=20261124_1"></script>
-    <script src="/commands/show.js?v=20261124_1"></script>
-    <script src="/commands/read.js?v=20261124_1"></script>
-    <script src="/commands/edit.js?v=20261124_1"></script>
-    <script src="/commands/del.js?v=20261124_1"></script>
-    <script src="/commands/pin.js?v=20261124_1"></script>
-    <script src="/commands/unpin.js?v=20261124_1"></script>
-    <script src="/commands/auth.js?v=20261124_1"></script>
-    <script src="/commands/lang.js?v=20261124_1"></script>
-    <script src="/commands/trash_notes.js?v=20261124_1"></script>
-    <script src="/commands/trash_history.js?v=20261124_1"></script>
-    <script src="/commands/restore.js?v=20261124_1"></script>
-    <script src="/commands/note_history.js?v=20261124_1"></script>
-    <script src="/commands/go_to.js?v=20261124_1"></script>
-    <script src="/commands/building.js?v=20261124_1"></script>
-    <script src="/commands/task.js?v=20261124_1"></script>
-    <script src="/commands/theme.js?v=20261124_1"></script>
-    <script src="/commands/fs.js?v=20261124_1"></script>
-    <script src="/commands/support.js?v=20261124_1"></script>
-    <script src="/commands/aliases.js?v=20261124_1"></script>
-    <script src="/commands/houses.js?v=20261125_4"></script>
+    <script src="/commands-actions.js?v=20261127_1"></script>
+    <script src="/commands/system.js?v=20261127_1"></script>
+    <script src="/commands/timers.js?v=20261127_1"></script>
+    <script src="/commands/inventory.js?v=20261127_1"></script>
+    <script src="/commands/add.js?v=20261127_1"></script>
+    <script src="/commands/missions.js?v=20261127_1"></script>
+    <script src="/commands/history.js?v=20261127_1"></script>
+    <script src="/commands/show.js?v=20261127_1"></script>
+    <script src="/commands/read.js?v=20261127_1"></script>
+    <script src="/commands/edit.js?v=20261127_1"></script>
+    <script src="/commands/del.js?v=20261127_1"></script>
+    <script src="/commands/pin.js?v=20261127_1"></script>
+    <script src="/commands/unpin.js?v=20261127_1"></script>
+    <script src="/commands/auth.js?v=20261127_1"></script>
+    <script src="/commands/lang.js?v=20261127_1"></script>
+    <script src="/commands/trash_notes.js?v=20261127_1"></script>
+    <script src="/commands/trash_history.js?v=20261127_1"></script>
+    <script src="/commands/restore.js?v=20261127_1"></script>
+    <script src="/commands/note_history.js?v=20261127_1"></script>
+    <script src="/commands/go_to.js?v=20261127_1"></script>
+    <script src="/commands/building.js?v=20261127_1"></script>
+    <script src="/commands/task.js?v=20261127_1"></script>
+    <script src="/commands/theme.js?v=20261127_1"></script>
+    <script src="/commands/fs.js?v=20261127_1"></script>
+    <script src="/commands/support.js?v=20261127_1"></script>
+    <script src="/commands/aliases.js?v=20261127_1"></script>
+    <script src="/commands/houses.js?v=20261127_1"></script>
+    <script src="/commands/cancel.js?v=20261127_1"></script>
     <script>if (window.CustomAliasesSync) window.CustomAliasesSync.applyStoredAliases();</script>
     
     <!-- 5. Справка и диспетчер должны подключаться ПОСЛЕ всех команд -->
-    <script src="/commands/help.js?v=20261124_1"></script>
-    <script src="/commands.js?v=20261125_4"></script>
+    <script src="/commands/help.js?v=20261127_1"></script>
+    <script src="/commands.js?v=20261127_1"></script>
 </head>
 <body>
     <div class="terminal-container">
+        <div id="terminal-profile-bar">
+            <span id="global-auth-profile" class="auth-profile-badge is-guest" data-global-auth-profile>🔴 Не авторизован</span>
+        </div>
         <div id="terminal">
             <div id="terminal-output" class="terminal-output"></div>
         </div>
@@ -85,9 +95,19 @@
             <a href="/house/index.html" class="quick-chip" onclick="return handleQuickNav(event, 'go to home 1')" onauxclick="handleQuickNavAux(event, 'go to home 1')">🏠 home 1</a>
             <a href="/house2/index.html" class="quick-chip" onclick="return handleQuickNav(event, 'go to home 2')" onauxclick="handleQuickNavAux(event, 'go to home 2')">🏡 home 2</a>
             <a href="/house3/index.html" class="quick-chip" onclick="return handleQuickNav(event, 'go to home 3')" onauxclick="handleQuickNavAux(event, 'go to home 3')">🏘️ home 3</a>
+            <button type="button" id="terminal-bg-chip" class="quick-chip chip-login" onclick="triggerTerminalBackgroundPrompt()">⚡ Фон</button>
             <button type="button" class="quick-chip chip-login" onclick="executeCommand('login')">🔑 login</button>
             <button type="button" class="quick-chip chip-login" onclick="executeCommand('switch account')">🔄 switch account</button>
             <button type="button" class="quick-chip" onclick="executeCommand('logout')">🚪 logout</button>
+        </div>
+
+        <div id="terminal-bg-prompt" style="display: none; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 8px 12px; margin: 0 8px 6px 8px; border-radius: 10px; background: rgba(14, 165, 233, 0.16); border: 1px solid rgba(56, 189, 248, 0.45); font-size: 12px;">
+            <span>⚡ <strong>Разрешить фоновый режим</strong> — чтобы таймеры Дашборда и синхронизация с БД работали вовремя даже при свёрнутом приложении.</span>
+            <span style="display: inline-flex; gap: 6px; flex-wrap: wrap;">
+                <button type="button" class="quick-chip chip-login" onclick="grantTerminalBackgroundMode()">✅ Разрешить</button>
+                <button type="button" id="terminal-install-pwa-btn" class="quick-chip chip-login" style="display: none;" onclick="installTerminalPwa()">📲 Установить PWA</button>
+                <button type="button" class="quick-chip" onclick="dismissTerminalBackgroundMode()">Позже</button>
+            </span>
         </div>
 
         <form id="command-form" class="input-line" onsubmit="handleFormSubmit(event)">
@@ -372,9 +392,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const STORAGE_HISTORY_KEY = 'terminal_console_history';
     const STORAGE_DRAFT_KEY = 'terminal_input_draft';
     const STORAGE_ACTIVE_CMD_KEY = 'terminal_active_cmd_prefix';
+    const STORAGE_ACTIVE_STEP_LABEL_KEY = 'terminal_active_step_label';
     const DEFAULT_INPUT_PLACEHOLDER = 'Команда (commands list, support, go to missions, home 1, home 2, home 3, history, write note)...';
 
     let pendingSteps = [];
+    let pendingStepLabel = '';
+
+    const PARSER_KEYWORD_CHIPS = new Set(['to room', 'to house', 'of house', 'with queue id', 'in room', 'equal', 'to']);
 
     function renderActiveCmdChips() {
         const bar = document.getElementById('active-cmd-bar');
@@ -390,7 +414,8 @@ document.addEventListener('DOMContentLoaded', () => {
         chipsContainer.innerHTML = '';
         pendingSteps.forEach((step, idx) => {
             const chip = document.createElement('span');
-            chip.className = 'active-cmd-chip';
+            const isKeyword = idx > 0 && PARSER_KEYWORD_CHIPS.has(String(step).trim().toLowerCase());
+            chip.className = isKeyword ? 'active-cmd-chip is-keyword' : 'active-cmd-chip';
 
             const label = document.createElement('span');
             label.className = 'active-cmd-chip-text';
@@ -411,17 +436,26 @@ document.addEventListener('DOMContentLoaded', () => {
         bar.style.display = 'flex';
     }
 
-    function setPendingSteps(steps, textValue = null, customPlaceholder = null) {
+    function setPendingSteps(steps, textValue = null, customPlaceholder = null, nextStepLabel = '') {
         pendingSteps = Array.isArray(steps)
             ? steps.map(s => String(s || '').trim()).filter(Boolean)
             : (steps ? [String(steps).trim()].filter(Boolean) : []);
 
+        pendingStepLabel = (pendingSteps.length > 0 && nextStepLabel) ? String(nextStepLabel).trim() : '';
+
         if (pendingSteps.length > 0) {
             localStorage.setItem(STORAGE_ACTIVE_CMD_KEY, JSON.stringify(pendingSteps));
+            if (pendingStepLabel) {
+                localStorage.setItem(STORAGE_ACTIVE_STEP_LABEL_KEY, pendingStepLabel);
+            } else {
+                localStorage.removeItem(STORAGE_ACTIVE_STEP_LABEL_KEY);
+            }
             renderActiveCmdChips();
-            input.placeholder = customPlaceholder || `Введите текст для "${pendingSteps[pendingSteps.length - 1]}"...`;
+            input.placeholder = customPlaceholder
+                || (pendingStepLabel ? `${pendingStepLabel}: введите значение...` : `Введите текст для "${pendingSteps[pendingSteps.length - 1]}"...`);
         } else {
             localStorage.removeItem(STORAGE_ACTIVE_CMD_KEY);
+            localStorage.removeItem(STORAGE_ACTIVE_STEP_LABEL_KEY);
             renderActiveCmdChips();
             input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
         }
@@ -434,9 +468,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typeof syncViewportHeight === 'function') syncViewportHeight();
     }
 
-    function setPendingCommand(prefix, textValue = null, customPlaceholder = null) {
+    function setPendingCommand(prefix, textValue = null, customPlaceholder = null, nextStepLabel = '') {
         const clean = String(prefix || '').trim();
-        setPendingSteps(clean ? [clean] : [], textValue, customPlaceholder);
+        setPendingSteps(clean ? [clean] : [], textValue, customPlaceholder, nextStepLabel);
     }
 
     function removePendingStep(index) {
@@ -444,19 +478,90 @@ document.addEventListener('DOMContentLoaded', () => {
             clearPendingCommand(true);
             return;
         }
-        const remaining = pendingSteps.slice(0, index);
+        const clickedLower = String(pendingSteps[index] || '').trim().toLowerCase();
+        const cutIndex = PARSER_KEYWORD_CHIPS.has(clickedLower) ? Math.max(1, index - 1) : index;
+        if (cutIndex <= 0) {
+            clearPendingCommand(true);
+            return;
+        }
+        const remaining = pendingSteps.slice(0, cutIndex);
         const firstLower = String(remaining[0] || '').toLowerCase();
         const isAliasFlow = firstLower.includes('alias') || firstLower.includes('алиас') || firstLower.includes('псевдоним');
-        const nextPlaceholder = isAliasFlow
-            ? 'Шаг 2/3: введите существующую команду...'
-            : `Введите значение для "${remaining[remaining.length - 1]}"...`;
-        setPendingSteps(remaining, '', nextPlaceholder);
+        const isAddTaskFlow = ['add task', 'create task', 'task add', 'tasks add', 'добавить задачу', 'создать задачу', 'додати завдання', 'створити завдання'].includes(firstLower);
+        const isAddThingFlow = /^(?:add|create)\s+(?:(?:a|an|the)\s+)?thing$/.test(firstLower);
+        const isAddRoomFlow = /^(?:add|create)\s+(?:(?:a|an|the)\s+)?room$/.test(firstLower);
+        const isMakeSizeFlow = /^make\s+(?:(?:the|a)\s+)?size/.test(firstLower);
+        const isRenameHouseFlow = /^rename\s+(?:(?:the|a)\s+)?house$/.test(firstLower);
+
+        let nextLabel = '';
+        let nextPlaceholder = `Введите значение для "${remaining[remaining.length - 1]}"...`;
+        if (isAliasFlow) {
+            nextPlaceholder = 'Шаг 2/3: введите существующую команду...';
+        } else if (isAddTaskFlow) {
+            if (remaining.length === 1) {
+                nextLabel = 'building';
+                nextPlaceholder = 'building: название постройки (напр: Таблетки или Печь)...';
+            } else if (remaining.length === 2) {
+                nextLabel = 'task';
+                nextPlaceholder = 'task: название задачи (напр: Отнести на кухню)...';
+            } else {
+                nextLabel = 'time';
+                nextPlaceholder = 'time: длительность (напр: 45м, 10m, 1ч, 30с)...';
+            }
+        } else if (isAddThingFlow) {
+            if (remaining.length === 1) {
+                nextLabel = 'thing';
+                nextPlaceholder = 'thing: название предмета (напр: Столик 2 или Холодильник)...';
+            } else if (remaining.length === 3) {
+                nextLabel = 'room';
+                nextPlaceholder = 'room: комната (Кухня, Зал, Спальня, Коридор)...';
+            } else if (remaining.length === 5) {
+                nextLabel = 'house';
+                nextPlaceholder = 'house: дом (Дом 1, Дом 2, Дом 3 или имя дома)...';
+            } else {
+                nextLabel = 'queue id';
+                nextPlaceholder = 'queue id: ID очереди постройки (напр: 17) или "-"...';
+            }
+        } else if (isAddRoomFlow) {
+            if (remaining.length === 1) {
+                nextLabel = 'room';
+                nextPlaceholder = 'room: название комнаты (напр: Балкон)...';
+            } else {
+                nextLabel = 'house';
+                nextPlaceholder = 'house: дом (Дом 1, Дом 2, Дом 3 или имя дома)...';
+            }
+        } else if (isMakeSizeFlow) {
+            if (remaining.length === 1) {
+                nextLabel = 'thing';
+                nextPlaceholder = 'thing: название предмета (напр: Кровать 2)...';
+            } else if (remaining.length === 3) {
+                nextLabel = 'room';
+                nextPlaceholder = 'room: комната (напр: Спальня)...';
+            } else if (remaining.length === 5) {
+                nextLabel = 'house';
+                nextPlaceholder = 'house: дом (напр: Дом 2)...';
+            } else {
+                nextLabel = 'size';
+                nextPlaceholder = 'size: размер ШxВ (напр: 1x2 или 2*2)...';
+            }
+        } else if (isRenameHouseFlow) {
+            if (remaining.length === 1) {
+                nextLabel = 'house';
+                nextPlaceholder = 'house: текущий дом (напр: Дом 1)...';
+            } else {
+                nextLabel = 'new name';
+                nextPlaceholder = 'new name: новое имя (напр: Чапаева)...';
+            }
+        }
+        setPendingSteps(remaining, '', nextPlaceholder, nextLabel);
         input.focus();
     }
 
     function clearPendingCommand(clearText = true) {
         pendingSteps = [];
+        pendingStepLabel = '';
         localStorage.removeItem(STORAGE_ACTIVE_CMD_KEY);
+        localStorage.removeItem(STORAGE_ACTIVE_STEP_LABEL_KEY);
         renderActiveCmdChips();
         input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
         if (clearText) {
@@ -473,22 +578,35 @@ document.addEventListener('DOMContentLoaded', () => {
         input.value = savedDraft;
     }
     const savedActiveCmd = localStorage.getItem(STORAGE_ACTIVE_CMD_KEY);
+    const savedActiveStepLabel = localStorage.getItem(STORAGE_ACTIVE_STEP_LABEL_KEY) || '';
     if (savedActiveCmd) {
         try {
             const parsedSteps = JSON.parse(savedActiveCmd);
             if (Array.isArray(parsedSteps) && parsedSteps.length > 0) {
-                setPendingSteps(parsedSteps, null, null);
+                setPendingSteps(parsedSteps, null, null, savedActiveStepLabel);
             } else if (typeof savedActiveCmd === 'string') {
-                setPendingCommand(savedActiveCmd, null, null);
+                setPendingCommand(savedActiveCmd, null, null, savedActiveStepLabel);
             }
         } catch (e) {
-            setPendingCommand(savedActiveCmd, null, null);
+            setPendingCommand(savedActiveCmd, null, null, savedActiveStepLabel);
+        }
+    }
+
+    function saveLineToConsoleHistory(text, className = '', isHtml = false) {
+        if (!text) return;
+        try {
+            let history = JSON.parse(localStorage.getItem(STORAGE_HISTORY_KEY) || '[]');
+            history.push({ text, className, isHtml });
+            if (history.length > 100) history.shift();
+            localStorage.setItem(STORAGE_HISTORY_KEY, JSON.stringify(history));
+        } catch (e) {
+            console.error('Ошибка сохранения истории в localStorage', e);
         }
     }
 
     // Универсальная функция вывода с поддержкой HTML (isHtml) для таймеров
     function printOutput(inputData, customClassName = '', save = true) {
-        if (!inputData) return;
+        if (!inputData) return null;
 
         let text = '';
         let className = customClassName;
@@ -503,7 +621,7 @@ document.addEventListener('DOMContentLoaded', () => {
             className = customClassName;
         }
 
-        if (!text) return;
+        if (!text) return null;
 
         const div = document.createElement('div');
         div.className = className;
@@ -529,15 +647,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (save) {
-            try {
-                let history = JSON.parse(localStorage.getItem(STORAGE_HISTORY_KEY) || '[]');
-                history.push({ text, className, isHtml });
-                if (history.length > 100) history.shift();
-                localStorage.setItem(STORAGE_HISTORY_KEY, JSON.stringify(history));
-            } catch (e) {
-                console.error('Ошибка сохранения истории в localStorage', e);
-            }
+            saveLineToConsoleHistory(text, className, isHtml);
         }
+        return div;
     }
 
 function restoreConsoleHistory() {
@@ -602,11 +714,24 @@ function restoreConsoleHistory() {
 
         if (UserIsAuthed) {
             prompt.textContent = `${userProfileData.email}:~$`;
-            printOutput(`${userProfileData.email}:~$ ${rawText}`);
         } else {
             prompt.textContent = `user@cloud:~$`;
-            printOutput(`user@cloud:~$ ${rawText}`);
         }
+        if (typeof window.updateGlobalAuthBadge === 'function') {
+            window.updateGlobalAuthBadge(userProfileData);
+        }
+
+        let echoLine = UserIsAuthed
+            ? `${userProfileData.email}:~$ ${rawText}`
+            : `user@cloud:~$ ${rawText}`;
+        if (options && options.fromTwoStepBar) {
+            const payloadText = String(options.stepPayload !== undefined ? options.stepPayload : rawText).trim();
+            echoLine = options.stepLabel
+                ? `last command:~$ ${options.stepLabel}: ${payloadText}`
+                : `last command:~$ ${payloadText}`;
+        }
+
+        const echoDiv = printOutput(echoLine, '', false);
 
         if (/^((download|downoad)\s+(project|code)|export\s+project|fs\s+export|export\s+zip|скачать\s+(код|проект))/i.test(String(rawText || '').trim())) {
             printOutput('⏳ Собираю ZIP-архив...', 'output-info', false);
@@ -620,17 +745,23 @@ function restoreConsoleHistory() {
             return;
         }
 
+        const finalEchoLine = (result && result.stepEchoText) ? result.stepEchoText : echoLine;
+        if (echoDiv && finalEchoLine !== echoLine) {
+            echoDiv.textContent = finalEchoLine;
+        }
+        saveLineToConsoleHistory(finalEchoLine, '', false);
+
         printOutput(result);
 
         if (result.commandSteps && result.commandSteps.length > 0) {
-            setPendingSteps(result.commandSteps, result.inputValue ?? '', result.inputPlaceholder || null);
+            setPendingSteps(result.commandSteps, result.inputValue ?? '', result.inputPlaceholder || null, result.nextStepLabel || '');
             input.focus();
             input.setSelectionRange(input.value.length, input.value.length);
             return;
         }
 
         if (result.commandPrefix) {
-            setPendingCommand(result.commandPrefix, result.inputValue ?? '', result.inputPlaceholder || null);
+            setPendingCommand(result.commandPrefix, result.inputValue ?? '', result.inputPlaceholder || null, result.nextStepLabel || '');
             input.focus();
             input.setSelectionRange(input.value.length, input.value.length);
             return;
@@ -661,14 +792,7 @@ function restoreConsoleHistory() {
         const isDeleteCommand = ['del', 'delete', 'удалить', 'видалити', 'rm'].includes(baseCmd) && result.style === 'output-success';
         const isPinCommand = (
             ['pin', 'unpin', 'fix', 'unfix', 'unfasten', 'detach', 'loosen', 'закріпити', 'закрепить', 'открепить', 'відкріпити', 'приколоть', 'приколоти'].includes(baseCmd) ||
-            fullCmdLower.startsWith('make fixed') ||
-            fullCmdLower.startsWith('make note fixed') ||
-            fullCmdLower.startsWith('make the note fixed') ||
-            fullCmdLower.startsWith('make unfixed') ||
-            fullCmdLower.startsWith('make note unfixed') ||
-            fullCmdLower.startsWith('make the note unfixed') ||
-            fullCmdLower === 'make last note fixed' ||
-            fullCmdLower === 'make last note unfixed'
+            /^make\s+(?:(?:a|the)\s+)?(?:last\s+)?(?:note\s+)?(?:fixed|unfixed)\b/.test(fullCmdLower)
         ) && result.style === 'output-success';
         const isAddCommand = ['add', 'добавить', 'додати', 'write'].includes(baseCmd) && result.style === 'output-success';
         const isEntityMutation = result.style === 'output-success' && (result.editedEntity === 'note' || result.editedEntity === 'history');
@@ -694,6 +818,7 @@ function restoreConsoleHistory() {
                 return;
             }
             const stepsSnapshot = [...pendingSteps];
+            const stepLabelSnapshot = pendingStepLabel;
             const baseCommand = stepsSnapshot[0];
             const combinedCommand = stepsSnapshot.length === 1
                 ? `${baseCommand} ${payloadText}`
@@ -703,7 +828,8 @@ function restoreConsoleHistory() {
             await executeCommand(combinedCommand, {
                 fromTwoStepBar: true,
                 pendingSteps: stepsSnapshot,
-                stepPayload: payloadText
+                stepPayload: payloadText,
+                stepLabel: stepLabelSnapshot
             });
             return;
         }
@@ -802,7 +928,73 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     autoResizeTextarea();
+    if (window.BackgroundModeSync) {
+        updateTerminalBgPrompt();
+        window.BackgroundModeSync.subscribe(updateTerminalBgPrompt);
+    }
 });
+
+let terminalBgForceOpen = false;
+async function updateTerminalBgPrompt() {
+    if (!window.BackgroundModeSync) return;
+    const status = await window.BackgroundModeSync.getStatus();
+    const chip = document.getElementById('terminal-bg-chip');
+    const bar = document.getElementById('terminal-bg-prompt');
+    const installBtn = document.getElementById('terminal-install-pwa-btn');
+    if (chip) {
+        chip.textContent = status.needsAttention ? '⚡ Разрешить фон' : '🔔 Фон: Вкл';
+    }
+    if (installBtn) {
+        installBtn.style.display = (!status.installed && (status.canInstall || status.isIOS)) ? 'inline-flex' : 'none';
+    }
+    if (bar) {
+        const show = terminalBgForceOpen || (status.needsAttention && !status.dismissed);
+        bar.style.display = show ? 'flex' : 'none';
+    }
+}
+
+function triggerTerminalBackgroundPrompt() {
+    terminalBgForceOpen = !terminalBgForceOpen;
+    if (terminalBgForceOpen && window.BackgroundModeSync) {
+        window.BackgroundModeSync.reopenPromptBanner();
+    }
+    updateTerminalBgPrompt();
+}
+
+async function grantTerminalBackgroundMode() {
+    if (!window.BackgroundModeSync) return;
+    const res = await window.BackgroundModeSync.requestPermissions({ requestWakeLock: true });
+    terminalBgForceOpen = false;
+    await updateTerminalBgPrompt();
+    if (res.notification === 'granted') {
+        printOutput('✅ Фоновый режим, уведомления и синхронизация для Дашборда включены!', 'output-success', false);
+    } else if (res.needsManualSettings) {
+        printOutput('⚠️ Уведомления запрещены в настройках браузера — разрешите их в меню настроек сайта, чтобы фоновые таймеры оповещали вовремя.', 'output-info', false);
+    } else {
+        printOutput('ℹ️ Фоновая синхронизация включена. Разрешите уведомления для звуковых/экранных сигналов таймеров.', 'output-info', false);
+    }
+}
+
+async function installTerminalPwa() {
+    if (!window.BackgroundModeSync) return;
+    const res = await window.BackgroundModeSync.triggerInstallApp();
+    if (res.installed) {
+        printOutput('✅ Приложение установлено как PWA! Фоновые таймеры и синхронизация работают надёжнее.', 'output-success', false);
+    } else if (res.iosGuide) {
+        printOutput('📲 iOS: нажмите «Поделиться» в Safari ➔ «На экран Домой» для работы в фоновом режиме PWA.', 'output-info', false);
+    } else if (res.manualHint) {
+        printOutput('📲 Откройте меню браузера (⋮) ➔ «Установить приложение» для стабильной фоновой работы.', 'output-info', false);
+    }
+    updateTerminalBgPrompt();
+}
+
+function dismissTerminalBackgroundMode() {
+    terminalBgForceOpen = false;
+    if (window.BackgroundModeSync) {
+        window.BackgroundModeSync.dismissPromptBanner();
+    }
+    updateTerminalBgPrompt();
+}
 </script>
     
 <script>
@@ -814,7 +1006,7 @@ if ('serviceWorker' in navigator) {
         window.location.reload();
     });
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/service-worker.js?v=20261125_4', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('/service-worker.js?v=20261127_1', { updateViaCache: 'none' })
             .then((reg) => {
                 if (reg && typeof reg.update === 'function') reg.update().catch(() => {});
             })

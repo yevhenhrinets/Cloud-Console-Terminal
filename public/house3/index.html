@@ -8,14 +8,15 @@
     <meta http-equiv="Expires" content="0">
     <title>Cloud Terminal — Дом 3 (16×16: 4 квадрата 8×8)</title>
 
-    <link rel="stylesheet" href="/house.css?v=20261125_4">
+    <link rel="stylesheet" href="/house.css?v=20261127_1">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="/api.js?v=20261124_1"></script>
-    <script src="/localization.js?v=20261125_4"></script>
-    <script src="/registry.js?v=20261125_4"></script>
-    <script src="/helpers.js?v=20261125_4"></script>
-    <script src="/commands/houses.js?v=20261125_4"></script>
-    <script src="/commands.js?v=20261125_4"></script>
+    <script src="/api.js?v=20261127_1"></script>
+    <script src="/localization.js?v=20261127_1"></script>
+    <script src="/registry.js?v=20261127_1"></script>
+    <script src="/helpers.js?v=20261127_1"></script>
+    <script src="/commands/houses.js?v=20261127_1"></script>
+    <script src="/commands/cancel.js?v=20261127_1"></script>
+    <script src="/commands.js?v=20261127_1"></script>
 </head>
 <body>
 
@@ -31,6 +32,8 @@
         <button type="button" onclick="jumpToQuadrant('hall')">🛋️ Зал</button>
         <button type="button" onclick="jumpToQuadrant('room')">🛏️ Комната</button>
         <button type="button" onclick="jumpToQuadrant('corridor')">🚶 Коридор</button>
+        <span class="top-nav-sep"></span>
+        <span id="global-auth-profile" class="auth-profile-badge is-guest" data-global-auth-profile>🔴 Не авторизован</span>
     </nav>
 
     <div class="house-viewport" id="house-viewport">
@@ -108,17 +111,16 @@
                         </svg>
                     </div>
 
-                    <!-- Кухонный стол: 2×2 -->
-                    <div class="room-item" data-id="table3" data-w="2" data-h="2" data-col="0" data-row="4" title="Стол (2×2 — удерживайте 0.75с для перемещения)">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="20 165 472 340" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Стол" class="appliance-object">
-                            <ellipse cx="256" cy="450" rx="200" ry="30" fill="#000000" opacity="0.25" class="non-hit-shadow"/>
-                            <rect x="110" y="220" width="28" height="200" rx="6" fill="#15803D"/>
-                            <rect x="374" y="220" width="28" height="200" rx="6" fill="#15803D"/>
-                            <rect x="70" y="240" width="36" height="200" rx="8" fill="#16A34A" stroke="#15803D" stroke-width="4"/>
-                            <rect x="406" y="240" width="36" height="200" rx="8" fill="#16A34A" stroke="#15803D" stroke-width="4"/>
-                            <rect x="80" y="230" width="352" height="40" fill="#16A34A"/>
-                            <rect x="40" y="190" width="432" height="45" rx="12" fill="#22C55E" stroke="#15803D" stroke-width="6"/>
-                            <rect x="52" y="200" width="408" height="8" rx="4" fill="#4ADE80" opacity="0.6"/>
+                    <!-- Кухонный столик: 2×1 (без тени, зелёный) -->
+                    <div class="room-item" data-id="table3" data-w="2" data-h="1" data-col="0" data-row="4" title="Столик (2×1 — удерживайте 0.7с для действий и перемещения)">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="16 144 480 280" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Столик" class="appliance-object">
+                            <rect x="108" y="218" width="28" height="176" rx="6" fill="#15803D"/>
+                            <rect x="376" y="218" width="28" height="176" rx="6" fill="#15803D"/>
+                            <rect x="70" y="236" width="34" height="178" rx="8" fill="#16A34A" stroke="#14532D" stroke-width="6"/>
+                            <rect x="408" y="236" width="34" height="178" rx="8" fill="#16A34A" stroke="#14532D" stroke-width="6"/>
+                            <rect x="80" y="220" width="352" height="36" fill="#16A34A"/>
+                            <rect x="36" y="156" width="440" height="68" rx="14" fill="#22C55E" stroke="#15803D" stroke-width="8"/>
+                            <rect x="52" y="170" width="408" height="12" rx="6" fill="#4ADE80" opacity="0.72"/>
                         </svg>
                     </div>
 
@@ -335,7 +337,7 @@
         ]
     };
 </script>
-<script src="/house-engine.js?v=20261125_4"></script>
+<script src="/house-engine.js?v=20261127_1"></script>
 
 </body>
 </html>

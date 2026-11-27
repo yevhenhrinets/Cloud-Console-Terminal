@@ -20,16 +20,64 @@ window.CommandRegistry = {
         });
     },
 
+    // Генерация вариантов с удалением только лексически и фонетически корректных артиклей (a / an / the)
+    generateArticleNormalizedCandidates(cmdLower) {
+        const tokens = String(cmdLower || '').trim().split(/\s+/).filter(Boolean);
+        if (tokens.length < 2) return [];
+
+        const isPairOk = (art, nextWord, rest) => {
+            if (typeof window !== 'undefined' && typeof window.isValidEnglishArticlePair === 'function') {
+                return window.isValidEnglishArticlePair(art, nextWord, rest);
+            }
+            if (art === 'the') return true;
+            if (art === 'an') return /^[aeiou]/i.test(nextWord) && !/^(?:user|unit|uni|use|euro|one)/i.test(nextWord);
+            if (art === 'a') return !/^[aeiou]/i.test(nextWord) || /^(?:user|unit|uni|use|euro|one)/i.test(nextWord);
+            return false;
+        };
+
+        // Не удаляем артикль сразу после 'go' без предлога 'to' (например, 'go the home' недопустимо)
+        const stripped = [];
+        let removedCount = 0;
+        for (let i = 0; i < tokens.length; i++) {
+            const tok = tokens[i];
+            if ((tok === 'a' || tok === 'an' || tok === 'the') && i + 1 < tokens.length) {
+                if (tokens[0] === 'go' && i === 1) {
+                    return [];
+                }
+                const nextTok = tokens[i + 1];
+                const rest = tokens.slice(i + 2);
+                if (!isPairOk(tok, nextTok, rest)) {
+                    return [];
+                }
+                removedCount++;
+                continue;
+            }
+            stripped.push(tok);
+        }
+
+        if (removedCount === 0 || stripped.length === 0) return [];
+        return [stripped.join(' ')];
+    },
+
     // Возвращает каноническое имя команды по имени или алиасу
     resolveName(cmdName) {
         if (!cmdName) return null;
-        return this.aliases[String(cmdName).trim().toLowerCase()] || null;
+        const lower = String(cmdName).trim().toLowerCase();
+        if (this.aliases[lower]) {
+            return this.aliases[lower];
+        }
+        const candidates = this.generateArticleNormalizedCandidates(lower);
+        for (const cand of candidates) {
+            if (this.aliases[cand]) {
+                return this.aliases[cand];
+            }
+        }
+        return null;
     },
 
     // Проверка существования имени/алиаса
     hasAlias(cmdName) {
-        if (!cmdName) return false;
-        return Boolean(this.aliases[String(cmdName).trim().toLowerCase()]);
+        return Boolean(this.resolveName(cmdName));
     },
 
     // Динамическое добавление одного или нескольких алиасов к существующей команде
